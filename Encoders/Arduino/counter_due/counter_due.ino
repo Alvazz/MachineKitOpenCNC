@@ -1,5 +1,6 @@
 #include <SPI.h>
-
+#include <stdio.h>
+#include <stdlib.h>
 
 /***   MDR0   ***/
 //Count modes
@@ -64,11 +65,18 @@
 #define LOAD_OTR      0xE4
 
 #define NON           0x00
-
+#define INI_CNTR      1000000
 
 // CS pin
-#define SS 4
-#define CLK DAC1
+#define SS1 4
+#define SS2 5
+#define SS3 6
+
+//Number of ICs to read
+#define numAxes 3
+//#define axes[numAxes] = {SS1, SS2, SS3}
+
+static int axes[numAxes] = {SS1, SS2, SS3};
 
 // 4 byte counter
 union byte4{
@@ -76,14 +84,25 @@ union byte4{
    uint8_t bytes[4];
 };
 
+//Structure for result of command read
+typedef struct {
+  char cmd;
+  int cmdResult;
+  
+  //Received data
+  int bytesRead;
+
+  //Returned data
+  int encoderCounts[numAxes];
+} commandData_t;
+
 void ini_spi(uint8_t ss_pin) {
-  pinMode(CLK, OUTPUT);
   pinMode(ss_pin, OUTPUT);
   SPI.begin(ss_pin);
   digitalWrite(ss_pin, HIGH);
   SPI.setBitOrder(MSBFIRST);
-  SPI.setDataMode(SS, SPI_MODE0);
-  SPI.setClockDivider(SS, 200);
+  SPI.setDataMode(ss_pin, SPI_MODE0);
+  SPI.setClockDivider(ss_pin, 10);
   delay(5);
 }
 
@@ -115,9 +134,11 @@ void write_4_byte(uint8_t ss_pin, uint8_t op_code, byte4 op_data) {
 
 // write 1 byte then read 1 byte through spi
 uint8_t read_1_byte(uint8_t ss_pin, uint8_t op_code) {
-  uint8_t res;  
+  uint8_t res;
+  digitalWrite(ss_pin, LOW);  
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
   res = SPI.transfer(ss_pin, NON, SPI_LAST);
+  digitalWrite(ss_pin, HIGH);
   return res;
 }
 
@@ -134,9 +155,22 @@ unsigned long read_4_byte(uint8_t ss_pin, uint8_t op_code) {
   return res.comb;
 }
 
+// Counter initialization
+void initCounter(uint8_t ss_pin, int count) {
+  byte4 binCount;
+  binCount.comb = count;
+  write_4_byte(ss_pin, WRITE_DTR, binCount);
+  //Move written data from DTR to CNTR register
+  clr_load_reg(ss_pin, LOAD_CNTR);
+}
+
 // responses for 1 byte and 4 bytes.
 uint8_t rx_data1;
-unsigned long rx_data4;
+uint8_t rx_data2;
+uint8_t rx_data3;
+unsigned long rx_data41;
+unsigned long rx_data42;
+unsigned long rx_data43;
 
 void setup() {
   /*  setup PWM on pin: DAC1
@@ -153,32 +187,225 @@ void setup() {
   REG_PWM_ENA = PWM_ENA_CHID0;  // Enable the PWM channel 
   
   //initialize spi and serial port
-  ini_spi(SS);
-  Serial.begin(9600);
+  ini_spi(SS1);
+  ini_spi(SS2);
+  ini_spi(SS3);
+  //Serial.begin(115200);
+  Serial.begin(250000);
   delay(100);
 
   // set MRD0 and MRD1
-  write_1_byte(SS, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
-  write_1_byte(SS, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
+  write_1_byte(SS1, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
+  write_1_byte(SS1, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
+
+  write_1_byte(SS2, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
+  write_1_byte(SS2, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
+
+  write_1_byte(SS3, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
+  write_1_byte(SS3, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
 
   // clear STR and CNTR
-  clr_load_reg(SS, CLR_STR);
-  clr_load_reg(SS, CLR_CNTR);
+  clr_load_reg(SS1, CLR_STR);
+  clr_load_reg(SS1, CLR_CNTR);
+
+  clr_load_reg(SS2, CLR_STR);
+  clr_load_reg(SS2, CLR_CNTR);
+
+  clr_load_reg(SS3, CLR_STR);
+  clr_load_reg(SS3, CLR_CNTR);
+
+  //Force CNTR to 1e6
+  initCounter(SS1, INI_CNTR);
+  initCounter(SS2, INI_CNTR);
+  initCounter(SS3, INI_CNTR);
 
   // check CNTR and STR
-  rx_data4 = read_4_byte(SS, READ_CNTR);
-  Serial.print("CNTR check: ");
-  Serial.println(rx_data4, DEC);
-  delay(5);
-  rx_data1 = read_1_byte(SS, READ_STR);
-  Serial.print("STR check: ");
-  Serial.println(rx_data1, BIN);
-  delay(10);
+//  rx_data41 = read_4_byte(SS1, READ_CNTR);
+//  rx_data42 = read_4_byte(SS2, READ_CNTR);
+//  rx_data43 = read_4_byte(SS3, READ_CNTR);
+//  Serial.print("CNTR check 1: ");
+//  Serial.println(rx_data41, DEC);
+//  Serial.print("CNTR check 2: ");
+//  Serial.println(rx_data42, DEC);
+//  Serial.print("CNTR check 3: ");
+//  Serial.println(rx_data43, DEC);
+//  delay(5);
+  
+//  rx_data1 = read_1_byte(SS1, READ_STR);
+//  rx_data2 = read_1_byte(SS2, READ_STR);
+//  rx_data3 = read_1_byte(SS3, READ_STR);
+//  Serial.print("STR check 1: ");
+//  Serial.println(rx_data1, BIN);
+//  Serial.print("STR check 2: ");
+//  Serial.println(rx_data2, BIN);
+//  Serial.print("STR check 3: ");
+//  Serial.println(rx_data3, BIN);
+//  delay(10);
 }
 
+//int incomingBytes = 0;
+
+commandData_t readCommand(void) {
+  //Check for command string
+  
+  char incomingByte;
+  char incomingBytes[64];
+  //int byteCount = 0;
+  //int retVal[numAxes];
+  
+  commandData_t commandData;
+  commandData.cmd = 'E';
+  commandData.cmdResult = 0;
+  
+  if (Serial.available() > 0) {
+    incomingByte = Serial.read();
+    
+    //int axis = 0;
+    int byteCount = 0;
+    int bytesToRead = 0;
+    //int setCount = 0;
+    
+    //Read command character
+    switch (incomingByte) {
+      
+      case 'S':
+        //"SET" encoder counts for all axes
+        Serial.println("Setting encoder count");
+        commandData.cmd = 'S';
+        
+        //wait for the rest of the command
+        while (Serial.available() == 0) {
+          delayMicroseconds(1);
+        }
+        bytesToRead = Serial.read() - '0';
+        while (Serial.available() < bytesToRead) {
+          delayMicroseconds(1);
+        }
+        
+        //int byteCount = 0;
+        while (Serial.available() > 0) {
+          incomingByte = Serial.read();
+          incomingBytes[byteCount] = incomingByte;
+          Serial.print("received ");
+          Serial.println(incomingByte);
+          byteCount += 1;
+        }
+        commandData.bytesRead = byteCount;
+
+        if (commandData.bytesRead > 0) {
+          //Have bytes to write to CNTRs
+          int setCount = atoi(incomingBytes);
+          //byte4 readCount;
+          unsigned long readCount;
+          commandData.cmdResult = 1;
+
+          //Set DTR, load CNTR for each IC
+          for (int axis = 0; axis < numAxes+1; axis++) {
+            initCounter(axes[axis], setCount);
+            readCount = read_4_byte(axes[axis], READ_CNTR);
+            //Check for successful write
+            if ((int) readCount == setCount) {
+              //Successful set for IC axes[axis]
+              commandData.cmdResult &= 1;
+            } else {
+              //Write failure
+              commandData.cmdResult = -1;
+            }
+          }
+        }
+        break;
+        
+      case 'G':
+        //"GET" encoder counts for all axes
+        commandData.cmd = 'G';
+        //int axisCounts[numAxes];
+        if (!Serial.available()) {
+          //No more bytes to read, return encoder counts
+          for (int axis = 0; axis < numAxes+1; axis++) {
+            //axisCounts[axis] = (int) read_4_byte(axes[axis], READ_CNTR);
+            commandData.encoderCounts[axis] = (int) read_4_byte(axes[axis], READ_CNTR);
+          }
+          //retVal = axisCounts;
+          //Assume success
+          commandData.cmdResult = 0;
+          //commandData.encoderCounts = axisCounts;
+        } else {
+          //Error, wrong command string
+          commandData.cmdResult = -1;
+        }
+        break;
+    }
+  } else {
+    //No bytes to read
+    commandData.cmd = 'N';
+    commandData.cmdResult = 0;
+  }
+  return commandData;
+}
+        
+
+//    }
+//    if (incomingByte == 'S') {
+//      
+//    }
+//    else {
+//      incomingBytes[byteCount] = incomingByte;
+//      //Serial.print("I received: ");
+//      //Serial.println(incomingByte);
+//      byteCount += 1;
+//    }
+//  }
+//  return atoi(incomingBytes);
+//}
+
 void loop() {
-  rx_data4 = read_4_byte(SS, READ_CNTR);
-  Serial.print("CNTR is ");
-  Serial.println(rx_data4, DEC);
-  delay(200);
+//  rx_data41 = read_4_byte(SS1, READ_CNTR);
+//  rx_data42 = read_4_byte(SS2, READ_CNTR);
+//  rx_data43 = read_4_byte(SS3, READ_CNTR);
+//  //Serial.print("CNTR is ");
+//  Serial.print(rx_data41, DEC);
+//  Serial.print(' ');
+//  Serial.print(rx_data42, DEC);
+//  Serial.print(' ');
+//  Serial.println(rx_data43, DEC);
+
+//  int count;
+//  if (readCommand()) {
+//    
+//  }
+
+  //int command;
+  commandData_t commandData;
+  commandData = readCommand();
+  if (commandData.cmdResult == 0) {
+    //Success on read/process command
+    switch (commandData.cmd) {
+      case 'G':
+        //Command request from master
+        //int countOutput;
+        for (int axis = 0; axis < numAxes-1; axis++) {
+          Serial.print(commandData.encoderCounts[axis], DEC);
+          Serial.print(' ');
+        }
+        Serial.println(commandData.encoderCounts[numAxes-1]);
+        break;
+    }
+  } else {
+    //Serial.print("Command error with ");
+    //Serial.println(commandData.cmd);
+  }
+  //command = readCommand();
+   
+//  if (command >= 0) {
+//    Serial.println("resetting counter");
+//    initCounter(SS1, command);
+//    initCounter(SS2, command);
+//    initCounter(SS3, command);
+//  }
+  
+  //forceEncoderCount = readEncoderResetCommand();
+  //Serial.println(count);
+  
+  //delay(1);
+  //delayMicroseconds(50);
 }
