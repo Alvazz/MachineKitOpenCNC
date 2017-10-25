@@ -76,7 +76,7 @@
 #define numAxes 3
 //#define axes[numAxes] = {SS1, SS2, SS3}
 
-static int axes[numAxes] = {SS1, SS2, SS3};
+static uint8_t axes[numAxes] = {SS1, SS2, SS3};
 
 // 4 byte counter
 union byte4{
@@ -96,25 +96,27 @@ typedef struct {
   int encoderCounts[numAxes];
 } commandData_t;
 
-void ini_spi(uint8_t ss_pin) {
-  pinMode(ss_pin, OUTPUT);
-  SPI.begin(ss_pin);
-  digitalWrite(ss_pin, HIGH);
-  SPI.setBitOrder(MSBFIRST);
-  SPI.setDataMode(ss_pin, SPI_MODE0);
-  SPI.setClockDivider(ss_pin, 10);
-  delay(5);
+void initSpi(uint8_t ss[]) {
+  for (int iss=0; iss<sizeof(ss)/sizeof(ss[0]); iss++){
+    pinMode(ss[iss], OUTPUT);
+    SPI.begin(ss[iss]);
+    digitalWrite(ss[iss], HIGH);
+    SPI.setBitOrder(MSBFIRST);
+    SPI.setDataMode(ss[iss], SPI_MODE0);
+    SPI.setClockDivider(ss[iss], 10);
+    delay(5);
+  }
 }
 
 // write 1 byte to spi
-void clr_load_reg(uint8_t ss_pin, uint8_t op_code) {
+void clrLoadReg(uint8_t ss_pin, uint8_t op_code) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_LAST);
   digitalWrite(ss_pin, HIGH);
 }
 
 // write 2 bytes to spi
-void write_1_byte(uint8_t ss_pin, uint8_t op_code, uint8_t op_data) {
+void writeOneByte(uint8_t ss_pin, uint8_t op_code, uint8_t op_data) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
   SPI.transfer(ss_pin, op_data, SPI_LAST);
@@ -122,7 +124,7 @@ void write_1_byte(uint8_t ss_pin, uint8_t op_code, uint8_t op_data) {
 }
 
 // write 5 bytes to spi
-void write_4_byte(uint8_t ss_pin, uint8_t op_code, byte4 op_data) {
+void writeFourByte(uint8_t ss_pin, uint8_t op_code, byte4 op_data) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
   SPI.transfer(ss_pin, op_data.bytes[3], SPI_CONTINUE);
@@ -133,7 +135,7 @@ void write_4_byte(uint8_t ss_pin, uint8_t op_code, byte4 op_data) {
 }
 
 // write 1 byte then read 1 byte through spi
-uint8_t read_1_byte(uint8_t ss_pin, uint8_t op_code) {
+uint8_t readOneByte(uint8_t ss_pin, uint8_t op_code) {
   uint8_t res;
   digitalWrite(ss_pin, LOW);  
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
@@ -143,7 +145,7 @@ uint8_t read_1_byte(uint8_t ss_pin, uint8_t op_code) {
 }
 
 // write 1 byte then read 4 bytes through spi
-unsigned long read_4_byte(uint8_t ss_pin, uint8_t op_code) {
+unsigned long readFourByte(uint8_t ss_pin, uint8_t op_code) {
   byte4 res;
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
@@ -155,95 +157,26 @@ unsigned long read_4_byte(uint8_t ss_pin, uint8_t op_code) {
   return res.comb;
 }
 
-// Counter initialization
-void initCounter(uint8_t ss_pin, int count) {
+void initCounter(uint8_t ss[]) {
+  for (int iss=0; iss<sizeof(ss)/sizeof(ss[0]); iss++){
+    // set MRD0 and MRD1
+    writeOneByte(ss[iss], WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
+    writeOneByte(ss[iss], WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
+    
+    // clear STR and CNTR
+    clrLoadReg(ss[iss], CLR_STR);
+    clrLoadReg(ss[iss], CLR_CNTR);
+  }
+}
+
+// set counter register to a desired number
+void setCounter(uint8_t ss_pin, int count) {
   byte4 binCount;
   binCount.comb = count;
-  write_4_byte(ss_pin, WRITE_DTR, binCount);
+  writeFourByte(ss_pin, WRITE_DTR, binCount);
   //Move written data from DTR to CNTR register
-  clr_load_reg(ss_pin, LOAD_CNTR);
+  clrLoadReg(ss_pin, LOAD_CNTR);
 }
-
-// responses for 1 byte and 4 bytes.
-uint8_t rx_data1;
-uint8_t rx_data2;
-uint8_t rx_data3;
-unsigned long rx_data41;
-unsigned long rx_data42;
-unsigned long rx_data43;
-
-void setup() {
-  /*  setup PWM on pin: DAC1
-   *  freq = 500K
-   *  dutycycle = 50%
-   */
-  REG_PMC_PCER1 |= PMC_PCER1_PID36;  // Enable PWM
-  REG_PIOB_ABSR |= PIO_ABSR_P16;    // Set PWM pin perhipheral type A or B, in this case B
-  REG_PIOB_PDR |= PIO_PDR_P16;    // Set PWM pin to an output
-  REG_PWM_CLK = PWM_CLK_PREA(0) | PWM_CLK_DIVA(1);  // Set the PWM clock rate to 84MHz (84MHz/1)
-  REG_PWM_CMR0 = PWM_CMR_CALG | PWM_CMR_CPRE_CLKA;  // Enable dual slope PWM and set the clock source as CLKA
-  REG_PWM_CPRD0 = 84;  // Set the PWM frequency 84MHz/(2 * 84) = 500KHz
-  REG_PWM_CDTY0 = 42;  // duty cycle
-  REG_PWM_ENA = PWM_ENA_CHID0;  // Enable the PWM channel 
-  
-  //initialize spi and serial port
-  ini_spi(SS1);
-  ini_spi(SS2);
-  ini_spi(SS3);
-  //Serial.begin(115200);
-  Serial.begin(250000);
-  delay(100);
-
-  // set MRD0 and MRD1
-  write_1_byte(SS1, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
-  write_1_byte(SS1, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
-
-  write_1_byte(SS2, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
-  write_1_byte(SS2, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
-
-  write_1_byte(SS3, WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
-  write_1_byte(SS3, WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);
-
-  // clear STR and CNTR
-  clr_load_reg(SS1, CLR_STR);
-  clr_load_reg(SS1, CLR_CNTR);
-
-  clr_load_reg(SS2, CLR_STR);
-  clr_load_reg(SS2, CLR_CNTR);
-
-  clr_load_reg(SS3, CLR_STR);
-  clr_load_reg(SS3, CLR_CNTR);
-
-  //Force CNTR to 1e6
-  initCounter(SS1, INI_CNTR);
-  initCounter(SS2, INI_CNTR);
-  initCounter(SS3, INI_CNTR);
-
-  // check CNTR and STR
-//  rx_data41 = read_4_byte(SS1, READ_CNTR);
-//  rx_data42 = read_4_byte(SS2, READ_CNTR);
-//  rx_data43 = read_4_byte(SS3, READ_CNTR);
-//  Serial.print("CNTR check 1: ");
-//  Serial.println(rx_data41, DEC);
-//  Serial.print("CNTR check 2: ");
-//  Serial.println(rx_data42, DEC);
-//  Serial.print("CNTR check 3: ");
-//  Serial.println(rx_data43, DEC);
-//  delay(5);
-  
-//  rx_data1 = read_1_byte(SS1, READ_STR);
-//  rx_data2 = read_1_byte(SS2, READ_STR);
-//  rx_data3 = read_1_byte(SS3, READ_STR);
-//  Serial.print("STR check 1: ");
-//  Serial.println(rx_data1, BIN);
-//  Serial.print("STR check 2: ");
-//  Serial.println(rx_data2, BIN);
-//  Serial.print("STR check 3: ");
-//  Serial.println(rx_data3, BIN);
-//  delay(10);
-}
-
-//int incomingBytes = 0;
 
 commandData_t readCommand(void) {
   //Check for command string
@@ -301,8 +234,8 @@ commandData_t readCommand(void) {
 
           //Set DTR, load CNTR for each IC
           for (int axis = 0; axis < numAxes+1; axis++) {
-            initCounter(axes[axis], setCount);
-            readCount = read_4_byte(axes[axis], READ_CNTR);
+            setCounter(axes[axis], setCount);
+            readCount = readFourByte(axes[axis], READ_CNTR);
             //Check for successful write
             if ((int) readCount == setCount) {
               //Successful set for IC axes[axis]
@@ -322,8 +255,8 @@ commandData_t readCommand(void) {
         if (!Serial.available()) {
           //No more bytes to read, return encoder counts
           for (int axis = 0; axis < numAxes+1; axis++) {
-            //axisCounts[axis] = (int) read_4_byte(axes[axis], READ_CNTR);
-            commandData.encoderCounts[axis] = (int) read_4_byte(axes[axis], READ_CNTR);
+            //axisCounts[axis] = (int) readFourByte(axes[axis], READ_CNTR);
+            commandData.encoderCounts[axis] = (int) readFourByte(axes[axis], READ_CNTR);
           }
           //retVal = axisCounts;
           //Assume success
@@ -342,37 +275,39 @@ commandData_t readCommand(void) {
   }
   return commandData;
 }
-        
 
-//    }
-//    if (incomingByte == 'S') {
-//      
-//    }
-//    else {
-//      incomingBytes[byteCount] = incomingByte;
-//      //Serial.print("I received: ");
-//      //Serial.println(incomingByte);
-//      byteCount += 1;
-//    }
-//  }
-//  return atoi(incomingBytes);
-//}
+void setup() {
+  /*  setup PWM on pin: DAC1
+   *  freq = 500K
+   *  dutycycle = 50%
+   */
+  REG_PMC_PCER1 |= PMC_PCER1_PID36;  // Enable PWM
+  REG_PIOB_ABSR |= PIO_ABSR_P16;    // Set PWM pin perhipheral type A or B, in this case B
+  REG_PIOB_PDR |= PIO_PDR_P16;    // Set PWM pin to an output
+  REG_PWM_CLK = PWM_CLK_PREA(0) | PWM_CLK_DIVA(1);  // Set the PWM clock rate to 84MHz (84MHz/1)
+  REG_PWM_CMR0 = PWM_CMR_CALG | PWM_CMR_CPRE_CLKA;  // Enable dual slope PWM and set the clock source as CLKA
+  REG_PWM_CPRD0 = 84;  // Set the PWM frequency 84MHz/(2 * 84) = 500KHz
+  REG_PWM_CDTY0 = 42;  // duty cycle
+  REG_PWM_ENA = PWM_ENA_CHID0;  // Enable the PWM channel 
+  
+  //initialize spi and serial port
+  initSpi(axes);
+  
+  //Serial.begin(115200);
+  Serial.begin(250000);
+  delay(100);
+
+  // initialize counter by setting control registers and clearing flag & counter registers
+  initCounter(axes);
+
+  //Force CNTR to 1e6
+  setCounter(SS1, INI_CNTR);
+  setCounter(SS2, INI_CNTR);
+  setCounter(SS3, INI_CNTR);
+
+}
 
 void loop() {
-//  rx_data41 = read_4_byte(SS1, READ_CNTR);
-//  rx_data42 = read_4_byte(SS2, READ_CNTR);
-//  rx_data43 = read_4_byte(SS3, READ_CNTR);
-//  //Serial.print("CNTR is ");
-//  Serial.print(rx_data41, DEC);
-//  Serial.print(' ');
-//  Serial.print(rx_data42, DEC);
-//  Serial.print(' ');
-//  Serial.println(rx_data43, DEC);
-
-//  int count;
-//  if (readCommand()) {
-//    
-//  }
 
   //int command;
   commandData_t commandData;
@@ -398,9 +333,9 @@ void loop() {
    
 //  if (command >= 0) {
 //    Serial.println("resetting counter");
-//    initCounter(SS1, command);
-//    initCounter(SS2, command);
-//    initCounter(SS3, command);
+//    setCounter(SS1, command);
+//    setCounter(SS2, command);
+//    setCounter(SS3, command);
 //  }
   
   //forceEncoderCount = readEncoderResetCommand();
