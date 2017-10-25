@@ -84,14 +84,14 @@ void initSpi(const uint8_t ss[]) {
   }
 }
 
-// write 1 byte to spi
+// write 1 byte to SPI
 void clrLoadReg(const uint8_t ss_pin, const uint8_t op_code) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_LAST);
   digitalWrite(ss_pin, HIGH);
 }
 
-// write 2 bytes to spi
+// write 2 bytes to SPI
 void writeOneByte(const uint8_t ss_pin, const uint8_t op_code, const uint8_t op_data) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
@@ -99,7 +99,7 @@ void writeOneByte(const uint8_t ss_pin, const uint8_t op_code, const uint8_t op_
   digitalWrite(ss_pin, HIGH);
 }
 
-// write 5 bytes to spi
+// write 5 bytes to SPI
 void writeFourBytes(const uint8_t ss_pin, const uint8_t op_code, const byte4 op_data) {
   digitalWrite(ss_pin, LOW);
   SPI.transfer(ss_pin, op_code, SPI_CONTINUE);
@@ -110,7 +110,7 @@ void writeFourBytes(const uint8_t ss_pin, const uint8_t op_code, const byte4 op_
   digitalWrite(ss_pin, HIGH);
 }
 
-// write 1 byte then read 1 byte through spi
+// write 1 byte then read 1 byte through SPI
 uint8_t readOneByte(const uint8_t ss_pin, const uint8_t op_code) {
   uint8_t res;
   digitalWrite(ss_pin, LOW);  
@@ -120,7 +120,7 @@ uint8_t readOneByte(const uint8_t ss_pin, const uint8_t op_code) {
   return res;
 }
 
-// write 1 byte then read 4 bytes through spi
+// write 1 byte then read 4 bytes through SPI
 uint32_t readFourBytes(const uint8_t ss_pin, const uint8_t op_code) {
   byte4 res;
   digitalWrite(ss_pin, LOW);
