@@ -10,7 +10,6 @@
 
 //Number of ICs to read
 #define numAxes 3
-//#define axes[numAxes] = {SS1, SS2, SS3}
 
 const uint8_t axes[numAxes] = {SS1, SS2, SS3};
 
