@@ -25,7 +25,9 @@ typedef struct {
   uint32_t encoderCounts[numAxes];
 } commandData_t;
 
-
+typedef struct {
+  uint32_t encoder1pos;
+} stateData_t;
 
 commandData_t readCommand(void) {
   //Check for command string
