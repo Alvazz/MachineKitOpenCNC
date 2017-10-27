@@ -168,4 +168,10 @@ void setCounter(const uint8_t ss_pin, const int count) {
   clrLoadReg(ss_pin, LOAD_CNTR);
 }
 
+void initTimer(void (*isr)(), uint32_t timerFreq){
+  Timer0.attachInterrupt(isr);
+  Timer0.setFrequency(timerFreq);
+  Timer0.start();
+}
+
 #endif

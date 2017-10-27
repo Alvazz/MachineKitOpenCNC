@@ -1,6 +1,7 @@
 #include <SPI.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <DueTimer.h>
 #include "counter.h"
 
 // CS pin
@@ -12,6 +13,7 @@
 #define numAxes 3
 
 const uint8_t axes[numAxes] = {SS1, SS2, SS3};
+const uint32_t timerFreq = 1000;
 
 //Structure for result of command read
 typedef struct {
@@ -27,6 +29,9 @@ typedef struct {
 
 typedef struct {
   uint32_t encoder1pos;
+  uint32_t encoder2pos;
+  uint32_t encoder3pos;
+  uint32_t encoder5pos;
 } stateData_t;
 
 commandData_t readCommand(void) {
@@ -127,6 +132,12 @@ commandData_t readCommand(void) {
   return commandData;
 }
 
+/* Timerx ISR */
+void timerCallBack(){
+
+}// samplingCallBack
+
+
 void setup() {
   
   //initialize spi and serial port
@@ -143,7 +154,11 @@ void setup() {
   setCounter(SS1, INI_CNTR);
   setCounter(SS2, INI_CNTR);
   setCounter(SS3, INI_CNTR);
-
+  
+  // initialize timer
+  noInterrupts();
+  initTimer(timerCallBack, timerFreq);
+  interrupts();
 }
 
 void loop() {
