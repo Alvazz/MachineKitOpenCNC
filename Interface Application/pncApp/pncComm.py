@@ -34,10 +34,10 @@ prog_offsets = np.array([0, 0, 0, -90, 0]);
 # Data Collection
 commandData = np.array([0,0,0,0,0])
 feedbackData = np.array([0,0,0,0,0])
-encoderData = np.array([0])
+encoderData = np.array([1000000])
 
 queueData = np.array([0])
-threadData = np.array([0])
+threadData = np.array([400])
 timeData = np.array([0])
 sampledTimeData = np.array([0])
 
@@ -232,7 +232,7 @@ class control_client(threading.Thread):
         file = open(filename)
         for line in file:
             #time.sleep(0.015)
-            time.sleep(0.04)
+            time.sleep(0.02)
             self.writeLine(line)
 
         #points_str = np.char.mod('%.4f', points)
@@ -282,7 +282,7 @@ class serialInterface(threading.Thread):
         commandStr = 'S' + str(numBytes) + str(count)
         self.serialPort.write(commandStr.encode('utf-8'))
 
-    def getEncoderCount(self):
+    def requestEncoderCount(self):
         self.serialPort.write('G'.encode('utf-8'))
 
     def run(self):
@@ -290,16 +290,18 @@ class serialInterface(threading.Thread):
         self.setEncoderCount(1000)
         while True:
             serialLock.acquire()
+            self.requestEncoderCount()
             line = self.read().decode("utf-8").strip()
-            print(line)
+            #print(line)
             axisCounts = line.split(' ')
-            print(axisCounts)
+            #print(axisCounts)
             if line and str.isnumeric(axisCounts[0]):
                 #print(axisCounts[0], axisCounts[1])
                 #print('got numeric');
                 #encoderData = np.vstack((encoderData,int(line)))
                 encoderData = np.vstack((encoderData,axisCounts[0]))
             serialLock.release()
+            time.sleep(0.04)
 
 def commInit():
     global control, feedback, bokehIntf, serialIntf

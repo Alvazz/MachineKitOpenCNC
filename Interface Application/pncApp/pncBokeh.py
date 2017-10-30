@@ -75,7 +75,7 @@ def init():
     pncIntf.start()
 
 #update_lock = threading.Lock()
-queueLength = figure(title="TCQ Length", plot_width=800, plot_height=400)
+queueLength = figure(title="Thread DT", plot_width=800, plot_height=400)
 r1 = queueLength.line([], [], color="firebrick", line_width=2)
 
 threadTime = figure(title="Z-Axis Encoder", plot_width=800, plot_height=400)
@@ -92,7 +92,7 @@ def update(step):
     #print(step)
     if pncIntf.needUpdate:
         #print('need to update plots')
-        queue_data = pncIntf.data['TCQ']
+        queue_data = pncIntf.data['Thread']
         encoder_data = pncIntf.data['Encoder']
         #encoder_len = len(encoder_data)
        
