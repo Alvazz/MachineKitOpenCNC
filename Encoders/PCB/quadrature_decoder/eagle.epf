@@ -1,5 +1,5 @@
 [Eagle]
-Version="08 03 01"
+Version="08 02 00"
 Platform="Windows"
 Globals="Globals"
 Desktop="Desktop"
@@ -347,30 +347,13 @@ UsedLibraryUrn="urn:adsk.eagle:library:174"
 UsedLibraryUrn="urn:adsk.eagle:library:175"
 UsedLibraryUrn="urn:adsk.eagle:library:176"
 UsedLibraryUrn="urn:adsk.eagle:library:177"
-UsedLibrary="E:/SculptPrint/PocketNC/Encoders/encoder_project.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Antenna.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Button.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Capacitor.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Connector.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Crystal-Oscillator.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Diode.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Display.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-fuse.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-ic.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Inductor.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Moudle.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Relay.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Resistor.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-sensor.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Switch.lbr"
-UsedLibrary="C:/Program Files/EAGLE 8.3.1/lbr/seeed/Seeed-OPL-Transistor.lbr"
 
 [Win_1]
 Type="Control Panel"
-Loc="168 98 1367 737"
-State=2
+Loc="0 0 1919 1016"
+State=1
 Number=0
 
 [Desktop]
-Screen="3851 2160"
+Screen="3840 1080"
 Window="Win_1"
