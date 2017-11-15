@@ -12,7 +12,6 @@ import serial
 import math
 import binascii
 import struct
-import csv
 
 #from pncPlot import update_plot_data
 
@@ -27,11 +26,6 @@ bokehPort = 6666
 
 # Control parameters
 filename = r'C:\Users\Roby\VirtualBox VMs\File Transfers\Position Sampling\Files to Send\xyzabposn_tcp_25_4.ngc'
-Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts.csv'
-Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts.csv'
-Zpts = r'E:\SculptPrint\PocketNC\Position Sampling\Zpts.csv'
-Apts = r'E:\SculptPrint\PocketNC\Position Sampling\Apts.csv'
-Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts.csv'
 blocklen = 25
 
 #connectionSevered=0
@@ -108,7 +102,11 @@ def process_data_points(data_string):
             #Update global time counter
             runningTime += servoDt
             feedbackCounter += 1
+    #onUpdatePlots()
 
+
+#def onUpdatePlots(fnum, plotData, dim):
+#numUpdatePlots = 0
 class bokehInterface(threading.Thread):
     #def __init__(self):
     #    super(bokehInterface, self).__init__()
@@ -124,7 +122,31 @@ class bokehInterface(threading.Thread):
         pass
     
     def write(self,data):
+        #self.conn.send(msg)
+
+        #self.socket.sendto(pickle.dumps(np.array([1,2,3,4,5])),(bokehHost,bokehPort))
+        #print('sending data to bokeh')
         self.socket.sendto(pickle.dumps(data),(bokehHost,bokehPort))
+        #self.socket.sendto((data+'\r').encode('utf-8'),(bokehHost,bokehPort))
+    
+    #def onUpdatePlots():
+    #    global runningTime, feedbackCounter, timeData, queueData, commandData, feedbackData, sampledTimeData
+
+    #global numUpdatePlots
+    #if len(plotData) >= 2:
+    # print('writing to Bokeh server')
+
+    #    print(queueData.flatten())
+    #    return sampledTimeData, queueData.flatten()
+    
+##
+##    if numUpdatePlots == 10:
+##        numUpdatePlots = 0
+##        update_plot_data((sampledTimeData, queueData.flatten()))
+##        return sampledTimeData, queueData.flatten()
+##    else:
+##        numUpdatePlots += 1
+        
 
 class fb_server(threading.Thread):
     def __init__(self, conn):
@@ -177,12 +199,8 @@ class control_client(threading.Thread):
                 process_data_points(self.data)
                 self.data = ""
 
-    def convertFloat2Bin(self, num):
-        #return ''.join(bin(c).replace('0b', '').rjust(8, '0') for c in struct.pack('!f', num))
-        return struct.pack('<f', num)
-
-    def convertInt2Bin(self, num):
-        return struct.pack('!i',num)
+    def convertBin(num):
+        return ''.join(bin(ord(c)).replace('0b', '').rjust(8, '0') for c in struct.pack('!f', num))
 
     def writeLineUTF(self,data):
         self.conn.send((data+'\r').encode('utf-8'))
@@ -191,6 +209,7 @@ class control_client(threading.Thread):
 
     def writeLineBin(self,data):
         #self.conn.send((data+'\r').encode('utf-8'))
+        
         data = data + '\r'
         self.conn.send(binascii.hexlify(bytes(data)))
 
@@ -198,55 +217,19 @@ class control_client(threading.Thread):
         self.conn.send(data.encode('utf-8'))
 
     def login(self):
-        self.conn.send('hello EMC robie 1\rset enable EMCTOO\rset machine on\rset mode auto\r'.encode('utf-8'))
+        self.conn.send('hello EMC roby 1\rset enable EMCTOO\rset machine on\rset mode auto\r'.encode('utf-8'))
 
-    def setBinaryMode(self, flag):
-        if flag:
-            self.conn.send('set comm_mode binary\r'.encode('utf-8'))
-        else:
-            self.conn.send(struct.pack('!f',-np.inf))
-
-    def importPoints(self, file, polyLines, blockLength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-        padPoints = np.lib.pad(points,((0,blockLength-(np.size(points,0)%blockLength)),(0,0)),'constant',constant_values=points[-1])
-        shapePoints = padPoints.reshape((-1,blockLength),order='C')
-        return np.pad(shapePoints,((0,polyLines-(np.size(shapePoints,0)%polyLines)),(0,0)),'constant',constant_values=shapePoints[-1,-1])
-
-    def commandPoints(self,polyLines,blockLength,commandsToSend):
-        X = self.importPoints(Xpts,polyLines,blockLength)
-        Y = self.importPoints(Ypts,polyLines,blockLength)
-        Z = self.importPoints(Zpts,polyLines,blockLength)
-        A = self.importPoints(Apts,polyLines,blockLength)
-        B = self.importPoints(Bpts,polyLines,blockLength)
-        axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-        print(X.shape, axisCoords.shape)
-
-        #self.setBinaryMode(1)
-
-        if commandsToSend == -1:
-            commandsToSend = axisCoords.shape[0]/polyLines
-        
-        for command in range(0,commandsToSend):
-            frame = bytearray()
-            #self.conn.send('dm '.encode('utf-8'))
-            frame.extend(self.convertInt2Bin(polyLines))
-            frame.extend(self.convertInt2Bin(blockLength))
-            #self.conn.send(self.convertInt2Bin(polyLines))
-            #self.conn.send(self.convertInt2Bin(blockLength))
-            for polyLine in range(0,polyLines):
-                for axis in range(0,axisCoords.shape[2]):
-                    for point in range(0,axisCoords.shape[1]):
-                        print('sending ', axisCoords[(command*polyLines)+polyLine,point,axis], '\n')
-                        #self.conn.send(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
-                        #frame = struct.pack(frame,self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
-                        frame.extend(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
-                        
-            frame.extend(struct.pack('!f',np.inf))
-            self.conn.send(frame)
-            #self.conn.send('\r'.encode('utf-8'))
+    def commandPoints(self,points,lines,blocklen):
+        self.conn.send('dm '.encode('utf-8'))
+        self.conn.send(convertBin(lines))
+        self.conn.send(convertBin(blocklen))
+        for point in points:
+            self.conn.send(convertBin(point))
+        self.conn.send('\r'.encode('utf-8'))
 
     def formatPoints(self, filename, blocklen):
         pts = np.loadtxt(filename)/25.4;
+
         # Pad with zeros to make array length correct
         pts = np.pad(pts, [(0,(blocklen - pts.shape[0]) % blocklen),(0,0)], 'edge');
         coords = [np.reshape(pts[:,index],(-1,blocklen)) for index in np.arange(0,3)]
@@ -276,6 +259,17 @@ class control_client(threading.Thread):
             #time.sleep(0.015)
             time.sleep(0.02)
             self.writeLine(line)
+
+        #points_str = np.char.mod('%.4f', points)
+        #for ndx in range(points.shape[1]):
+            #axisLine = '&'
+            #points_list = map(str,points[0,0,:])
+            #axis_lines = ['|'.join(points_str[ndx_axis,ndx,:].tolist()) for ndx_axis in range(points.shape[0])]
+            #axis_line = '&'.join(axis_lines)
+            #self.writeLine('dm '+axis_line)
+            #time.sleep(0.02)
+            #print(axis_line)
+        #self.conn.send('hello EMC
 
     def close(self):
         self.conn.close()
@@ -385,3 +379,17 @@ def commInit():
     #Run
     #control.writeLine('hello EMC roby 1\rset enable EMCTOO')
     ##control.writePoints(filename,blocklen,[0,0,0,45,0])
+
+##def main():
+##    if __name__ == '__main__':
+##        #pass
+##        if feedback.needUpdate:
+##            #updatePlots(feedback.tcqFH,queueData,[1])
+##            print('feedback needs update')
+##            #bokehIntf.write(queueData)
+##            feedback.needUpdate = 0
+##
+##commInit()
+##
+##while True:
+##    main()
