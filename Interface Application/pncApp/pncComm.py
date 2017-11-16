@@ -199,11 +199,15 @@ class control_client(threading.Thread):
 
     def login(self):
         self.conn.send('hello EMC robie 1\rset enable EMCTOO\rset machine on\rset mode auto\r'.encode('utf-8'))
+        self.conn.send('set comm_mode binary\r'.encode('utf-8'))
 
     def setBinaryMode(self, flag):
         if flag:
+            print('setting binary mode on')
+            self.conn.send('set machine on\r'.encode('utf-8'))
             self.conn.send('set comm_mode binary\r'.encode('utf-8'))
         else:
+            print('setting binary mode off')
             self.conn.send(struct.pack('!f',-np.inf))
 
     def importPoints(self, file, polyLines, blockLength):
