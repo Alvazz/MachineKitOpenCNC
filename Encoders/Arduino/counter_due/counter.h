@@ -66,6 +66,9 @@
 #define NON           0x00
 #define INI_CNTR      1000000
 
+/*** Code Parameters ***/
+#define setCmdTimeout 1
+
 // 4 byte counter
 union byte4{
    uint32_t comb;
@@ -133,7 +136,7 @@ uint32_t readFourBytes(const uint8_t ss_pin, const uint8_t op_code) {
   return res.comb;
 }
 
-void initCounter(const uint8_t ss[]) {
+void initCounter(const uint8_t ss[], const int count) {
   // set PWM for CLK
   /*  setup PWM on pin: DAC1
   *  freq = 500K

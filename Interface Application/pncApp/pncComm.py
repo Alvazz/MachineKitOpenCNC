@@ -199,12 +199,10 @@ class control_client(threading.Thread):
 
     def login(self):
         self.conn.send('hello EMC robie 1\rset enable EMCTOO\rset machine on\rset mode auto\r'.encode('utf-8'))
-        self.conn.send('set comm_mode binary\r'.encode('utf-8'))
 
     def setBinaryMode(self, flag):
         if flag:
             print('setting binary mode on')
-            self.conn.send('set machine on\r'.encode('utf-8'))
             self.conn.send('set comm_mode binary\r'.encode('utf-8'))
         else:
             print('setting binary mode off')
@@ -225,13 +223,14 @@ class control_client(threading.Thread):
         axisCoords = np.stack((X,Y,Z,A,B),axis=2)
         print(X.shape, axisCoords.shape)
 
-        #self.setBinaryMode(1)
+        self.setBinaryMode(1)
 
         if commandsToSend == -1:
             commandsToSend = axisCoords.shape[0]/polyLines
         
         for command in range(0,commandsToSend):
             frame = bytearray()
+            #frame.extend(b'\0')
             #self.conn.send('dm '.encode('utf-8'))
             frame.extend(self.convertInt2Bin(polyLines))
             frame.extend(self.convertInt2Bin(blockLength))

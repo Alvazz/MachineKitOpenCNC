@@ -4,10 +4,17 @@
 #include <DueTimer.h>
 #include "counter.h"
 
+/*** Usage Notes ***/
+//
+//
+//
+//
+
 // CS pin
 #define SS1 4
 #define SS2 5
 #define SS3 6
+//#define setCmdTimeout 1
 
 //Number of ICs to read
 #define numAxes 3
@@ -58,7 +65,7 @@ commandData_t readCommand(void) {
     switch (incomingByte) {
       
       case 'S':
-        //"SET" encoder counts for all axes
+        //"SET" encoder counts for all axes: syntax "SXYYYY", X is numberof digits in desired counter setting YYYY
         Serial.println("Setting encoder count");
         commandData.cmd = 'S';
         
