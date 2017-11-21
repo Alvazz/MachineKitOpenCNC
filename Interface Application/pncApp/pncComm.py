@@ -20,7 +20,7 @@ import csv
 feedbackhost = '0.0.0.0'
 feedbackport = 514
 controlhost = '129.1.15.5'
-controlhost = '127.0.0.1'
+#controlhost = '127.0.0.1'
 controlport = 5007
 bokehHost = '127.0.0.1'
 bokehPort = 6666
@@ -178,21 +178,17 @@ class control_client(threading.Thread):
                 self.data = ""
 
     def convertFloat2Bin(self, num):
-        #return ''.join(bin(c).replace('0b', '').rjust(8, '0') for c in struct.pack('!f', num))
-        return struct.pack('<f', num)
+        return struct.pack('!f', num)
 
     def convertInt2Bin(self, num):
         return struct.pack('!i',num)
 
     def writeLineUTF(self,data):
         self.conn.send((data+'\r').encode('utf-8'))
-        #data = data + '\r'
-        #self.conn.send(binascii.hexlify(data))
 
-    def writeLineBin(self,data):
-        #self.conn.send((data+'\r').encode('utf-8'))
-        data = data + '\r'
-        self.conn.send(binascii.hexlify(bytes(data)))
+##    def writeLineBin(self,data):
+##        data = data + '\r'
+##        self.conn.send(binascii.hexlify(bytes(data)))
 
     def write(self,data):
         self.conn.send(data.encode('utf-8'))
@@ -203,10 +199,28 @@ class control_client(threading.Thread):
     def setBinaryMode(self, flag):
         if flag:
             print('setting binary mode on')
-            self.conn.send('set comm_mode binary\r'.encode('utf-8'))
+            self.writeLineUTF('set comm_mode binary')
         else:
             print('setting binary mode off')
             self.conn.send(struct.pack('!f',-np.inf))
+        time.sleep(1)
+
+    def setAutoMode(self):
+        self.writeLineUTF('set mode auto')
+
+    def setMachineUnits(self,units):
+        sendstr = 'set units '
+        if units == 'mm':
+            sendstr += 'mm'
+        elif units == 'inch':
+            sendstr += 'inches'
+        self.writeLineUTF(sendstr)
+
+    def resetPosition(self):
+        self.writeLineUTF('set mode mdi')
+        time.sleep(0.01)
+        self.writeLineUTF('set mdi g0x0y0z0a0b0')
+        time.sleep(1)
 
     def importPoints(self, file, polyLines, blockLength):
         points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
@@ -221,8 +235,8 @@ class control_client(threading.Thread):
         A = self.importPoints(Apts,polyLines,blockLength)
         B = self.importPoints(Bpts,polyLines,blockLength)
         axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-        print(X.shape, axisCoords.shape)
 
+        self.setAutoMode()
         self.setBinaryMode(1)
 
         if commandsToSend == -1:
@@ -230,23 +244,20 @@ class control_client(threading.Thread):
         
         for command in range(0,commandsToSend):
             frame = bytearray()
-            #frame.extend(b'\0')
-            #self.conn.send('dm '.encode('utf-8'))
             frame.extend(self.convertInt2Bin(polyLines))
             frame.extend(self.convertInt2Bin(blockLength))
-            #self.conn.send(self.convertInt2Bin(polyLines))
-            #self.conn.send(self.convertInt2Bin(blockLength))
             for polyLine in range(0,polyLines):
                 for axis in range(0,axisCoords.shape[2]):
                     for point in range(0,axisCoords.shape[1]):
-                        print('sending ', axisCoords[(command*polyLines)+polyLine,point,axis], '\n')
-                        #self.conn.send(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
-                        #frame = struct.pack(frame,self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
-                        frame.extend(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]))
+                        frame.extend(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]/10))
                         
             frame.extend(struct.pack('!f',np.inf))
             self.conn.send(frame)
-            #self.conn.send('\r'.encode('utf-8'))
+            #time.sleep(0)
+
+        time.sleep(2)
+        self.setBinaryMode(0)
+        #self.resetPosition()
 
     def formatPoints(self, filename, blocklen):
         pts = np.loadtxt(filename)/25.4;
@@ -257,28 +268,28 @@ class control_client(threading.Thread):
         coords.append(np.zeros_like(coords[0]))
         return np.asarray(coords)
 
-    def writePoints(self,filename,blocklen,ic):
-        #points = self.formatPoints(filename,blocklen)
-        self.writeLine('hello EMC roby 1')
-        self.writeLine('set enable EMCTOO')
-        self.writeLine('set machine on')
-        #self.writeLine('set echo off')
-        self.writeLine('set mode mdi')
-
-        #Set initial position
-        # ic[0:3] = points[0:3,0,0]       
-        icLine = ' '.join(axis + str(icc) for axis, icc in zip(self.axes, ic))
-        #icLine = 'X0Y0Z0A45B0'
-        self.writeLine('set mdi G0'+icLine)
-        time.sleep(2)
-        self.writeLine('set mode auto')
-        time.sleep(1)
-
-        file = open(filename)
-        for line in file:
-            #time.sleep(0.015)
-            time.sleep(0.02)
-            self.writeLine(line)
+##    def writePoints(self,filename,blocklen,ic):
+##        #points = self.formatPoints(filename,blocklen)
+##        self.writeLine('hello EMC roby 1')
+##        self.writeLine('set enable EMCTOO')
+##        self.writeLine('set machine on')
+##        #self.writeLine('set echo off')
+##        self.writeLine('set mode mdi')
+##
+##        #Set initial position
+##        # ic[0:3] = points[0:3,0,0]       
+##        icLine = ' '.join(axis + str(icc) for axis, icc in zip(self.axes, ic))
+##        #icLine = 'X0Y0Z0A45B0'
+##        self.writeLine('set mdi G0'+icLine)
+##        time.sleep(2)
+##        self.writeLine('set mode auto')
+##        time.sleep(1)
+##
+##        file = open(filename)
+##        for line in file:
+##            #time.sleep(0.015)
+##            time.sleep(0.02)
+##            self.writeLine(line)
 
     def close(self):
         self.conn.close()
@@ -289,7 +300,7 @@ class serialInterface(threading.Thread):
     def __init__(self):
         super(serialInterface, self).__init__()
         #self.serialPort = serial.Serial('COM9', 115200)
-        self.serialPort = serial.Serial('COM9', 250000)
+        self.serialPort = serial.Serial('COM12', 250000)
         print('serialInterface started')
     
     def read(self):
@@ -377,14 +388,10 @@ def commInit():
     control = control_client(socket_ctrl)
     control.start()
 
-    ##serialIntf = serialInterface()
-    ##serialIntf.start()
+    #serialIntf = serialInterface()
+    #serialIntf.start()
 
     #Read program data
     #filename = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\servo_samples'
     #filename = 'C:\Users\Roby\VirtualBox VMs\File Transfers\Position Sampling\Files to Send\xyzabposn_tcp_25_4.ngc'
     
-
-    #Run
-    #control.writeLine('hello EMC roby 1\rset enable EMCTOO')
-    ##control.writePoints(filename,blocklen,[0,0,0,45,0])
