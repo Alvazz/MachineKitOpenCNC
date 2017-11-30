@@ -19,8 +19,8 @@ import csv
 # Connection Parameters
 feedbackhost = '0.0.0.0'
 feedbackport = 514
-controlhost = '129.1.15.5'
-#controlhost = '127.0.0.1'
+#controlhost = '129.1.15.5'
+controlhost = '127.0.0.1'
 controlport = 5007
 bokehHost = '127.0.0.1'
 bokehPort = 6666
@@ -45,6 +45,7 @@ commandData = np.array([0,0,0,0,0])
 feedbackData = np.array([0,0,0,0,0])
 encoderData = np.array([1000000])
 
+rshQueueData = np.array([0])
 queueData = np.array([0])
 threadData = np.array([400])
 timeData = np.array([0])
@@ -126,6 +127,16 @@ class bokehInterface(threading.Thread):
     def write(self,data):
         self.socket.sendto(pickle.dumps(data),(bokehHost,bokehPort))
 
+#Server Thread to Hold Data from RSH and rsyslog
+class dataManager(threading.Thread):
+    def __init__(self, conn):
+        super(dataManager, self).__init__()
+        #self.tcqPlotData = []
+        self.needUpdate = 0
+        self.conn = conn
+        self.data = ""
+        print('Data Management thread started')
+
 class fb_server(threading.Thread):
     def __init__(self, conn):
         super(fb_server, self).__init__()
@@ -140,7 +151,8 @@ class fb_server(threading.Thread):
             (bytes_received, rec_address) = self.conn.recvfrom(65536)
             string_received = bytes_received.decode("utf-8")
             self.data = self.data + string_received
-            if self.data.endswith(u"&"):
+            #print(string_received)
+            if self.data.endswith(u"*|"):
                 #print('Received complete string', string_received)
                 process_data_points(self.data)
                 self.data = ""
@@ -150,6 +162,7 @@ class fb_server(threading.Thread):
                 dataDict['Thread'] = threadData
                 dataDict['Encoder'] = encoderData
                 #bokehIntf.write([queueData threadData])
+                #print(queueData[-1])
                 bokehIntf.write(dataDict)
 
     def initPlots(self):
@@ -162,21 +175,48 @@ class fb_server(threading.Thread):
         self.conn.close()
 
 class control_client(threading.Thread):
+    ### Load Data Storage ###
+    rshQueueData = np.array([0])
+    
     def __init__(self, conn):
         super(control_client, self).__init__()
         self.axes = ['X','Y','Z','A','B']
         self.conn = conn
-        self.data = ""    
+        self.data = ""
 
+        #State variables
+        self.modes = ['manual', 'mdi', 'auto']
+        self.mode = 'manual'
+        self.binaryMode = 0
+        self.loggingMode = 0
+        
     def run(self):
         while True:
+            #print('running control feedback')
             bytes_received = self.conn.recv(4096)
-            string_received = ''
-            self.data = self.data + string_received
-            if self.data.endswith(u"\n"):
-                process_data_points(self.data)
-                self.data = ""
+            #print(bytes_received)
+            string_received = bytes_received.decode("utf-8")
+            if 'bL=' in string_received and '\n' in string_received:
+                #print(string_received)
+                self.data = self.data + string_received
+                if self.data.endswith(u"\n"):
+                    #process_data_points(self.data)
+                    self.processRSHFeedback(self.data)
+                    self.data = ""
 
+    ### Data Handling ###
+    def processRSHFeedback(self, fbString):
+        m = re.search('bL=(.+)', fbString)
+        rshBufLen = int(m.group(1))
+        print(rshBufLen)
+        #self.rshQueueData = np.vstack((self.rshQueueData, rshBufLen))
+        self.rshQueueData = np.append(self.rshQueueData, rshBufLen)
+        #print(self.rshQueueData)
+
+    def formatBinaryLine(self,axisCoords,polyLines,blockLength):
+        return #position in file#
+        
+    ### Writing Functions ###
     def convertFloat2Bin(self, num):
         return struct.pack('!f', num)
 
@@ -193,20 +233,69 @@ class control_client(threading.Thread):
     def write(self,data):
         self.conn.send(data.encode('utf-8'))
 
+
+    ### API for Common RSH Commands ###
     def login(self):
-        self.conn.send('hello EMC robie 1\rset enable EMCTOO\rset machine on\rset mode auto\r'.encode('utf-8'))
+        self.writeLineUTF('hello EMC robie 1')
+        self.writeLineUTF('set enable EMCTOO')
+        self.setAutoMode()
+        self.setMachineState(1)
+        self.setEcho(0)
+        #self.writeLineUTF('set machine on')
+        #self.writeLineUTF('set mode auto')
+        #self.writeLineUTF('
 
     def setBinaryMode(self, flag):
         if flag:
             print('setting binary mode on')
             self.writeLineUTF('set comm_mode binary')
+            self.binaryMode = 1
         else:
             print('setting binary mode off')
             self.conn.send(struct.pack('!f',-np.inf))
-        time.sleep(1)
+            self.binaryMode = 0
+        time.sleep(0.1)
 
     def setAutoMode(self):
         self.writeLineUTF('set mode auto')
+        time.sleep(0.02)
+        self.mode = 'auto'
+
+    def setMDIMode(self):
+        self.writeLineUTF('set mode mdi')
+        time.sleep(0.02)
+        self.mode = 'mdi'
+
+    def setMDILine(self,line):
+        self.writeLineUTF('set mdi ' + line)
+        time.sleep(0.02)
+
+    def setMachineState(self,flag):
+        sendstr = 'set machine '
+        if flag:
+            sendstr += 'on'
+        else:
+            sendstr += 'off'
+        self.writeLineUTF(sendstr)
+
+    def setLogging(self, flag):
+        if (flag != self.loggingMode):
+            #Need to toggle logging mode
+            if self.binaryMode:
+                print('disabling binary')
+                self.setBinaryMode(0)
+                self.setMDIMode()
+                self.setMDILine('G68')
+                self.setAutoMode()
+                self.setBinaryMode(1)
+                self.loggingMode = not(self.loggingMode)
+            else:
+                self.setMDIMode()
+                self.setMDILine('G68')
+                self.setAutoMode()
+                self.loggingMode = not(self.loggingMode)
+
+        print('logging mode ' + str(int(self.loggingMode)))
 
     def setMachineUnits(self,units):
         sendstr = 'set units '
@@ -216,6 +305,16 @@ class control_client(threading.Thread):
             sendstr += 'inches'
         self.writeLineUTF(sendstr)
 
+    def setEcho(self,flag):
+        sendstr = 'set echo '
+        if flag:
+            sendstr += 'on'
+        else:
+            sendstr += 'off'
+        control.writeLineUTF(sendstr)
+
+
+    ### Control Functions ###
     def resetPosition(self):
         self.writeLineUTF('set mode mdi')
         time.sleep(0.01)
@@ -253,11 +352,22 @@ class control_client(threading.Thread):
                         
             frame.extend(struct.pack('!f',np.inf))
             self.conn.send(frame)
-            #time.sleep(0)
+
+            #if queueData[-1] < 1000:
+            Kp = 2
+            #sleepTime = 0.1 + 1/(Kp*(1000-queueData[-1]))
+            sleepTime = 0.1 + 1/(Kp*(1000-self.rshQueueData[-1]))
+            #print(sleepTime, queueData[-1])
+            print(sleepTime, self.rshQueueData[-1])
+            time.sleep(sleepTime)
+            #time.sleep(0.01)
 
         time.sleep(2)
         self.setBinaryMode(0)
         #self.resetPosition()
+
+    def runNetworkPID(Kp,Ki,Kd,rshBufLen):
+        return #sleeptime
 
     def formatPoints(self, filename, blocklen):
         pts = np.loadtxt(filename)/25.4;
