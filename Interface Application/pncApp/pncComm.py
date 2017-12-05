@@ -19,19 +19,19 @@ import csv
 # Connection Parameters
 feedbackhost = '0.0.0.0'
 feedbackport = 514
-#controlhost = '129.1.15.5'
-controlhost = '127.0.0.1'
+controlhost = '129.1.15.5'
+#controlhost = '127.0.0.1'
 controlport = 5007
 bokehHost = '127.0.0.1'
 bokehPort = 6666
 
 # Control parameters
 filename = r'C:\Users\Roby\VirtualBox VMs\File Transfers\Position Sampling\Files to Send\xyzabposn_tcp_25_4.ngc'
-Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts.csv'
-Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts.csv'
-Zpts = r'E:\SculptPrint\PocketNC\Position Sampling\Zpts.csv'
-Apts = r'E:\SculptPrint\PocketNC\Position Sampling\Apts.csv'
-Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts.csv'
+Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
+Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts_opt.csv'
+Zpts = r'E:\SculptPrint\PocketNC\Position Sampling\Zpts_opt.csv'
+Apts = r'E:\SculptPrint\PocketNC\Position Sampling\Apts_opt.csv'
+Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts_opt.csv'
 blocklen = 25
 
 #connectionSevered=0
@@ -111,14 +111,9 @@ def process_data_points(data_string):
             feedbackCounter += 1
 
 class bokehInterface(threading.Thread):
-    #def __init__(self):
-    #    super(bokehInterface, self).__init__()
     def __init__(self, socket):
         super(bokehInterface, self).__init__()
-        #self.tcqPlotData = []
-        #self.needUpdate = 0
         self.socket = socket
-        #self.data = ""
         print('bokehInterface started')
 
     def init():
@@ -177,6 +172,7 @@ class fb_server(threading.Thread):
 class control_client(threading.Thread):
     ### Load Data Storage ###
     rshQueueData = np.array([0])
+    rshFeedbackStrings = ['PROGRAM_STATUS', 'bL']
     
     def __init__(self, conn):
         super(control_client, self).__init__()
@@ -189,6 +185,7 @@ class control_client(threading.Thread):
         self.mode = 'manual'
         self.binaryMode = 0
         self.loggingMode = 0
+        self.status = 'idle'
         
     def run(self):
         while True:
@@ -205,24 +202,30 @@ class control_client(threading.Thread):
                     self.data = ""
 
     ### Data Handling ###
-    def processRSHFeedback(self, fbString):
-        m = re.search('bL=(.+)', fbString)
-        rshBufLen = int(m.group(1))
-        print(rshBufLen)
-        #self.rshQueueData = np.vstack((self.rshQueueData, rshBufLen))
-        self.rshQueueData = np.append(self.rshQueueData, rshBufLen)
-        #print(self.rshQueueData)
-
-    def formatBinaryLine(self,axisCoords,polyLines,blockLength):
-        return #position in file#
-        
-    ### Writing Functions ###
     def convertFloat2Bin(self, num):
         return struct.pack('!f', num)
 
     def convertInt2Bin(self, num):
         return struct.pack('!i',num)
+    
+    def importPoints(self, file, polyLines, blockLength):
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
+        padPoints = np.lib.pad(points,((0,blockLength-(np.size(points,0)%blockLength)),(0,0)),'constant',constant_values=points[-1])
+        shapePoints = padPoints.reshape((-1,blockLength),order='C')
+        return np.pad(shapePoints,((0,polyLines-(np.size(shapePoints,0)%polyLines)),(0,0)),'constant',constant_values=shapePoints[-1,-1])
 
+    def processRSHFeedback(self, fbString):
+        m = re.search('bL=(.+)', fbString)
+        rshBufLen = int(m.group(1))
+        #print(rshBufLen)
+        #self.rshQueueData = np.vstack((self.rshQueueData, rshBufLen))
+        self.rshQueueData = np.append(self.rshQueueData, rshBufLen)
+        #print(self.rshQueueData)
+
+    def formatBinaryLine(self,axisCoords,polyLines,blockLength,positionInFile):
+        return #position in file#
+        
+    ### Writing Functions ###
     def writeLineUTF(self,data):
         self.conn.send((data+'\r').encode('utf-8'))
 
@@ -239,11 +242,16 @@ class control_client(threading.Thread):
         self.writeLineUTF('hello EMC robie 1')
         self.writeLineUTF('set enable EMCTOO')
         self.setAutoMode()
-        self.setMachineState(1)
+        self.setDrivePower(1)
         self.setEcho(0)
+        self.setMachineUnits('mm')
         #self.writeLineUTF('set machine on')
         #self.writeLineUTF('set mode auto')
         #self.writeLineUTF('
+
+    def getProgramStatus(self):
+        self.writeLineUTF('get program_status')
+        return
 
     def setBinaryMode(self, flag):
         if flag:
@@ -266,11 +274,16 @@ class control_client(threading.Thread):
         time.sleep(0.02)
         self.mode = 'mdi'
 
+    def setManualMode(self):
+        self.writeLineUTF('set mode manual')
+        time.sleep(0.02)
+        self.mode = 'manual'
+
     def setMDILine(self,line):
         self.writeLineUTF('set mdi ' + line)
         time.sleep(0.02)
 
-    def setMachineState(self,flag):
+    def setDrivePower(self,flag):
         sendstr = 'set machine '
         if flag:
             sendstr += 'on'
@@ -294,7 +307,6 @@ class control_client(threading.Thread):
                 self.setMDILine('G68')
                 self.setAutoMode()
                 self.loggingMode = not(self.loggingMode)
-
         print('logging mode ' + str(int(self.loggingMode)))
 
     def setMachineUnits(self,units):
@@ -305,6 +317,9 @@ class control_client(threading.Thread):
             sendstr += 'inches'
         self.writeLineUTF(sendstr)
 
+        self.setMDIMode()
+        self.setMDILine('G21')
+
     def setEcho(self,flag):
         sendstr = 'set echo '
         if flag:
@@ -313,19 +328,28 @@ class control_client(threading.Thread):
             sendstr += 'off'
         control.writeLineUTF(sendstr)
 
+    def setHome(self, fX, fY, fZ, fA, fB):
+        self.saveState()
+        self.setManualMode()
+        sendstr = 'set home '
+        if fX:
+            sendstr = sendstr + '0 '
+        if fY:
+            sendstr = sendstr + '1 '
+        if fZ:
+            sendstr = sendstr + '2 '
+        if fA:
+            sendstr = sendstr + '3 '
+        if fB:
+            sendstr = sendstr + '4 '
+        self.writeLineUTF(sendstr)
 
     ### Control Functions ###
-    def resetPosition(self):
+    def resetPosition(self,X,Y,Z,A,B):
         self.writeLineUTF('set mode mdi')
         time.sleep(0.01)
-        self.writeLineUTF('set mdi g0x0y0z0a0b0')
+        self.writeLineUTF('set mdi g0x'+str(X)+'y'+str(Y)+'z'+str(Z)+'a'+str(A)+'b'+str(B))
         time.sleep(1)
-
-    def importPoints(self, file, polyLines, blockLength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-        padPoints = np.lib.pad(points,((0,blockLength-(np.size(points,0)%blockLength)),(0,0)),'constant',constant_values=points[-1])
-        shapePoints = padPoints.reshape((-1,blockLength),order='C')
-        return np.pad(shapePoints,((0,polyLines-(np.size(shapePoints,0)%polyLines)),(0,0)),'constant',constant_values=shapePoints[-1,-1])
 
     def commandPoints(self,polyLines,blockLength,commandsToSend):
         X = self.importPoints(Xpts,polyLines,blockLength)
@@ -335,39 +359,63 @@ class control_client(threading.Thread):
         B = self.importPoints(Bpts,polyLines,blockLength)
         axisCoords = np.stack((X,Y,Z,A,B),axis=2)
 
+        axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),np.zeros_like(B)),axis=2)
+        
+
+        self.resetPosition(axisCoords[0][0][0],axisCoords[0][0][1],axisCoords[0][0][2],axisCoords[0][0][3],axisCoords[0][0][4])
+        time.sleep(3)
+        
         self.setAutoMode()
         self.setBinaryMode(1)
 
         if commandsToSend == -1:
-            commandsToSend = axisCoords.shape[0]/polyLines
+            print("sending all")
+            commandsToSend = int(axisCoords.shape[0]/polyLines)
+            print(commandsToSend)
         
         for command in range(0,commandsToSend):
             frame = bytearray()
             frame.extend(self.convertInt2Bin(polyLines))
             frame.extend(self.convertInt2Bin(blockLength))
             for polyLine in range(0,polyLines):
+                print(command)
                 for axis in range(0,axisCoords.shape[2]):
+                    if axis <= 2:
+                        scale = 1/25.4
+                    else:
+                        scale = 1
                     for point in range(0,axisCoords.shape[1]):
-                        frame.extend(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]/10))
+                        frame.extend(self.convertFloat2Bin(axisCoords[(command*polyLines)+polyLine,point,axis]*scale))
                         
             frame.extend(struct.pack('!f',np.inf))
             self.conn.send(frame)
 
             #if queueData[-1] < 1000:
-            Kp = 2
+            Kp = 1
             #sleepTime = 0.1 + 1/(Kp*(1000-queueData[-1]))
-            sleepTime = 0.1 + 1/(Kp*(1000-self.rshQueueData[-1]))
+            sleepTime = (blockLength*polyLines)/1000 - (Kp*((1000-self.rshQueueData[-1])))/1000
+            #sleepTime = self./1000 - Kp/((1000-self.rshQueueData[-1]))
             #print(sleepTime, queueData[-1])
             print(sleepTime, self.rshQueueData[-1])
-            time.sleep(sleepTime)
+            if sleepTime > 0:
+                time.sleep(sleepTime)
             #time.sleep(0.01)
 
         time.sleep(2)
         self.setBinaryMode(0)
         #self.resetPosition()
 
-    def runNetworkPID(Kp,Ki,Kd,rshBufLen):
+    def runNetworkPID(Kp,Ki,Kd,rshBufLen, setPoint):
         return #sleeptime
+
+    ### State Machine ###
+    def saveState(self):
+        #save machine state
+        return #saved state structure
+
+    def restoreState(self, stateStruct):
+        #Restore state to prev state after op
+        return
 
     def formatPoints(self, filename, blocklen):
         pts = np.loadtxt(filename)/25.4;
@@ -400,6 +448,8 @@ class control_client(threading.Thread):
 ##            #time.sleep(0.015)
 ##            time.sleep(0.02)
 ##            self.writeLine(line)
+
+
 
     def close(self):
         self.conn.close()
@@ -505,3 +555,32 @@ def commInit():
     #filename = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\servo_samples'
     #filename = 'C:\Users\Roby\VirtualBox VMs\File Transfers\Position Sampling\Files to Send\xyzabposn_tcp_25_4.ngc'
     
+######### SCULPTPRINT INTEGRATION CODE #########
+
+def start():
+    commInit()
+    return True
+
+def read():
+    #return feedbackData[-1]
+    return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]]
+
+# Returns true if monitoring is currently happening.
+def isMonitoring():
+    #global feed_thread
+    return feedback.is_alive()
+    #return True
+
+# Called to stop monitoring the machine.
+# Will execute when the stop button is pressed in the Monitor Machine feature.
+def stop():
+    #global feed_thread
+    if feedback.is_alive():
+        print('Feed thread is still alive')
+    else:
+        print('Feed thread is not alive')
+    #feedback.deactivate()
+    #feedback.join()
+    #feedback.close()
+    print('Buffer file was closed.\n')
+    return True;
