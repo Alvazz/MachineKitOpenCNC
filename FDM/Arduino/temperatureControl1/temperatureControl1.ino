@@ -13,7 +13,7 @@ const int adcBits = 12;
 const double fullADC = 4096;
 
 // system parameters
-double setTemp = 230;
+double setTemp = 240;
 static double temperature;
 static double currTemperature;
 static double dutyCycle = 0; // -70 to 185
@@ -44,7 +44,7 @@ double getTemp(){
     delay(1);
   }
   total /= numReadings;
-  total = floor(total*10+0.5)/10;
+  total = floor(total*10+0.5)/10; // round to nearest tenth
   return total;
 }
 
@@ -70,6 +70,7 @@ void loop() {
     KP = 12;
     KI = 0.6;
     KD = 3;
+    tempPID.SetOutputLimits(0, 120);
     tempPID.Compute();
     Serial.print(temperature);  // display Fahrenheit
     Serial.print("\t");
