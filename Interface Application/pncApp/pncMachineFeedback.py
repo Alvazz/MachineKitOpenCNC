@@ -1,5 +1,7 @@
 import socket
 import threading
+import re
+import numpy as np
 
 class MachineFeedbackListener(threading.Thread):
     def __init__(self, conn, data_store):
@@ -17,23 +19,23 @@ class MachineFeedbackListener(threading.Thread):
 
             # A complete record of machine data has been received
             if self.received_data_string.endswith(u"*|"):
-                machine_feedback_records = self.process_machine_data_string(self.received_data_string)
+                machine_feedback_records = self.processMachineDataString(self.received_data_string)
                 self.data_store.appendMachineFeedbackRecords(machine_feedback_records)
                 self.received_data_string = ""
 
-    def processMachineDataString(machine_data_string):
+    def processMachineDataString(self, machine_data_string):
         machine_feedback_records = []
         if '0: tc' in machine_data_string:
             parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', machine_data_string)
             if parsed_string:
                 record = dict()
 
-                feedback_num_points = data_string.count('&')
-                tcq_length = float(m.group(1)) 
-                delta_thread_cycles = float(m.group(2))
-                delta_machine_clock = float(m.group(3))
+                feedback_num_points = machine_data_string.count('&')
+                tcq_length = float(parsed_string.group(1)) 
+                delta_thread_cycles = float(parsed_string.group(2))
+                delta_machine_clock = float(parsed_string.group(3))
 
-                data_points = m.group(4).strip()
+                data_points = parsed_string.group(4).strip()
                 data_points = re.sub('S[0-9]*:', '', data_points)
                 
                 #Each time sample delimited with &
