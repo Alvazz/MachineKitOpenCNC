@@ -5,6 +5,7 @@ import struct
 import time
 import csv
 import re
+import string
 
 Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
 Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts_opt.csv'
@@ -32,12 +33,17 @@ class MachineController(threading.Thread):
             if '\n' in string_received:
                 split_received_string = string_received.split('\n')
                 complete_data_string = self.received_data_string + split_received_string[0]
-                print(complete_data_string)
+                print('complete data string ' + complete_data_string + '\n')
                 self.received_data_string = ''.join(split_received_string[1:])
             else:
                 self.received_data_string += string_received
-
+            #print(self.received_data_string)
             if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
+                #Check for error first
+                if self.machine.rsh_feedback_strings[-1] in string_received:
+                    #Error in RSH command
+                    print('RSH error')
+                    self.handleRSHError()
                 if self.machine.rsh_feedback_strings[0] in string_received:
                     #Buffer Length
                     self.processRSHFeedback(complete_data_string)
@@ -45,11 +51,23 @@ class MachineController(threading.Thread):
                     #Program Status
                     print('program status')
                     self.machine.status = complete_data_string.split(' ')[1].strip()
+                    print('set program status to ' + self.machine.status)
                 elif self.machine.rsh_feedback_strings[2] in string_received:
                     #Machine Mode
                     print('mode set')
                     self.machine.mode = complete_data_string.split(' ')[1].strip()
+                    print('set machine mode to ' + self.machine.mode)
 
+    def processRSHFeedback(self, fbString):
+        m = re.search(self.machine.rsh_feedback_strings[0] + '(\d+)', fbString)
+        self.rsh_buffer_length = int(m.group(1))
+        self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
+
+    def handleRSHError(self):
+        self.machine.rsh_error = 1
+
+    def resetRSHError(self):
+        self.machine.rsh_error = 0
 
     ### Data Handling ###
     def convertFloat2Bin(self, num):
@@ -76,11 +94,6 @@ class MachineController(threading.Thread):
             axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:,axis]]).T, polylines, blocklength))
         return np.asarray(axis_coords).transpose(1,2,0)
 
-    def processRSHFeedback(self, fbString):
-        m = re.search(self.machine.rsh_feedback_strings[0] + '(\d+)', fbString)
-        self.rsh_buffer_length = int(m.group(1))
-        self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
-
     def formatBinaryLine(self,axisCoords,polyLines,blockLength,positionInFile):
         return #position in file#
         
@@ -97,9 +110,10 @@ class MachineController(threading.Thread):
     def login(self):
         self.writeLineUTF('hello EMC robie 1')
         self.writeLineUTF('set enable EMCTOO')
-        self.setDrivePower(1)
-        self.setAutoMode()
         self.setEcho(0)
+        self.setDrivePower(1)
+        #self.setAutoMode()
+        self.setMachineMode('auto')
         self.setMachineUnits('mm')
 
     def getProgramStatus(self):
@@ -120,18 +134,25 @@ class MachineController(threading.Thread):
             self.binaryMode = 0
             time.sleep(0.05)
 
-    def setAutoMode(self):
+    def setAutoMode(self, timeout = 2):
         self.writeLineUTF('set mode auto')
+        self.modeSwitchWait('AUTO',timeout)
         #self.machine.mode = 'AUTO'
 
-    def setMDIMode(self):
+    def setMDIMode(self, timeout = 2):
         self.writeLineUTF('set mode mdi')
+        self.modeSwitchWait('MDI',timeout)
         #self.machine.mode = 'MDI'
 
-    def setManualMode(self):
+    def setManualMode(self, timeout = 2):
         self.writeLineUTF('set mode manual')
+        self.modeSwitchWait('MANUAL',timeout)
         #self.machine.mode = 'MANUAL'
 
+    def setMachineMode(self, mode, timeout = 2):
+        #self.writeLineUTF('set mode ' + mode)
+        self.modeSwitchWait(mode.upper(),timeout)
+        
     def setMDILine(self,line):
         self.writeLineUTF('set mdi ' + line)
 
@@ -165,12 +186,13 @@ class MachineController(threading.Thread):
         sendstr = 'set units '
         if units == 'mm':
             sendstr += 'mm'
+            self.setMDIMode()
+            self.setMDILine('G21')
         elif units == 'inch':
             sendstr += 'inches'
-        self.writeLineUTF(sendstr)
-
-        self.setMDIMode()
-        self.setMDILine('G21')
+            self.setMDIMode()
+            self.setMDILine('G20')
+        #self.writeLineUTF(sendstr)
 
         self.machine.units = 'mm'
         
@@ -209,18 +231,38 @@ class MachineController(threading.Thread):
                 return True
         return False
 
+    def modeSwitchWait(self, mode, timeout = 2):
+        start_time = time.time()
+        while (time.time() - start_time) < timeout:
+            #self.setMachineMode(mode)
+            self.writeLineUTF('set mode ' + mode)
+            self.getMachineMode()
+            print(self.machine.mode)
+            if self.machine.mode == mode:
+                return True
+        return False
+
     def checkMachineReady(self, timeout = 2):
         start_time = time.time()
         while (time.time() - start_time) < timeout:
             self.getProgramStatus()
             self.getMachineMode()
-            if self.machine.status == 'IDLE' and self.machine.mode == 'AUTO':
+            if self.machine.status == 'IDLE' and self.machine.mode == 'AUTO' and not self.machine.rsh_error:
+                print('machine ready')
                 return True
+        print('machine not ready')
         return False
 
-    def resetPosition(self,X,Y,Z,A,B):
+    def readyMachine(self,timeout = 2):
+        self.setManualMode(timeout)
+        time.sleep(0.1)
+        self.setAutoMode(timeout)
+        time.sleep(0.1)
+
+    def resetPosition(self,X,Y,Z,A,B,timeout):
         self.writeLineUTF('set mode mdi')
         self.writeLineUTF('set mdi g0x'+str(X)+'y'+str(Y)+'z'+str(Z)+'a'+str(A)+'b'+str(B))
+        return self.MDICommandWaitDone(timeout)
 
     def loadPoints(self, points_file, polylines, blocklength):
         self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
@@ -248,17 +290,30 @@ class MachineController(threading.Thread):
             scale_translational = 1.0
         scale_translational = 1.0/25.4
             
-        self.resetPosition(axisCoords[0][0][0],
+        retval = self.resetPosition(axisCoords[0][0][0],
                            axisCoords[0][0][1],
                            axisCoords[0][0][2],
-                           axisCoords[0][0][3],axisCoords[0][0][4])
+                           axisCoords[0][0][3],axisCoords[0][0][4],10)
+        if not retval:
+            print("start position error, exiting...")
+            return
+        
         print(axisCoords[0][0][0]*scale_translational,axisCoords[0][0][1]*scale_translational,axisCoords[0][0][2]*scale_translational,axisCoords[0][0][3],axisCoords[0][0][4])
 
-        self.MDICommandWaitDone(5)
-        self.setAutoMode()
+        #self.MDICommandWaitDone(5)
+        #self.setManualMode()
+        #self.modeSwitchWait('manual')
+        #time.sleep(1)
+        #self.setAutoMode()
+        #self.modeSwitchWait('auto')
         #time.sleep(1)
         #time.sleep(1)
-        self.checkMachineReady(2)
+        self.readyMachine()
+        if not self.checkMachineReady(2):
+            #Ensure machine ready to control
+            print('machine wasn''t ready in timeout period, aborting...')
+            return
+        
         self.setBinaryMode(1)
 
         if commands_to_send == -1:
@@ -297,6 +352,7 @@ class MachineController(threading.Thread):
         return sleep_time
 
     def formatPoints(self,filename,blocklen):
+        print('formatting points')
         pts = np.loadtxt(filename)/25.4;
         # Pad with zeros to make array length correct
         pts = np.pad(pts, [(0,(blocklen - pts.shape[0]) % blocklen),(0,0)], 'edge');
