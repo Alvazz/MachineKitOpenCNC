@@ -167,8 +167,7 @@ class fb_server(threading.Thread):
         self.conn.send(msg)
 
     def close(self):
-		self.conn.shutdown()
-		self.conn.close()
+        self.conn.close()
 
 class control_client(threading.Thread):
     ### Load Data Storage ###
@@ -453,8 +452,7 @@ class control_client(threading.Thread):
 
 
     def close(self):
-		self.conn.shutdown()
-		self.conn.close()
+        self.conn.close()
         #sys.exit()
 
 serialLock = threading.Lock()
@@ -549,48 +547,40 @@ def commInit():
 
     control = control_client(socket_ctrl)
     control.start()
-	
-	#serialIntf = serialInterface()
+
+    #serialIntf = serialInterface()
     #serialIntf.start()
 
     #Read program data
     #filename = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\servo_samples'
     #filename = 'C:\Users\Roby\VirtualBox VMs\File Transfers\Position Sampling\Files to Send\xyzabposn_tcp_25_4.ngc'
-
-def commStop():
-	global control, feedback, bokehIntf, serialIntf
-	control.close()
-	feedback.close()
-	bokehIntf.close()
-	#serialIntf.close()
-	
     
 ######### SCULPTPRINT INTEGRATION CODE #########
 
-# def start():
-    # commInit()
-    # return True
+def start():
+    commInit()
+    return True
 
-# def read():
-    # #return feedbackData[-1]
-    # return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]]
+def read():
+    #return feedbackData[-1]
+    return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]]
 
-# # Returns true if monitoring is currently happening.
-# def isMonitoring():
-    # #global feed_thread
-    # return feedback.is_alive()
-    # #return True
+# Returns true if monitoring is currently happening.
+def isMonitoring():
+    #global feed_thread
+    return feedback.is_alive()
+    #return True
 
-# # Called to stop monitoring the machine.
-# # Will execute when the stop button is pressed in the Monitor Machine feature.
-# def stop():
-    # #global feed_thread
-    # if feedback.is_alive():
-        # print('Feed thread is still alive')
-    # else:
-        # print('Feed thread is not alive')
-    # #feedback.deactivate()
-    # #feedback.join()
-    # #feedback.close()
-    # print('Buffer file was closed.\n')
-    # return True;
+# Called to stop monitoring the machine.
+# Will execute when the stop button is pressed in the Monitor Machine feature.
+def stop():
+    #global feed_thread
+    if feedback.is_alive():
+        print('Feed thread is still alive')
+    else:
+        print('Feed thread is not alive')
+    #feedback.deactivate()
+    #feedback.join()
+    #feedback.close()
+    print('Buffer file was closed.\n')
+    return True;
