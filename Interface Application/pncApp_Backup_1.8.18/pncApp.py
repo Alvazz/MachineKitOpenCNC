@@ -2,22 +2,22 @@ import socket
 import sys
 
 #PNC Modules
-#from pnc.pncMachineControl import MachineController
-#from pnc.pncMachineFeedback import MachineFeedbackListener
-#from pnc.pncDataStore import DataStore
-#from pnc.pncMachineModel import MachineModel
+from pnc.pncMachineControl import MachineController
+from pnc.pncMachineFeedback import MachineFeedbackListener
+from pnc.pncDataStore import DataStore
+from pnc.pncMachineModel import MachineModel
 
-from pncMachineControl import MachineController
-from pncMachineFeedback import MachineFeedbackListener
-from pncDataStore import DataStore
-from pncMachineModel import MachineModel
+#from pncApp.pncMachineControl import MachineController
+#from pncApp.pncMachineFeedback import MachineFeedbackListener
+#from pncApp.pncDataStore import DataStore
+#from pncApp.pncMachineModel import MachineModel
 
 #Handles
 global data_source, machine_controller
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
-def_feedback_listen_port = 515
+def_feedback_listen_port = 514
 def_control_client_ip = '129.1.15.5'
 def_control_client_port = 5007
 
