@@ -59,5 +59,4 @@ class MachineFeedbackListener(threading.Thread):
         return machine_feedback_records
 
     def close(self):
-        self.conn.shutdown(socket.SHUT_RDWR)
         self.conn.close()
