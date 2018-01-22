@@ -6,15 +6,13 @@ import time
 import csv
 import re
 import string
-import socket
 
 Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
 Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts_opt.csv'
 Zpts = r'E:\SculptPrint\PocketNC\Position Sampling\Zpts_opt.csv'
 Apts = r'E:\SculptPrint\PocketNC\Position Sampling\Apts_opt.csv'
 Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts_opt.csv'
-#points_file = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code'
-points_file = 'E:\SculptPrint\PocketNC\SP Integration\Example\opt_code2.75'
+points_file = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code'
 
 class MachineController(threading.Thread):   
     def __init__(self, conn, machine, data_store):
@@ -102,7 +100,7 @@ class MachineController(threading.Thread):
     ### Writing Functions ###
     def writeLineUTF(self,data):
         self.conn.send((data+'\r').encode('utf-8'))
-        time.sleep(0.25)
+        time.sleep(0.1)
 
     def writeLineBin(self,frame):
         frame.extend(struct.pack('!f',np.inf))
@@ -115,9 +113,8 @@ class MachineController(threading.Thread):
         self.setEcho(0)
         self.setDrivePower(1)
         #self.setAutoMode()
-        #self.setMachineMode('auto')
-        self.modeSwitchWait('auto')
-        self.setMachineUnits('inch')
+        self.setMachineMode('auto')
+        self.setMachineUnits('mm')
 
     def getProgramStatus(self):
         self.writeLineUTF('get program_status')
@@ -125,9 +122,6 @@ class MachineController(threading.Thread):
 
     def getMachineMode(self):
         self.writeLineUTF('get mode')
-        
-    def getDrivePower(self):
-        self.writeLineUTF('get machine')
 
     def setBinaryMode(self, flag):
         if flag:
@@ -140,19 +134,19 @@ class MachineController(threading.Thread):
             self.binaryMode = 0
             time.sleep(0.05)
 
-   # def setAutoMode(self, timeout = 2):
-        #self.writeLineUTF('set mode auto')
-        #self.modeSwitchWait('AUTO',timeout)
+    def setAutoMode(self, timeout = 2):
+        self.writeLineUTF('set mode auto')
+        self.modeSwitchWait('AUTO',timeout)
         #self.machine.mode = 'AUTO'
 
-    #def setMDIMode(self, timeout = 2):
-        #self.writeLineUTF('set mode mdi')
-        #self.modeSwitchWait('MDI',timeout)
+    def setMDIMode(self, timeout = 2):
+        self.writeLineUTF('set mode mdi')
+        self.modeSwitchWait('MDI',timeout)
         #self.machine.mode = 'MDI'
 
-    #def setManualMode(self, timeout = 2):
-        #self.writeLineUTF('set mode manual')
-        #self.modeSwitchWait('MANUAL',timeout)
+    def setManualMode(self, timeout = 2):
+        self.writeLineUTF('set mode manual')
+        self.modeSwitchWait('MANUAL',timeout)
         #self.machine.mode = 'MANUAL'
 
     def setMachineMode(self, mode, timeout = 2):
@@ -192,15 +186,15 @@ class MachineController(threading.Thread):
         sendstr = 'set units '
         if units == 'mm':
             sendstr += 'mm'
-            self.modeSwitchWait('mdi')
+            self.setMDIMode()
             self.setMDILine('G21')
         elif units == 'inch':
             sendstr += 'inches'
-            self.modeSwitchWait('mdi')
+            self.setMDIMode()
             self.setMDILine('G20')
         #self.writeLineUTF(sendstr)
+
         self.machine.units = 'mm'
-        #FIXME Return state to orig before execution
         
 
     def setEcho(self,flag):
@@ -232,59 +226,47 @@ class MachineController(threading.Thread):
         start_time = time.time()
         while (time.time() - start_time) < timeout:
             self.getProgramStatus()
-            print('machine status is ' + self.machine.status)
+            print(self.machine.status)
             if self.machine.status == 'IDLE':
                 return True
         return False
 
     def modeSwitchWait(self, mode, timeout = 2):
         start_time = time.time()
-        mode = mode.upper()
         while (time.time() - start_time) < timeout:
             #self.setMachineMode(mode)
             self.writeLineUTF('set mode ' + mode)
             self.getMachineMode()
-            print('in modeSwitchWait, current mode is ' + self.machine.mode)
-            print('desired mode is ' + mode + ' and current mode is ' + self.machine.mode)
+            print(self.machine.mode)
             if self.machine.mode == mode:
-                print('modes matched')
                 return True
         return False
 
     def checkMachineReady(self, timeout = 2):
         start_time = time.time()
         while (time.time() - start_time) < timeout:
-            print('in check machine ready')
             self.getProgramStatus()
             self.getMachineMode()
-            if self.machine.status.upper() == 'IDLE' and self.machine.mode == 'AUTO' and not self.machine.rsh_error:
+            if self.machine.status == 'IDLE' and self.machine.mode == 'AUTO' and not self.machine.rsh_error:
                 print('machine ready')
                 return True
-            elif self.machine.mode != 'AUTO':
-                print('fallthrough: mode was not AUTO')
-                self.modeSwitchWait('auto')
         print('machine not ready')
         return False
 
     def readyMachine(self,timeout = 2):
-        #self.setMachineMode('manual', timeout)
-        self.modeSwitchWait('manual', timeout)
-        #time.sleep(0.1)
-        #self.setMachineMode('auto', timeout)
-        self.modeSwitchWait('auto', timeout)
-        #time.sleep(0.1)
+        self.setManualMode(timeout)
+        time.sleep(0.1)
+        self.setAutoMode(timeout)
+        time.sleep(0.1)
 
     def resetPosition(self,X,Y,Z,A,B,timeout):
-        self.modeSwitchWait('mdi',timeout)
+        self.writeLineUTF('set mode mdi')
         self.writeLineUTF('set mdi g0x'+str(X)+'y'+str(Y)+'z'+str(Z)+'a'+str(A)+'b'+str(B))
         return self.MDICommandWaitDone(timeout)
 
-    def resetMachine(self, timeout = 2):
-        #self.setEstop(0)
-        self.setDrivePower(1)
-    #def loadPoints(self, points_file, polylines, blocklength):
-        #self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
-        #return self.commanded_points
+    def loadPoints(self, points_file, polylines, blocklength):
+        self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
+        return self.commanded_points
 
     def commandPoints(self,polylines,blocklength,commands_to_send):
         X = self.importAxisPoints(Xpts,polylines,blocklength)
@@ -292,23 +274,10 @@ class MachineController(threading.Thread):
         Z = self.importAxisPoints(Zpts,polylines,blocklength)
         A = self.importAxisPoints(Apts,polylines,blocklength)
         B = self.importAxisPoints(Bpts,polylines,blocklength)
-        axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),1+np.zeros_like(B)),axis=2)
-        
-		#a = self.importAxesPoints(points_file,polylines,blocklength)
-        #print(a)
-        #(X, Y, Z, A, B) = self.importAxesPoints(points_file,polylines,blocklength)
-        
-        axisCoords = self.importAxesPoints(points_file,polylines,blocklength)
-        
-        #Store imported axis points in data repository
-        self.data_store.imported_axes_points = axisCoords
-        #self.data_store.flattened_imported_axes_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
-        
-        #axisCoords[:,:,2] = axisCoords[:,:,2] + 1
-        
+        #(X, Y, Z, A, B) = self.importAxesPoints(points_file)
         #axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-		#axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-        #print(axisCoords)
+        axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),1+np.zeros_like(B)),axis=2)
+        print(axisCoords)
         
         #axisCoords = self.loadPoints(points_file, polylines, blocklength)
         #print(axisCoords)
@@ -319,10 +288,8 @@ class MachineController(threading.Thread):
             scale_translational = 25.4
         else:
             scale_translational = 1.0
-        scale_translational = 5.0/25.4
-        scale_translational = 1
+        scale_translational = 1.0/25.4
             
-        self.resetMachine()
         retval = self.resetPosition(axisCoords[0][0][0],
                            axisCoords[0][0][1],
                            axisCoords[0][0][2],
@@ -350,7 +317,7 @@ class MachineController(threading.Thread):
         self.setBinaryMode(1)
 
         if commands_to_send == -1:
-            print("sending all 2")
+            print("sending all")
             commands_to_send = int(axisCoords.shape[0]/polylines)
             print(commands_to_send)
         
@@ -377,11 +344,6 @@ class MachineController(threading.Thread):
             time.sleep(sleep_time)
 
         self.setBinaryMode(0)
-        
-        #Write out imported points and RSH feedback
-        flattened_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
-        np.savetxt("imported_points.csv",flattened_points,delimiter=",")
-        np.savetxt("buffer_level.csv",self.data_store.highres_tc_queue_length, delimiter=",")
         #self.resetPosition()
 
     def runNetworkPID(self,current_buffer_length,block_length,polylines,set_point_buffer_length,Kp=.01,Ki=0,Kd=0):
@@ -400,6 +362,5 @@ class MachineController(threading.Thread):
         return np.asarray(coords)
 
     def close(self):
-        self.conn.shutdown(socket.SHUT_RDWR)
         self.conn.close()
         #sys.exit()

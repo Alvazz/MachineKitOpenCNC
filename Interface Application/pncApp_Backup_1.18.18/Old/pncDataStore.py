@@ -35,9 +35,6 @@ class DataStore():
 
         #Thread counter
         self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
-        
-        #Imported command points
-        self.imported_axes_points = []
 
 
     def appendMachineFeedbackRecords(self, records):

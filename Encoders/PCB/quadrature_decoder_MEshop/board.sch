@@ -1530,7 +1530,7 @@ W = angled&lt;p&gt;
 <variantdefs>
 </variantdefs>
 <classes>
-<class number="0" name="default" width="0.508" drill="0.4572">
+<class number="0" name="default" width="0.508" drill="0.3302">
 <clearance class="0" value="0.254"/>
 </class>
 </classes>

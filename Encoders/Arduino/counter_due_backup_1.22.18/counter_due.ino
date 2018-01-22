@@ -5,8 +5,8 @@
 #include "counter.h"
 
 /*** Usage Notes ***/
-//
-//
+// Write G on UART to get current count
+// Write SXYYYY on UART to set all counters to YYYY, which has X digits
 //
 //
 
@@ -14,12 +14,15 @@
 #define SS1 4
 #define SS2 5
 #define SS3 6
+#define SS4 7
+#define SS5 8
+
 //#define setCmdTimeout 1
 
 //Number of ICs to read
-#define numAxes 3
+#define numAxes 5
 
-const uint8_t axes[numAxes] = {SS1, SS2, SS3};
+const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
 const uint32_t timerFreq = 1000;
 
 //Structure for result of command read
@@ -31,13 +34,14 @@ typedef struct {
   int bytesRead;
 
   //Returned data
-  uint32_t encoderCounts[numAxes];
+  uint32_t encoderCounts[numAxes+1];
 } commandData_t;
 
 typedef struct {
   uint32_t encoder1pos;
   uint32_t encoder2pos;
   uint32_t encoder3pos;
+  uint32_t encoder4pos;
   uint32_t encoder5pos;
 } stateData_t;
 
@@ -45,7 +49,9 @@ commandData_t readCommand(void) {
   //Check for command string
   
   char incomingByte;
-  char incomingBytes[64];
+  char incomingBytes[128];
+  uint32_t byteCount = 0;
+  uint32_t bytesToRead = 0;
   //int byteCount = 0;
   //int retVal[numAxes];
   
@@ -98,14 +104,27 @@ commandData_t readCommand(void) {
           //Set DTR, load CNTR for each IC
           for (int axis = 0; axis < numAxes; axis++) {
             setCounter(axes[axis], setCount);
+            Serial.print("setting axis ");
+            Serial.print(axis, DEC);
+            Serial.print(" with ");
+            Serial.println(setCount);
+            
             readCount = readFourBytes(axes[axis], READ_CNTR);
             //Check for successful write
             if (readCount == setCount) {
               //Successful set for IC axes[axis]
+              Serial.print("read ");
+              Serial.print(readCount);
+              Serial.print(" from ");
+              Serial.println(axis,DEC);
               commandData.cmdResult &= 1;
             } else {
               //Write failure
               commandData.cmdResult = -1;
+              Serial.print("BAD read ");
+              Serial.print(readCount);
+              Serial.print(" from ");
+              Serial.println(axis,DEC);
             }
           }
         }
@@ -120,6 +139,11 @@ commandData_t readCommand(void) {
           for (int axis = 0; axis < numAxes; axis++) {
             //axisCounts[axis] = (int) readFourBytes(axes[axis], READ_CNTR);
             commandData.encoderCounts[axis] = readFourBytes(axes[axis], READ_CNTR);
+            Serial.print("reading axis ");
+            Serial.println(axis, DEC);
+            Serial.print("returned ");
+            int tempval = readFourBytes(axes[axis], READ_CNTR);
+            Serial.println(tempval, DEC);
           }
           //retVal = axisCounts;
           //Assume success
@@ -155,12 +179,14 @@ void setup() {
   delay(100);
 
   // initialize counter by setting control registers and clearing flag & counter registers
-  initCounter(axes, 1000000);
+  initCounter(axes, INI_CNTR);
 
   //Force CNTR to 1e6
-  setCounter(SS1, INI_CNTR);
-  setCounter(SS2, INI_CNTR);
-  setCounter(SS3, INI_CNTR);
+  //setCounter(SS1, INI_CNTR);
+  //setCounter(SS2, INI_CNTR);
+  //setCounter(SS3, INI_CNTR);
+  //setCounter(SS4, INI_CNTR);
+  //setCounter(SS5, INI_CNTR);
   
   // initialize timer
   //noInterrupts();
