@@ -379,9 +379,9 @@ class MachineController(threading.Thread):
         self.setBinaryMode(0)
         
         #Write out imported points and RSH feedback
-        flattened_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
-        np.savetxt("imported_points.csv",flattened_points,delimiter=",")
-        np.savetxt("buffer_level.csv",self.data_store.highres_tc_queue_length, delimiter=",")
+        #flattened_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
+        #np.savetxt("imported_points.csv",flattened_points,delimiter=",")
+        #np.savetxt("buffer_level.csv",self.data_store.highres_tc_queue_length, delimiter=",")
         #self.resetPosition()
 
     def runNetworkPID(self,current_buffer_length,block_length,polylines,set_point_buffer_length,Kp=.01,Ki=0,Kd=0):

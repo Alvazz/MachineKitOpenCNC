@@ -14,12 +14,14 @@
 #define SS1 4
 #define SS2 5
 #define SS3 6
+#define SS4 7
+#define SS5 8
 //#define setCmdTimeout 1
 
 //Number of ICs to read
-#define numAxes 3
+#define numAxes 5
 
-const uint8_t axes[numAxes] = {SS1, SS2, SS3};
+const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
 const uint32_t timerFreq = 1000;
 
 //Structure for result of command read

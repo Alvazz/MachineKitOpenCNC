@@ -82,7 +82,7 @@ void initSpi(const uint8_t ss[]) {
     digitalWrite(ss[iss], HIGH);
     SPI.setBitOrder(MSBFIRST);
     SPI.setDataMode(ss[iss], SPI_MODE0);
-    SPI.setClockDivider(ss[iss], 10);
+    SPI.setClockDivider(ss[iss], 32);
     delay(5);
   }
 }
