@@ -3,11 +3,15 @@ import threading
 import re
 import numpy as np
 
+global machine
+
 class MachineFeedbackListener(threading.Thread):
-    def __init__(self, conn, data_store):
+    global machine
+    def __init__(self, conn, machine, data_store):
         super(MachineFeedbackListener, self).__init__()
         self.conn = conn
         self.data_store = data_store
+        self.machine = machine
         self.received_data_string = ""
         print('Feedback thread started')
 
@@ -43,8 +47,9 @@ class MachineFeedbackListener(threading.Thread):
                 coords = [sample.split('|') for sample in samples]
                 coords = np.asarray([[float(coord) for coord in coords[index][:-1]] for index in range(len(coords[:-1]))])
                 
-                commanded_joint_positions = coords[:,0:5]
-                stepgen_feedback_positions = coords[:,5:]
+                print(self.machine.axis_offsets)
+                commanded_joint_positions = coords[:,0:5]+self.machine.axis_offsets
+                stepgen_feedback_positions = coords[:,5:]+self.machine.axis_offsets
 
                 #Store parsed data
                 record['machine_time_delta'] = delta_machine_clock

@@ -27,9 +27,10 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
              feedback_listen_port = def_feedback_listen_port,
              control_client_ip = def_control_client_ip,
              control_client_port = def_control_client_port):
-    global data_source, machine_controller
+    global data_source, machine_controller, machine
 
     machine = MachineModel()
+    print(machine.axis_offsets)
 
     try:
         feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -50,7 +51,7 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     print ('[+] Connection to control client (emcrsh) established at address',
                 control_client_ip,'on port', control_client_port)
 
-    feedback_listener = MachineFeedbackListener(feedback_socket, data_source)
+    feedback_listener = MachineFeedbackListener(feedback_socket, machine, data_source)
     feedback_listener.start()
 
     machine_controller = MachineController(control_socket, machine, data_source)

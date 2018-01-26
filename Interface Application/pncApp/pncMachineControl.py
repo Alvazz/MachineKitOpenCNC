@@ -15,6 +15,7 @@ Apts = r'E:\SculptPrint\PocketNC\Position Sampling\Apts_opt.csv'
 Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts_opt.csv'
 #points_file = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code'
 points_file = 'E:\SculptPrint\PocketNC\SP Integration\Example\opt_code2.75'
+points_file = 'E:\SculptPrint\PocketNC\Standards\opt_code'
 
 class MachineController(threading.Thread):   
     def __init__(self, conn, machine, data_store):
@@ -326,7 +327,7 @@ class MachineController(threading.Thread):
         retval = self.resetPosition(axisCoords[0][0][0],
                            axisCoords[0][0][1],
                            axisCoords[0][0][2],
-                           axisCoords[0][0][3],axisCoords[0][0][4],10)
+                           axisCoords[0][0][3],axisCoords[0][0][4],20)
         if not retval:
             print("start position error, exiting...")
             return
