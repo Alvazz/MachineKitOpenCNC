@@ -8,7 +8,7 @@ class MachineModel():
         self.statuses = ['IDLE', 'RUNNING', 'PAUSED']
         self.rsh_feedback_strings = ['bL=', 'PROGRAM_STATUS', 'MODE', 'ON', 'NAK']
         self.axes = ['X','Y','Z','A','B']
-        self.axis_offsets = [2.5, 2.5, 0, 0, 0]
+        self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
 
         #Init states
         self.mode = self.modes[0]
