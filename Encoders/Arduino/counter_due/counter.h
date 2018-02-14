@@ -1,6 +1,20 @@
 #ifndef COUNTER
 #define COUNTER
 
+//#define numAxes 6
+
+// CS pin
+#define SS1 4
+#define SS2 5
+#define SS3 6
+#define SS4 7
+#define SS5 8
+#define SS6 9
+
+//Number of ICs to read
+const int numAxes = 6;
+const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5, SS6};
+
 /***   MDR0   ***/
 //Count modes
 #define NQUAD         0x00        //non-quadrature mode 
@@ -76,7 +90,7 @@ union byte4{
 };
 
 void initSpi(const uint8_t ss[]) {
-  for (int iss=0; iss<sizeof(ss)/sizeof(ss[0]); iss++){
+  for (int iss=0; iss<numAxes; iss++){
     pinMode(ss[iss], OUTPUT);
     SPI.begin(ss[iss]);
     digitalWrite(ss[iss], HIGH);
@@ -151,7 +165,7 @@ void initCounter(const uint8_t ss[], const int count) {
   REG_PWM_CDTY0 = 42;  // duty cycle
   REG_PWM_ENA = PWM_ENA_CHID0;  // Enable the PWM channel 
   
-  for (int iss=0; iss<sizeof(ss)/sizeof(ss[0]); iss++){
+  for (int iss=0; iss<numAxes; iss++){
     // set MRD0 and MRD1
     writeOneByte(ss[iss], WRITE_MDR0, QUADRX4 | FREE_RUN | DISABLE_INDX);
     writeOneByte(ss[iss], WRITE_MDR1, BYTE_4 | EN_CNTR | NO_FLAGS);

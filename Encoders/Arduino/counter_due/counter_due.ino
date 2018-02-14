@@ -10,18 +10,14 @@
 //
 //
 
-// CS pin
-#define SS1 4
-#define SS2 5
-#define SS3 6
-#define SS4 7
-#define SS5 8
+
+//#define SS6 8
 //#define setCmdTimeout 1
 
-//Number of ICs to read
-#define numAxes 5
 
-const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
+//#define numAxes 6
+
+
 const uint32_t timerFreq = 1000;
 
 //Structure for result of command read
@@ -160,10 +156,10 @@ void setup() {
   initCounter(axes, 1000000);
 
   //Force CNTR to 1e6
-  setCounter(SS1, INI_CNTR);
-  setCounter(SS2, INI_CNTR);
-  setCounter(SS3, INI_CNTR);
-  
+  for (int axis = 0; axis < numAxes; axis++) {
+    setCounter(axes[axis], INI_CNTR);
+  }
+ 
   // initialize timer
   //noInterrupts();
   //initTimer(timerCallBack, timerFreq);
