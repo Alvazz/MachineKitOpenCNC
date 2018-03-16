@@ -27,9 +27,17 @@ cape_disable=capemgr.disable_partno=BB-BONELT-HDMI
 #cape_disable=capemgr.disable_partno=BB-BONELT-HDMI
 #cape_enable=capemgr.enable_partno=BB-BONE-AUDI-02
 
-
+#Enable UART
+capemgr.enable_partno=BB-UART0
+cape_disable=capemgr.disable_partno=BB-BONELT-HDMI,BB-BONELT-HDMIN
 
 ##enable BBB: eMMC Flasher:
 #cmdline=init=/opt/scripts/tools/eMMC/init-eMMC-flasher-v3.sh
 
 uuid=6833c9ca-3791-4ad9-bf3a-4a16d1f6f79f
+
+this old version kernel is not using device tree yet. it is still using cape_...
+I suppose so, I haven't used either devicetree or whatever the hell this is
+this uenv is from a good flash of machinekit image on BBB (wheezy)
+I need to make sure that this matches the /boot on my BBB but it should be the same since I just catted blkmmc0 or whatever the flash module is called
+yes that is used when you put in a u
