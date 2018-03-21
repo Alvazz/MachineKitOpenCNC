@@ -2,6 +2,7 @@ import socket
 import threading
 import re
 import numpy as np
+import serial, math, time
 
 global machine
 
@@ -66,3 +67,68 @@ class MachineFeedbackListener(threading.Thread):
     def close(self):
         self.conn.shutdown(socket.SHUT_RDWR)
         self.conn.close()
+
+
+#serialLock = threading.Lock()
+class SerialInterface(threading.Thread):
+    def __init__(self, machine, data_store):
+        super(SerialInterface, self).__init__()
+        # self.serialPort = serial.Serial('COM9', 115200)
+        self.serialPort = serial.Serial('COM12', 250000)
+        self.data_store = data_store
+        self.machine = machine
+        print('serialInterface started')
+
+    def read(self):
+        line = self.serialPort.readline()
+        return line
+
+    ##    def write(self, data):
+    ##        line = self.serialPort.readline()
+    ##        return line
+
+    def reset(self):
+        global encoderData, serialLock
+        serialLock.acquire()
+        self.serialPort.close()
+        self.serialPort.open()
+        encoderData = np.array([0])
+        queueData = np.array([0])
+        #serialLock.release()
+
+    def setEncoderCount(self, count):
+        # self.serialPort.write('R'.encode('utf-8'))
+        # Calculate number of characters in set command
+        numBytes = math.floor(math.log(count, 10)) + 1
+        commandStr = 'S' + str(numBytes) + str(count)
+        self.serialPort.write(commandStr.encode('utf-8'))
+
+    def requestEncoderCount(self):
+        self.serialPort.write('G'.encode('utf-8'))
+
+    def run(self):
+        #global encoderData, serialLock
+        self.setEncoderCount(1000)
+        while True:
+            #serialLock.acquire()
+            self.requestEncoderCount()
+            line = self.read().decode("utf-8").strip()
+            print(line)
+            axisCounts = line.split(' ')
+            # print(axisCounts)
+            if line and str.isnumeric(axisCounts[0]):
+                record = dict()
+                #print(axisCounts[0], axisCounts[1])
+                # print('got numeric');
+                # encoderData = np.vstack((encoderData,int(line)))
+                #encoderData = np.vstack((encoderData, axisCounts[0]))
+                encoder_counts = np.asarray(list(map(int, axisCounts)))
+                print(encoder_counts)
+
+                # Create feedback record that respects encoder calibration
+                record['encoder_feedback_positions'] = np.multiply(encoder_counts,self.machine.encoder_scale) + self.machine.encoder_offset
+                #machine_feedback_records.append(record)
+                self.data_store.appendMachineFeedbackRecords([record])
+                time.sleep(0.1)
+            #serialLock.release()
+            time.sleep(0.04)

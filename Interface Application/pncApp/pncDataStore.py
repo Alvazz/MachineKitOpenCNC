@@ -42,16 +42,35 @@ class DataStore():
 
     def appendMachineFeedbackRecords(self, records):
         for record in records:
-            self.commanded_joint_positions = np.vstack((self.commanded_joint_positions, record['commanded_joint_positions']))
-            self.stepgen_feedback_positions = np.vstack((self.stepgen_feedback_positions, record['stepgen_feedback_positions']))
+            if 'commanded_joint_positions' in record:
+                self.commanded_joint_positions = np.vstack((self.commanded_joint_positions, record['commanded_joint_positions']))
+                ## FIXME increment machine feedback number of records if ANY of these, except encoder data, is provided
+                self.machine_feedback_num_records += 1
 
-            self.machine_time_delta = np.append(self.machine_time_delta, record['machine_time_delta'])
-            self.machine_times_interpolated = np.append(self.machine_times_interpolated, record['machine_times_interpolated'])
-            self.machine_tc_queue_length = np.append(self.machine_tc_queue_length, record['machine_tcq_length'])
-            self.rt_thread_num_executions_delta = np.append(self.rt_thread_num_executions_delta, record['rt_thread_num_executions_delta'])
-            
-            self.machine_feedback_num_records += 1
-            self.machine_running_time += record['machine_time_delta']
+            if 'stepgen_feedback_positions' in record:
+                self.stepgen_feedback_positions = np.vstack((self.stepgen_feedback_positions, record['stepgen_feedback_positions']))
+
+            if 'encoder_feedback_positions' in record:
+                self.encoder_feedback_positions = np.vstack((self.encoder_feedback_positions, record['encoder_feedback_positions']))
+                self.encoder_feedback_num_records += 1
+
+            if 'machine_time_delta' in record:
+                self.machine_time_delta = np.append(self.machine_time_delta, record['machine_time_delta'])
+
+            if 'machine_times_interpolated' in record:
+                self.machine_times_interpolated = np.append(self.machine_times_interpolated, record['machine_times_interpolated'])
+
+            if 'machine_tcq_length' in record:
+                self.machine_tc_queue_length = np.append(self.machine_tc_queue_length, record['machine_tcq_length'])
+
+            if 'rt_thread_num_executions_delta' in record:
+                self.rt_thread_num_executions_delta = np.append(self.rt_thread_num_executions_delta, record['rt_thread_num_executions_delta'])
+
+            if 'machine_time_delta' in record:
+                self.machine_running_time += record['machine_time_delta']
+
+
+
 
     def appendMachineControlRecords(self, records):
         for record in records:

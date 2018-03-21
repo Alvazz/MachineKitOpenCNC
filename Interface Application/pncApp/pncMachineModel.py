@@ -10,6 +10,10 @@ class MachineModel():
         self.axes = ['X','Y','Z','A','B']
         self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
 
+        #Encoder calibration
+        self.encoder_offset = [0, 0, 0, 0, 0]
+        self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
+
         #Init states
         self.mode = self.modes[0]
         self.status = self.statuses[2]

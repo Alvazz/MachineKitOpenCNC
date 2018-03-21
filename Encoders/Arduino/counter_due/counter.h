@@ -12,8 +12,8 @@
 #define SS6 9
 
 //Number of ICs to read
-const int numAxes = 6;
-const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5, SS6};
+const int numAxes = 5;
+const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
 
 /***   MDR0   ***/
 //Count modes

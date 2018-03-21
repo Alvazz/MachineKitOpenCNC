@@ -8,12 +8,12 @@ import sys
 #from pnc.pncMachineModel import MachineModel
 
 from pncMachineControl import MachineController
-from pncMachineFeedback import MachineFeedbackListener
+from pncMachineFeedback import MachineFeedbackListener, SerialInterface
 from pncDataStore import DataStore
 from pncMachineModel import MachineModel
 
 #Handles
-global data_source, machine_controller
+global data_store, machine_controller
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
@@ -27,7 +27,7 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
              feedback_listen_port = def_feedback_listen_port,
              control_client_ip = def_control_client_ip,
              control_client_port = def_control_client_port):
-    global data_source, machine_controller, machine
+    global data_store, machine_controller, machine
 
     machine = MachineModel()
     print(machine.axis_offsets)
@@ -51,11 +51,14 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     print ('[+] Connection to control client (emcrsh) established at address',
                 control_client_ip,'on port', control_client_port)
 
-    feedback_listener = MachineFeedbackListener(feedback_socket, machine, data_source)
+    feedback_listener = MachineFeedbackListener(feedback_socket, machine, data_store)
     feedback_listener.start()
 
-    machine_controller = MachineController(control_socket, machine, data_source)
+    machine_controller = MachineController(control_socket, machine, data_store)
     machine_controller.start()
+
+    encoder_interface = SerialInterface(machine, data_store)
+    encoder_interface.start()
 
 def appClose():
 	print('closing sockets')
@@ -65,9 +68,12 @@ def appClose():
 	if feedback_listener != []:
 		#feedback_listener.shutdown()
 		feedback_listener.close()
+	if encoder_interface != []:
+		#feedback_listener.shutdown()
+		encoder_interface.close()
 	#bokehIntf.close()
 	
 # Global variables
-data_source = DataStore()
+data_store = DataStore()
 machine_controller = []
 feedback_listener = []
