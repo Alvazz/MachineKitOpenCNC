@@ -73,11 +73,12 @@ class MachineFeedbackListener(threading.Thread):
 class SerialInterface(threading.Thread):
     def __init__(self, machine, data_store):
         super(SerialInterface, self).__init__()
-        # self.serialPort = serial.Serial('COM9', 115200)
-        self.serialPort = serial.Serial('COM12', 250000)
+        self.serialPort = serial.Serial('COM12', 115200)
+        #self.serialPort = serial.Serial('COM12', 250000)
         self.data_store = data_store
         self.machine = machine
         print('serialInterface started')
+        time.sleep(0.5)
 
     def read(self):
         line = self.serialPort.readline()
@@ -99,36 +100,61 @@ class SerialInterface(threading.Thread):
     def setEncoderCount(self, count):
         # self.serialPort.write('R'.encode('utf-8'))
         # Calculate number of characters in set command
-        numBytes = math.floor(math.log(count, 10)) + 1
-        commandStr = 'S' + str(numBytes) + str(count)
+        numBytes = math.floor(round(math.log(count, 10),6)) + 1
+        commandStr = 'S' + str(numBytes) + str(count) + '\n'
+        print(commandStr)
         self.serialPort.write(commandStr.encode('utf-8'))
+        readData = ''
+        while 'S&' not in readData:
+            #print("waiting to read")
+            readData += self.serialPort.read(1).decode("utf-8").strip()
+        print('Successful set of encoder count to ' + str(count))
 
     def requestEncoderCount(self):
+        print('requesting encoder count')
         self.serialPort.write('G'.encode('utf-8'))
+        #time.sleep(0.1)
+        readData = ''
+        while 'C&' not in readData:
+            # print("waiting to read")
+            readData += self.serialPort.read(1).decode("utf-8")
+        print('Successful get of encoder count')
+        print(readData.strip())
+        return readData.strip()
 
     def run(self):
         #global encoderData, serialLock
-        self.setEncoderCount(1000)
+        self.setEncoderCount(self.machine.encoder_init)
+        #time.sleep(0.1)
         while True:
             #serialLock.acquire()
-            self.requestEncoderCount()
-            line = self.read().decode("utf-8").strip()
-            print(line)
-            axisCounts = line.split(' ')
-            # print(axisCounts)
-            if line and str.isnumeric(axisCounts[0]):
+            counts = self.requestEncoderCount()
+            time.sleep(0.1)
+            #line = self.read().decode("utf-8").strip()
+            #line = self.read().decode("utf-8").strip()
+            print(counts)
+
+            #axisCounts = line.split(' ')
+            #print(axisCounts)
+            #if line and str.isnumeric(axisCounts[0]):
+            if 'C&' in counts:
                 record = dict()
+                counts = counts.split(' ')[0:-1]
                 #print(axisCounts[0], axisCounts[1])
                 # print('got numeric');
                 # encoderData = np.vstack((encoderData,int(line)))
                 #encoderData = np.vstack((encoderData, axisCounts[0]))
-                encoder_counts = np.asarray(list(map(int, axisCounts)))
+                encoder_counts = np.asarray(list(map(int, counts)))
                 print(encoder_counts)
 
                 # Create feedback record that respects encoder calibration
-                record['encoder_feedback_positions'] = np.multiply(encoder_counts,self.machine.encoder_scale) + self.machine.encoder_offset
+                #record['encoder_feedback_positions'] = np.multiply(encoder_counts-self.machine.encoder_init,self.machine.encoder_scale) + self.machine.encoder_offset
+                record['encoder_feedback_positions'] = np.multiply(encoder_counts - self.machine.encoder_init,
+                                                                   self.machine.encoder_scale) + self.machine.machine_zero
                 #machine_feedback_records.append(record)
                 self.data_store.appendMachineFeedbackRecords([record])
-                time.sleep(0.1)
+                print(record['encoder_feedback_positions'])
+                #time.sleep(0.1)
             #serialLock.release()
-            time.sleep(0.04)
+            time.sleep(0.5)
+            line = ''

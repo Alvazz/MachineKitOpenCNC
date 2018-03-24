@@ -78,7 +78,7 @@ const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
 #define LOAD_OTR      0xE4
 
 #define NON           0x00
-#define INI_CNTR      1000000
+#define INI_CNTR      10000
 
 /*** Code Parameters ***/
 #define setCmdTimeout 1

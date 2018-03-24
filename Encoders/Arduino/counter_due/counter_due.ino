@@ -64,7 +64,7 @@ commandData_t readCommand(void) {
       
       case 'S':
         //"SET" encoder counts for all axes: syntax "SXYYYY", X is numberof digits in desired counter setting YYYY
-        Serial.println("Setting encoder count");
+        //Serial.println("Setting encoder count");
         commandData.cmd = 'S';
         
         //wait for the rest of the command
@@ -72,6 +72,7 @@ commandData_t readCommand(void) {
           delayMicroseconds(1);
         }
         bytesToRead = Serial.read() - '0';
+        Serial.println(bytesToRead);
         while (Serial.available() < bytesToRead) {
           delayMicroseconds(1);
         }
@@ -89,6 +90,8 @@ commandData_t readCommand(void) {
         if (commandData.bytesRead > 0) {
           //Have bytes to write to CNTRs
           uint32_t setCount = strtoul(incomingBytes, NULL, 10);
+          Serial.print("setcount is ");
+          Serial.println(setCount,DEC);
           //byte4 readCount;
           uint32_t readCount;
           commandData.cmdResult = 1;
@@ -103,8 +106,18 @@ commandData_t readCommand(void) {
               commandData.cmdResult &= 1;
             } else {
               //Write failure
-              commandData.cmdResult = -1;
+              commandData.cmdResult &= 0;
             }
+          }
+          if (commandData.cmdResult) {
+            Serial.print("SUCCESS: wrote ");
+            Serial.print(setCount,DEC);
+            Serial.println(" S&");
+          }
+          else {
+            Serial.print("FAILURE: did not write ");
+            Serial.print(setCount,DEC);
+            Serial.println(" F&");
           }
         }
         break;
@@ -148,12 +161,12 @@ void setup() {
   //initialize spi and serial port
   initSpi(axes);
   
-  //Serial.begin(115200);
-  Serial.begin(250000);
+  Serial.begin(115200);
+  //Serial.begin(250000);
   delay(100);
 
   // initialize counter by setting control registers and clearing flag & counter registers
-  initCounter(axes, 1000000);
+  initCounter(axes, 10000);
 
   //Force CNTR to 1e6
   for (int axis = 0; axis < numAxes; axis++) {
@@ -181,8 +194,9 @@ void loop() {
           Serial.print(commandData.encoderCounts[axis], DEC);
           Serial.print(' ');
         }
-        Serial.println(commandData.encoderCounts[numAxes-1]);
-        Serial.println("done");
+        Serial.print(commandData.encoderCounts[numAxes-1]);
+        //Serial.println("done");
+        Serial.println(" C&");
         break;
     }
   } else {

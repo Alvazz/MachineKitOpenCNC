@@ -13,7 +13,7 @@ from pncDataStore import DataStore
 from pncMachineModel import MachineModel
 
 #Handles
-global data_store, machine_controller
+global data_store, machine_controller, encoder_interface
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
@@ -77,3 +77,4 @@ def appClose():
 data_store = DataStore()
 machine_controller = []
 feedback_listener = []
+encoder_interface = []
