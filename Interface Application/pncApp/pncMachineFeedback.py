@@ -2,7 +2,7 @@ import socket
 import threading
 import re
 import numpy as np
-import serial, math, time
+import serial, math, time, sys, select
 
 global machine
 
@@ -11,22 +11,32 @@ class MachineFeedbackListener(threading.Thread):
     def __init__(self, conn, machine, data_store):
         super(MachineFeedbackListener, self).__init__()
         self.conn = conn
+        self._running = True
+
         self.data_store = data_store
         self.machine = machine
         self.received_data_string = ""
         print('Feedback thread started')
 
     def run(self):
-        while True:
-            (bytes_received, rec_address) = self.conn.recvfrom(65536)
-            string_received = bytes_received.decode("utf-8")
-            self.received_data_string += string_received
+        while self._running:
+            data_available = select.select([self.conn], [], [], 0.5)
+            print('waiting on select')
+            if data_available[0]:
+                (bytes_received, rec_address) = self.conn.recvfrom(65536)
+                string_received = bytes_received.decode("utf-8")
+                self.received_data_string += string_received
 
-            # A complete record of machine data has been received
-            if self.received_data_string.endswith(u"*|"):
-                machine_feedback_records = self.processMachineDataString(self.received_data_string)
-                self.data_store.appendMachineFeedbackRecords(machine_feedback_records)
-                self.received_data_string = ""
+                # A complete record of machine data has been received
+                if self.received_data_string.endswith(u"*|"):
+                    print('received machine feedback')
+                    machine_feedback_records = self.processMachineDataString(self.received_data_string)
+                    self.data_store.appendMachineFeedbackRecords(machine_feedback_records)
+                    self.received_data_string = ""
+
+        #Flag set, shutdown
+        self.conn.shutdown(socket.SHUT_RDWR)
+        self.conn.close()
 
     def processMachineDataString(self, machine_data_string):
         machine_feedback_records = []
@@ -65,15 +75,37 @@ class MachineFeedbackListener(threading.Thread):
         return machine_feedback_records
 
     def close(self):
-        self.conn.shutdown(socket.SHUT_RDWR)
-        self.conn.close()
+        self._running = True
+
 
 
 #serialLock = threading.Lock()
 class SerialInterface(threading.Thread):
     def __init__(self, machine, data_store):
+        print('initing')
         super(SerialInterface, self).__init__()
-        self.serialPort = serial.Serial('COM12', 115200)
+        self._running = True
+        try:
+            print('opening')
+            self.serialPort = serial.Serial(  # set parameters, in fact use your own :-)
+                port="COM12",
+                baudrate=115200,
+                #bytesize=serial.SEVENBITS,
+                #parity=serial.PARITY_EVEN,
+                #stopbits=serial.STOPBITS_ONE
+            )
+            self.serialPort.isOpen()  # try to open port, if possible print message and proceed with 'while True:'
+            print("port is opened!")
+
+        except IOError:  # if port is already opened, close it and open it again and print message
+            print('excepting')
+            self.serialPort.close()
+            self.serialPort.open()
+            print("port was already open, was closed and opened again!")
+#        try:
+#            self.serialPort = serial.Serial('COM12', 115200)
+        #except:
+            #serial.Serial.close('COM12')
         #self.serialPort = serial.Serial('COM12', 250000)
         self.data_store = data_store
         self.machine = machine
@@ -90,7 +122,7 @@ class SerialInterface(threading.Thread):
 
     def reset(self):
         global encoderData, serialLock
-        serialLock.acquire()
+        #serialLock.acquire()
         self.serialPort.close()
         self.serialPort.open()
         encoderData = np.array([0])
@@ -102,7 +134,7 @@ class SerialInterface(threading.Thread):
         # Calculate number of characters in set command
         numBytes = math.floor(round(math.log(count, 10),6)) + 1
         commandStr = 'S' + str(numBytes) + str(count) + '\n'
-        print(commandStr)
+        print('setting' + commandStr)
         self.serialPort.write(commandStr.encode('utf-8'))
         readData = ''
         while 'S&' not in readData:
@@ -111,31 +143,27 @@ class SerialInterface(threading.Thread):
         print('Successful set of encoder count to ' + str(count))
 
     def requestEncoderCount(self):
-        print('requesting encoder count')
+        #print('requesting encoder count')
         self.serialPort.write('G'.encode('utf-8'))
         #time.sleep(0.1)
         readData = ''
         while 'C&' not in readData:
             # print("waiting to read")
             readData += self.serialPort.read(1).decode("utf-8")
-        print('Successful get of encoder count')
-        print(readData.strip())
+        #print('Successful get of encoder count')
+        #print(readData.strip())
         return readData.strip()
 
     def run(self):
         #global encoderData, serialLock
         self.setEncoderCount(self.machine.encoder_init)
         #time.sleep(0.1)
-        while True:
+        while self._running:
             #serialLock.acquire()
             counts = self.requestEncoderCount()
-            time.sleep(0.1)
-            #line = self.read().decode("utf-8").strip()
-            #line = self.read().decode("utf-8").strip()
-            print(counts)
+            #time.sleep(0.1)
+            #print(counts)
 
-            #axisCounts = line.split(' ')
-            #print(axisCounts)
             #if line and str.isnumeric(axisCounts[0]):
             if 'C&' in counts:
                 record = dict()
@@ -156,5 +184,13 @@ class SerialInterface(threading.Thread):
                 print(record['encoder_feedback_positions'])
                 #time.sleep(0.1)
             #serialLock.release()
-            time.sleep(0.5)
-            line = ''
+            time.sleep(0.2)
+
+        #Flag set, shutdown
+        self.serialPort.close()
+
+    def close(self):
+        print('Closing serial port')
+        self._running = False
+
+        #sys.exit()

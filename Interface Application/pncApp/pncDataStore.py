@@ -16,6 +16,8 @@ class DataStore():
         #Counters for number of records
         self.machine_feedback_num_records = 0
         self.encoder_feedback_num_records = 0
+        self.machine_feedback_written_record_id = -1
+        self.encoder_feedback_written_record_id = -1
 
 
         ### DATA STORES ###
@@ -52,6 +54,7 @@ class DataStore():
 
             if 'encoder_feedback_positions' in record:
                 self.encoder_feedback_positions = np.vstack((self.encoder_feedback_positions, record['encoder_feedback_positions']))
+                print('current encoder record is ' + str(self.encoder_feedback_num_records))
                 self.encoder_feedback_num_records += 1
 
             if 'machine_time_delta' in record:

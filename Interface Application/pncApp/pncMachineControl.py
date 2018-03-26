@@ -6,7 +6,7 @@ import time
 import csv
 import re
 import string
-import socket
+import socket, select
 
 Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
 Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts_opt.csv'
@@ -20,46 +20,54 @@ points_file = 'E:\SculptPrint\PocketNC\Standards\opt_code'
 class MachineController(threading.Thread):   
     def __init__(self, conn, machine, data_store):
         super(MachineController, self).__init__()
-        
+        print('in machine controller init')
         self.conn = conn
+        self._running = True
+
         self.received_data_string = ""
-        
         self.data_store = data_store
         self.rsh_buffer_length = 0
         self.machine = machine
         
     def run(self):
-        while True:
+        while self._running:
             #Process feedback from EMCRSH
-            string_received = self.conn.recv(4096).decode("utf-8")
-            complete_data_string = ''
-            if '\n' in string_received:
-                split_received_string = string_received.split('\n')
-                complete_data_string = self.received_data_string + split_received_string[0]
-                print('complete data string ' + complete_data_string + '\n')
-                self.received_data_string = ''.join(split_received_string[1:])
-            else:
-                self.received_data_string += string_received
-            #print(self.received_data_string)
-            if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
-                #Check for error first
-                if self.machine.rsh_feedback_strings[-1] in string_received:
-                    #Error in RSH command
-                    print('RSH error')
-                    self.handleRSHError()
-                if self.machine.rsh_feedback_strings[0] in string_received:
-                    #Buffer Length
-                    self.processRSHFeedback(complete_data_string)
-                elif self.machine.rsh_feedback_strings[1] in string_received:
-                    #Program Status
-                    print('program status')
-                    self.machine.status = complete_data_string.split(' ')[1].strip()
-                    print('set program status to ' + self.machine.status)
-                elif self.machine.rsh_feedback_strings[2] in string_received:
-                    #Machine Mode
-                    print('mode set')
-                    self.machine.mode = complete_data_string.split(' ')[1].strip()
-                    print('set machine mode to ' + self.machine.mode)
+            data_available = select.select([self.conn], [], [], 0.5)
+            print('waiting on select')
+            if data_available[0]:
+                string_received = self.conn.recv(4096).decode("utf-8")
+                complete_data_string = ''
+                if '\n' in string_received:
+                    split_received_string = string_received.split('\n')
+                    complete_data_string = self.received_data_string + split_received_string[0]
+                    print('complete data string ' + complete_data_string + '\n')
+                    self.received_data_string = ''.join(split_received_string[1:])
+                else:
+                    self.received_data_string += string_received
+                #print(self.received_data_string)
+                if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
+                    #Check for error first
+                    if self.machine.rsh_feedback_strings[-1] in string_received:
+                        #Error in RSH command
+                        print('RSH error')
+                        self.handleRSHError()
+                    if self.machine.rsh_feedback_strings[0] in string_received:
+                        #Buffer Length
+                        self.processRSHFeedback(complete_data_string)
+                    elif self.machine.rsh_feedback_strings[1] in string_received:
+                        #Program Status
+                        print('program status')
+                        self.machine.status = complete_data_string.split(' ')[1].strip()
+                        print('set program status to ' + self.machine.status)
+                    elif self.machine.rsh_feedback_strings[2] in string_received:
+                        #Machine Mode
+                        print('mode set')
+                        self.machine.mode = complete_data_string.split(' ')[1].strip()
+                        print('set machine mode to ' + self.machine.mode)
+
+        # We are done running, clean up sockets
+        self.conn.shutdown(socket.SHUT_RDWR)
+        self.conn.close()
 
     def processRSHFeedback(self, fbString):
         m = re.search(self.machine.rsh_feedback_strings[0] + '(\d+)', fbString)
@@ -401,6 +409,7 @@ class MachineController(threading.Thread):
         return np.asarray(coords)
 
     def close(self):
-        self.conn.shutdown(socket.SHUT_RDWR)
-        self.conn.close()
+        print('in machine controller close')
+        self._running = False
+        #self.exit()
         #sys.exit()

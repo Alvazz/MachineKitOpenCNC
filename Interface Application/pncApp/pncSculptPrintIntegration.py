@@ -1,42 +1,64 @@
 ######### SCULPTPRINT INTEGRATION CODE #########
-import pnc
+#import pnc
+import pncApp
 from pnc.pncApp import *
 import numpy as np
 
 machine_feedback_record_id = 0
-encoder_feedback_id = 0
+encoder_feedback_record_id = 0
+
+#from pncApp import machine_controller, data_store, feedback_listener
+global feedback_listener, machine_controller, encoder_interface, data_store
 
 def start():
-    global machine_controller
-	#commInit()
+    #global machine_controller
+    global feedback_listener, machine_controller, encoder_interface, data_store
+    #commInit()
     print('initializing')
-    pnc.pncApp.appInit()
+    #pnc.pncApp.appInit()
+    feedback_listener, machine_controller, encoder_interface, data_store = pncApp.appInit()
 	
-	#Log machine feedback start point
-    machine_feedback_record_id = machine_controller.data_store.machine_feedback_num_records
-	#Log encoder feedback start point
-    encoder_record_id = machine_controller.data_store.encoder_feedback_num_records
-	
+    #Log machine feedback start point
+    while machine_controller == []:
+        print('busy waiting')
+        pass
+
+    machine_controller.machine.machine_feedback_written_record_id = machine_controller.data_store.machine_feedback_num_records
+    #Log encoder feedback start point
+    machine_controller.machine.encoder_feedback_written_record_id = machine_controller.data_store.encoder_feedback_num_records
     return True
 
 def read():
-	global data_source, machine_controller
-	#print(machine_controller)
-	#return feedbackData[-1]
-    #return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]
-	
-	#Format data from data store in format requested by SP
-	fb_data = [machine_controller.data_store.stepgen_feedback_positions[-1][np.array([0,2])].tolist(),[-90.], machine_controller.data_store.stepgen_feedback_positions[-1][np.array([1,3,4])].tolist(),[0.,0.]]
-	print(machine_controller.data_store.machine_feedback_num_records)
-	print([[item for sublist in fb_data for item in sublist]])
-	
-	#Return only new data
-	if machine_controller.data_store.machine_feedback_num_records - machine_feedback_record_id:
-		print('returning values')
-		return [[data for sublist in fb_data for data in sublist]]
-	else:
-		print('returning no values')
-		return []
+    global feedback_listener, machine_controller, encoder_interface, data_store
+    #If appInit was successful
+    print('trying machine controller')
+    if not machine_controller == []:
+        #print('machine controller is ' + machine_controller)
+        #return feedbackData[-1]
+        #return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]
+
+        #Format data from data store in format requested by SP
+        #fb_data = [machine_controller.data_store.stepgen_feedback_positions[-1][np.array([0,2])].tolist(),[-90.], machine_controller.data_store.stepgen_feedback_positions[-1][np.array([1,3,4])].tolist(),[0.,0.]]
+        fb_data = [machine_controller.data_store.encoder_feedback_positions[-1][np.array([0, 2])].tolist(), [-90.],
+                   machine_controller.data_store.encoder_feedback_positions[-1][np.array([1, 3, 4])].tolist(), [0., 0.]]
+        print(machine_controller.data_store.encoder_feedback_num_records)
+        print([[item for sublist in fb_data for item in sublist]])
+        print(machine_controller.data_store.encoder_feedback_positions[-1])
+        print('encoder feedback id is ' + str(machine_controller.machine.encoder_feedback_written_record_id))
+
+        #Return only new data and don't skip any due to thread sync
+        ##FIXME need mutex?
+        #if machine_controller.data_store.machine_feedback_num_records - machine_feedback_record_id:
+        current_record = machine_controller.data_store.encoder_feedback_num_records
+        if current_record - machine_controller.machine.encoder_feedback_written_record_id:
+            print('returning values')
+            machine_controller.machine.encoder_feedback_written_record_id = current_record
+            return [[data for sublist in fb_data for data in sublist]]
+        else:
+            print('returning no values')
+            print(str(machine_controller.data_store.encoder_feedback_num_records))
+            return []
+    return []
 
 # Returns true if monitoring is currently happening.
 def isMonitoring():
@@ -56,6 +78,8 @@ def stop():
     #feedback.join()
     #feedback.close()
     #print('Buffer file was closed.\n')
-	pnc.pncApp.appClose()
+	#pnc.pncApp.appClose()
+	print('closing')
+	pncApp.appClose()
 	return True
 
