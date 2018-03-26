@@ -9,7 +9,6 @@ class MachineModel():
         self.rsh_feedback_strings = ['bL=', 'PROGRAM_STATUS', 'MODE', 'ON', 'NAK']
         self.axes = ['X','Y','Z','A','B']
         self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
-        self.linked = 0
 
         #Encoder calibration
         self.machine_zero = [-1.75, -2.05, 0.1, -5, 0]
@@ -26,7 +25,15 @@ class MachineModel():
         self.loggingMode = 0
         self.units = 'inch'
         self.rsh_error = 0
-        
+        self.linked = 0
+
+        #Comm parameters
+        self.tcp_port = 5007
+        self.ip_address = '129.1.15.5'
+        self.udp_port = 515
+        self.listen_ip = '0.0.0.0'
+        self.comm_port = 'COM12'
+
         #State stack
         self.prev_mode = self.modes[0]
 

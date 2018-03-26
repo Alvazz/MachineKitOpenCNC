@@ -1,6 +1,6 @@
 ######### SCULPTPRINT INTEGRATION CODE #########
 #import pnc
-import pncApp
+import pncApp, time
 from pnc.pncApp import *
 import numpy as np
 
@@ -16,22 +16,26 @@ def start():
     #commInit()
     print('initializing')
     #pnc.pncApp.appInit()
-    feedback_listener, machine_controller, encoder_interface, data_store = pncApp.appInit()
+    feedback_listener, machine_controller, motion_controller, encoder_interface, data_store = pncApp.appInit()
 	
     #Log machine feedback start point
     while machine_controller == []:
         print('busy waiting')
         pass
 
+    #Log feedback start point
     machine_controller.machine.machine_feedback_written_record_id = machine_controller.data_store.machine_feedback_num_records
-    #Log encoder feedback start point
     machine_controller.machine.encoder_feedback_written_record_id = machine_controller.data_store.encoder_feedback_num_records
+    time.sleep(1)
+    machine_controller.login()
+    # We are setup -- start commanding points using the motion controller
+    motion_controller.start()
+
     return True
 
 def read():
     global feedback_listener, machine_controller, encoder_interface, data_store
     #If appInit was successful
-    print('trying machine controller')
     if not machine_controller == []:
         #print('machine controller is ' + machine_controller)
         #return feedbackData[-1]
@@ -40,7 +44,8 @@ def read():
         #Format data from data store in format requested by SP
         #fb_data = [machine_controller.data_store.stepgen_feedback_positions[-1][np.array([0,2])].tolist(),[-90.], machine_controller.data_store.stepgen_feedback_positions[-1][np.array([1,3,4])].tolist(),[0.,0.]]
         fb_data = [machine_controller.data_store.encoder_feedback_positions[-1][np.array([0, 2])].tolist(), [-90.],
-                   machine_controller.data_store.encoder_feedback_positions[-1][np.array([1, 3, 4])].tolist(), [0., 0.]]
+                   machine_controller.data_store.encoder_feedback_positions[-1][np.array([1, 3, 4])].tolist(), [0., 0.],
+                   [float(machine_controller.data_store.highres_tc_queue_length[-1])]]
         print(machine_controller.data_store.encoder_feedback_num_records)
         print([[item for sublist in fb_data for item in sublist]])
         print(machine_controller.data_store.encoder_feedback_positions[-1])
@@ -65,6 +70,14 @@ def isMonitoring():
     #global feed_thread
     #return feedback.is_alive()
     return True
+
+def setupAuxilary():
+    return setupAuxiliary()
+
+def setupAuxiliary():
+    #stringArray = [r'C', r'sinx', r'fx', r'gx', r'fx+gx', r'cos+cos', r'cos*sin', r'stepf']
+    stringArray = [r'Buffer Level']
+    return stringArray
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.

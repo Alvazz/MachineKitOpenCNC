@@ -21,7 +21,7 @@ class MachineFeedbackListener(threading.Thread):
     def run(self):
         while self._running:
             data_available = select.select([self.conn], [], [], 0.5)
-            print('waiting on select')
+            #print('waiting on select')
             if data_available[0]:
                 (bytes_received, rec_address) = self.conn.recvfrom(65536)
                 string_received = bytes_received.decode("utf-8")
@@ -82,11 +82,9 @@ class MachineFeedbackListener(threading.Thread):
 #serialLock = threading.Lock()
 class SerialInterface(threading.Thread):
     def __init__(self, machine, data_store):
-        print('initing')
         super(SerialInterface, self).__init__()
         self._running = True
         try:
-            print('opening')
             self.serialPort = serial.Serial(  # set parameters, in fact use your own :-)
                 port="COM12",
                 baudrate=115200,
@@ -95,7 +93,7 @@ class SerialInterface(threading.Thread):
                 #stopbits=serial.STOPBITS_ONE
             )
             self.serialPort.isOpen()  # try to open port, if possible print message and proceed with 'while True:'
-            print("port is opened!")
+            print("Successful open of serial port")
 
         except IOError:  # if port is already opened, close it and open it again and print message
             print('excepting')

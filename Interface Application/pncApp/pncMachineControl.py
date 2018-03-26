@@ -16,8 +16,20 @@ Bpts = r'E:\SculptPrint\PocketNC\Position Sampling\Bpts_opt.csv'
 #points_file = 'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code'
 points_file = 'E:\SculptPrint\PocketNC\SP Integration\Example\opt_code2.75'
 points_file = 'E:\SculptPrint\PocketNC\Standards\opt_code'
+points_file = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\5axTrapezoid'
+points_file = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\opt_code_patchup'
 
-class MachineController(threading.Thread):   
+
+class MotionController(threading.Thread):
+    def __init__(self, machine_controller):
+        super(MotionController, self).__init__()
+        self.machine_controller = machine_controller
+
+    def run(self):
+        self.machine_controller.commandPoints(1, 25, -1)
+
+
+class MachineController(threading.Thread):
     def __init__(self, conn, machine, data_store):
         super(MachineController, self).__init__()
         print('in machine controller init')
@@ -31,9 +43,8 @@ class MachineController(threading.Thread):
         
     def run(self):
         while self._running:
-            #Process feedback from EMCRSH
+            # Process feedback from EMCRSH
             data_available = select.select([self.conn], [], [], 0.5)
-            print('waiting on select')
             if data_available[0]:
                 string_received = self.conn.recv(4096).decode("utf-8")
                 complete_data_string = ''
@@ -44,23 +55,23 @@ class MachineController(threading.Thread):
                     self.received_data_string = ''.join(split_received_string[1:])
                 else:
                     self.received_data_string += string_received
-                #print(self.received_data_string)
+                # print(self.received_data_string)
                 if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
-                    #Check for error first
+                    # Check for error first
                     if self.machine.rsh_feedback_strings[-1] in string_received:
-                        #Error in RSH command
+                        # Error in RSH command
                         print('RSH error')
                         self.handleRSHError()
                     if self.machine.rsh_feedback_strings[0] in string_received:
-                        #Buffer Length
+                        # Buffer Length
                         self.processRSHFeedback(complete_data_string)
                     elif self.machine.rsh_feedback_strings[1] in string_received:
-                        #Program Status
+                        # Program Status
                         print('program status')
                         self.machine.status = complete_data_string.split(' ')[1].strip()
                         print('set program status to ' + self.machine.status)
                     elif self.machine.rsh_feedback_strings[2] in string_received:
-                        #Machine Mode
+                        # Machine Mode
                         print('mode set')
                         self.machine.mode = complete_data_string.split(' ')[1].strip()
                         print('set machine mode to ' + self.machine.mode)
@@ -86,24 +97,6 @@ class MachineController(threading.Thread):
 
     def convertInt2Bin(self, num):
         return struct.pack('!i',num)
-
-    def padAndFormatAxisPoints(self, points, polylines, blocklength):
-        #print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
-        pad_points = np.lib.pad(points,((0, blocklength-(np.size(points,0)%blocklength)),(0,0)),'constant',constant_values=points[-1])
-        shape_points = pad_points.reshape((-1,blocklength),order='C')
-        #print(shape_points.shape)
-        return np.pad(shape_points,((0,polylines-(np.size(shape_points,0)%polylines)),(0,0)),'constant',constant_values=shape_points[-1,-1])   
-
-    def importAxisPoints(self, file, polylines, blocklength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-        return self.padAndFormatAxisPoints(points, polylines, blocklength)
-        
-    def importAxesPoints(self, file, polylines, blocklength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
-        axis_coords = []
-        for axis in range(points.shape[1]):
-            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:,axis]]).T, polylines, blocklength))
-        return np.asarray(axis_coords).transpose(1,2,0)
 
     def formatBinaryLine(self,axisCoords,polyLines,blockLength,positionInFile):
         return #position in file#
@@ -149,23 +142,8 @@ class MachineController(threading.Thread):
             self.binaryMode = 0
             time.sleep(0.05)
 
-   # def setAutoMode(self, timeout = 2):
-        #self.writeLineUTF('set mode auto')
-        #self.modeSwitchWait('AUTO',timeout)
-        #self.machine.mode = 'AUTO'
-
-    #def setMDIMode(self, timeout = 2):
-        #self.writeLineUTF('set mode mdi')
-        #self.modeSwitchWait('MDI',timeout)
-        #self.machine.mode = 'MDI'
-
-    #def setManualMode(self, timeout = 2):
-        #self.writeLineUTF('set mode manual')
-        #self.modeSwitchWait('MANUAL',timeout)
-        #self.machine.mode = 'MANUAL'
-
     def setMachineMode(self, mode, timeout = 2):
-        #self.writeLineUTF('set mode ' + mode)
+        # self.writeLineUTF('set mode ' + mode)
         self.modeSwitchWait(mode.upper(),timeout)
         
     def setMDILine(self,line):
@@ -180,8 +158,8 @@ class MachineController(threading.Thread):
         self.writeLineUTF(sendstr)
 
     def setLogging(self, flag):
-        if (flag != self.loggingMode):
-            #Need to toggle logging mode
+        if flag != self.loggingMode:
+            # Need to toggle logging mode
             if self.binaryMode:
                 print('disabling binary')
                 self.setBinaryMode(0)
@@ -294,6 +272,26 @@ class MachineController(threading.Thread):
     #def loadPoints(self, points_file, polylines, blocklength):
         #self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
         #return self.commanded_points
+
+    def padAndFormatAxisPoints(self, points, polylines, blocklength):
+        # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
+        pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
+                                constant_values=points[-1])
+        shape_points = pad_points.reshape((-1, blocklength), order='C')
+        # print(shape_points.shape)
+        return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
+                      constant_values=shape_points[-1, -1])
+
+    def importAxisPoints(self, file, polylines, blocklength):
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
+        return self.padAndFormatAxisPoints(points, polylines, blocklength)
+
+    def importAxesPoints(self, file, polylines, blocklength):
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
+        axis_coords = []
+        for axis in range(points.shape[1]):
+            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
+        return np.asarray(axis_coords).transpose(1, 2, 0)
 
     def commandPoints(self,polylines,blocklength,commands_to_send):
         X = self.importAxisPoints(Xpts,polylines,blocklength)

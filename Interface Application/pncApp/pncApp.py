@@ -7,7 +7,7 @@ import sys
 #from pnc.pncDataStore import DataStore
 #from pnc.pncMachineModel import MachineModel
 
-from pncMachineControl import MachineController
+from pncMachineControl import MachineController, MotionController
 from pncMachineFeedback import MachineFeedbackListener, SerialInterface
 from pncDataStore import DataStore
 from pncMachineModel import MachineModel
@@ -62,18 +62,18 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     encoder_interface = SerialInterface(machine, data_store)
     encoder_interface.start()
 
-    return feedback_listener, machine_controller, encoder_interface, data_store
+    motion_controller = MotionController(machine_controller)
+
+    return feedback_listener, machine_controller, motion_controller, encoder_interface, data_store
 
 def appClose():
     print('closing sockets')
     if machine_controller != []:
         print('closing machine controller')
         machine_controller.close()
-        print('closed machine controller')
     if feedback_listener != []:
         print('closing feedback listener')
         feedback_listener.close()
-        print('closed feedback listener')
     if encoder_interface != []:
         print('closing encoder interface')
         encoder_interface.close()
