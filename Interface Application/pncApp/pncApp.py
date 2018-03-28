@@ -7,13 +7,13 @@ import sys
 #from pnc.pncDataStore import DataStore
 #from pnc.pncMachineModel import MachineModel
 
-from pncMachineControl import MachineController, MotionController
+from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackListener, SerialInterface
 from pncDataStore import DataStore
 from pncMachineModel import MachineModel
 
 #Handles
-#global data_store, machine_controller, encoder_interface
+global data_store, machine_controller, encoder_interface
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
@@ -27,7 +27,7 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
              feedback_listen_port = def_feedback_listen_port,
              control_client_ip = def_control_client_ip,
              control_client_port = def_control_client_port):
-    global data_store, machine_controller, machine, feedback_listener, encoder_interface
+    global data_store, machine_controller, machine
 
     machine = MachineModel()
     print(machine.axis_offsets)
@@ -43,11 +43,9 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     try:
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         control_socket.connect((control_client_ip, control_client_port))
-        control_socket.setblocking(0)
-        machine.linked = 1
     except socket.error:
         print ('Failed to connect to client ip for giving it control')
-        sys.exit()
+        sys.exit()      
 
     print ('[+] Listening for feedback data on port', feedback_listen_port)
     print ('[+] Connection to control client (emcrsh) established at address',
@@ -60,24 +58,20 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     machine_controller.start()
 
     encoder_interface = SerialInterface(machine, data_store)
-    encoder_interface.start()
-
-    motion_controller = MotionController(machine_controller)
-
-    return feedback_listener, machine_controller, motion_controller, encoder_interface, data_store
+    #encoder_interface.start()
 
 def appClose():
-    print('closing sockets')
-    if machine_controller != []:
-        print('closing machine controller')
-        machine_controller.close()
-    if feedback_listener != []:
-        print('closing feedback listener')
-        feedback_listener.close()
-    if encoder_interface != []:
-        print('closing encoder interface')
-        encoder_interface.close()
-    print('done')
+	print('closing sockets')
+	if machine_controller != []:
+		#machine_controller.shutdown()
+		machine_controller.close()
+	if feedback_listener != []:
+		#feedback_listener.shutdown()
+		feedback_listener.close()
+	if encoder_interface != []:
+		#feedback_listener.shutdown()
+		encoder_interface.close()
+	#bokehIntf.close()
 	
 # Global variables
 data_store = DataStore()

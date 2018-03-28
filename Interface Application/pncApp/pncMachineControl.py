@@ -7,6 +7,8 @@ import csv
 import re
 import string
 import socket, select
+import math
+import matplotlib.pyplot as plt
 
 Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
 Ypts = r'E:\SculptPrint\PocketNC\Position Sampling\Ypts_opt.csv'
@@ -305,7 +307,8 @@ class MachineController(threading.Thread):
         #print(a)
         #(X, Y, Z, A, B) = self.importAxesPoints(points_file,polylines,blocklength)
         
-        axisCoords = self.importAxesPoints(points_file,polylines,blocklength)
+        #axisCoords = self.importAxesPoints(points_file,polylines,blocklength)
+        axisCoords = self.generateMove('trapezoidal',[0,0,0,0,0],[1,1,1,1,1],10,self.machine.max_joint_velocity,self.machine.max_joint_acceleration)
         
         #Store imported axis points in data repository
         self.data_store.imported_axes_points = axisCoords
@@ -405,6 +408,130 @@ class MachineController(threading.Thread):
         coords.append(90 * np.ones_like(coords[0]))
         coords.append(np.zeros_like(coords[0]))
         return np.asarray(coords)
+
+    ## Trajectory Generation
+    def generateMove(self, move_type, start_points, end_points, move_velocity, max_joint_velocities, max_joint_accelerations):
+        #FIXME add capability to scale move velocity
+        #Trapezoidal velocity profile generation
+        #USAGE:
+        #   move_type: string
+        #   start_points: 1 x num_axes list
+        #   end_points: 1 x num_axes list
+        #   move_velocity: float
+        #   max_joint_velocities: 1 x num_axes list
+        #   max_joint_accelerations: 1 x num_axes list
+
+        if move_type == 'trapezoidal':
+            move_vector = (np.asarray(end_points) - np.asarray(start_points))
+            move_direction = np.sign(move_vector)
+            #Check if we can reach cruise for each joint
+            #move_direction = np.zeros([1, self.machine.num_joints]).tolist()[0]
+            max_move_velocity = np.zeros([1,self.machine.num_joints])[0]
+            #move_time = np.zeros([1,self.machine.num_joints]).tolist()[0]
+            for joint in range(0,self.machine.num_joints):
+                #move_direction[joint] = np.sign(end_points[joint] - start_points[joint])
+                no_cruise_time_to_center = math.sqrt(math.fabs(end_points[joint]-start_points[joint])/max_joint_accelerations[joint])
+                if (max_joint_accelerations[joint] * no_cruise_time_to_center) >= max_joint_velocities[joint]:
+                    #We can reach cruise phase
+                    max_move_velocity[joint] = max_joint_velocities[joint]
+                else:
+                    #Cannot reach cruise phase, move is triangular
+                    max_move_velocity[joint] = max_joint_accelerations[joint] * no_cruise_time_to_center
+
+            print('move direction')
+            print(move_direction)
+
+            #Calculate move profile for each joint
+            time_points = np.zeros([3, self.machine.num_joints])
+            #dist_points = np.zeros([3, self.machine.num_joints])
+            for joint in range(0, self.machine.num_joints):
+                if max_move_velocity[joint] < max_joint_velocities[joint]:
+                    #Move too short for cruise phase, acceleration and deceleration intersect at t1=t2
+                    time_points[0][joint] = max_move_velocity[joint] / max_joint_accelerations[joint]
+                    time_points[1][joint] = time_points[0][joint]
+                    time_points[2][joint] = 2*time_points[0][joint]
+                    #dist_points[0][joint] = start_points[joint] + move_direction[joint]*(0.5*max_joint_accelerations[joint]*np.power(time_points[0][joint],2))
+                    #dist_points[1][joint] = dist_points[0][joint]
+                else:
+                    #Time and distance to cruise velocity, t1
+                    time_points[0][joint] = max_move_velocity[joint] / max_joint_accelerations[joint]
+                    print('joint ' + str(joint) + ' can reach cruise')
+                    #End of move
+                    time_points[2][joint] = (np.fabs(move_vector[joint]) + (max_move_velocity[joint]*time_points[0][joint]))/max_move_velocity[joint]
+                    #Start of deceleration phase
+                    time_points[1][joint] = time_points[2][joint]-time_points[0][joint]
+                    #sanity check
+                    #dist_points[2][joint] = dist_points[1][joint] + dist_points[0][joint]
+
+            #Find limiting joint
+            slowest_joint = np.where(time_points[:,-1] == np.max(time_points[:,-1]))[0][0]
+            print('slowest joint is ' + str(slowest_joint))
+            move_time = time_points[2][slowest_joint]
+            motion_scale_factors = (np.asarray(time_points[2][:])/move_time)
+
+            #Sample time points to plan trajectories
+            servo_times = np.arange(0,math.ceil(move_time/self.machine.servo_dt)*self.machine.servo_dt,self.machine.servo_dt)
+            joint_position_samples = np.zeros([np.size(servo_times),self.machine.num_joints])
+            #Force initial position
+            print(start_points)
+            print(np.size(joint_position_samples))
+            print(np.size(servo_times))
+            joint_position_samples[0][:] = start_points
+
+            #State machine for integration
+            last_joint_positions = np.zeros([3,self.machine.num_joints]).tolist()
+            phase_switch_times = np.zeros([3,self.machine.num_joints]).tolist()
+
+            max_move_velocity = np.multiply(motion_scale_factors,max_move_velocity)
+            max_joint_accelerations = np.multiply(np.power(motion_scale_factors,2), max_joint_accelerations)
+            time_points = np.multiply(np.asarray(time_points),1/np.asarray(motion_scale_factors)).tolist()
+            for ndx in range(0,np.size(servo_times)):
+                t = servo_times[ndx]
+                for joint in range(0, self.machine.num_joints):
+                    #last_joint_position = joint_position_samples[np.clip(ndx-1,0,np.size(servo_times))][joint]
+                    #Phase 1: Acceleration
+                    if t < time_points[0][joint]:
+                        #We are in phase one (acceleration) for this joint
+                        joint_position_samples[ndx][joint] = start_points[joint] + 0.5*move_direction[joint]*max_joint_accelerations[joint]*np.power(t,2)
+                        last_joint_positions[0][joint] = joint_position_samples[ndx][joint]
+                        phase_switch_times[0][joint] = t
+                    #Phase 2: either cruise or deceleration
+                    elif t >= time_points[0][joint] and (t < time_points[1][joint] or time_points[0][joint] == time_points[1][joint]):
+                        #print('cruising joint ' + str(joint))
+                        if time_points[0][joint] != time_points[1][joint]:
+                            #We are in cruise phase
+                            joint_position_samples[ndx][joint] = last_joint_positions[0][joint] + move_direction[joint]*(t-phase_switch_times[0][joint])*max_move_velocity[joint]
+                            last_joint_positions[1][joint] = joint_position_samples[ndx][joint]
+                            phase_switch_times[1][joint] = t
+                        else:
+                            #Move too short for cruise, begin deceleration
+                            joint_position_samples[ndx][joint] = last_joint_positions[0][joint] + move_direction[joint]*\
+                                                                 ((t-phase_switch_times[0][joint])*max_move_velocity[joint] - 0.5*max_joint_accelerations[joint]*np.power(t-phase_switch_times[0][joint],2))
+                            last_joint_positions[1][joint] = joint_position_samples[ndx][joint]
+                            phase_switch_times[1][joint] = t
+                            last_joint_positions[1][joint] = joint_position_samples[ndx][joint]
+                            phase_switch_times[1][joint] = t
+                    #Phase 3: Deceleration
+                    elif t >= time_points[1][joint]:
+                        #print('decelerating joint ' + str(joint))
+                        joint_position_samples[ndx][joint] = last_joint_positions[1][joint] + move_direction[joint]*\
+                                                             ((t-phase_switch_times[1][joint])*max_move_velocity[joint] -
+                                                              0.5 * max_joint_accelerations[joint] * np.power(t-phase_switch_times[1][joint],2))
+                        last_joint_positions[2][joint] = joint_position_samples[ndx][joint]
+                        phase_switch_times[2][joint] = t
+            #Force last position
+            joint_position_samples[-1,:] = end_points
+
+            #Done
+            plt.plot(servo_times,joint_position_samples[:,0])
+            plt.plot(servo_times, joint_position_samples[:, 1])
+            plt.plot(servo_times, joint_position_samples[:, 2])
+            plt.plot(servo_times, joint_position_samples[:, 3])
+            #plt.plot(servo_times, joint_position_samples[:, 4])
+            plt.show()
+            return joint_position_samples
+
+
 
     def close(self):
         print('in machine controller close')
