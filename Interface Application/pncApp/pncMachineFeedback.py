@@ -84,6 +84,7 @@ class SerialInterface(threading.Thread):
     def __init__(self, machine, data_store):
         super(SerialInterface, self).__init__()
         self._running = True
+        #FIXME handle if serial is not connected
         try:
             self.serialPort = serial.Serial(  # set parameters, in fact use your own :-)
                 port="COM12",

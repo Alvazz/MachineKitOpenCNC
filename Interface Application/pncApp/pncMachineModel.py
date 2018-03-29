@@ -43,6 +43,12 @@ class MachineModel():
         self.listen_ip = '0.0.0.0'
         self.comm_port = 'COM12'
 
+        #Motion State Machine
+        self.current_position = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.current_velocity = [0, 0, 0, 0, 0]
+        self.current_acceleration = [0, 0, 0, 0, 0]
+        self.current_jerk = [0, 0, 0, 0, 0]
+
         #State stack
         self.prev_mode = self.modes[0]
 

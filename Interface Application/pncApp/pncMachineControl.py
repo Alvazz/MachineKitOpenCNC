@@ -295,21 +295,34 @@ class MachineController(threading.Thread):
             axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
         return np.asarray(axis_coords).transpose(1, 2, 0)
 
-    def commandPoints(self,polylines,blocklength,commands_to_send):
-        X = self.importAxisPoints(Xpts,polylines,blocklength)
-        Y = self.importAxisPoints(Ypts,polylines,blocklength)
-        Z = self.importAxisPoints(Zpts,polylines,blocklength)
-        A = self.importAxisPoints(Apts,polylines,blocklength)
-        B = self.importAxisPoints(Bpts,polylines,blocklength)
-        axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),1+np.zeros_like(B)),axis=2)
+    def formatPoints(self, points, polylines, block_length):
+        axis_coords = []
+        #FIXME fix if not divisible by polylines*blocklength
+        for axis in range(points.shape[1]):
+            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
+        return np.asarray(axis_coords).transpose(1, 2, 0)
+
+    def commandPoints(self,points,polylines,blocklength,commands_to_send):
+        # X = self.importAxisPoints(Xpts,polylines,blocklength)
+        # Y = self.importAxisPoints(Ypts,polylines,blocklength)
+        # Z = self.importAxisPoints(Zpts,polylines,blocklength)
+        # A = self.importAxisPoints(Apts,polylines,blocklength)
+        # B = self.importAxisPoints(Bpts,polylines,blocklength)
+        # axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),1+np.zeros_like(B)),axis=2)
         
-		#a = self.importAxesPoints(points_file,polylines,blocklength)
+        #a = self.importAxesPoints(points_file,polylines,blocklength)
         #print(a)
         #(X, Y, Z, A, B) = self.importAxesPoints(points_file,polylines,blocklength)
         
         #axisCoords = self.importAxesPoints(points_file,polylines,blocklength)
-        axisCoords = self.generateMove('trapezoidal',[0,0,0,0,0],[1,1,1,1,1],10,self.machine.max_joint_velocity,self.machine.max_joint_acceleration)
-        
+        # data_to_send = self.formatPoints(
+        #     self.generateMove([0,0,0,0,0],[point,point,-point,point,point],10),
+        #     polylines, blocklength)
+
+        data_to_send = self.formatPoints(points, polylines, blocklength)
+
+        axisCoords = data_to_send
+
         #Store imported axis points in data repository
         self.data_store.imported_axes_points = axisCoords
         #self.data_store.flattened_imported_axes_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
@@ -382,11 +395,14 @@ class MachineController(threading.Thread):
             frame.extend(struct.pack('!f',np.inf))
             self.conn.send(frame)
 
+            self.machine.current_position = np.reshape(axisCoords[-1,-1,:],[1,self.machine.num_joints])[0]
+
             sleep_time = self.runNetworkPID(self.rsh_buffer_length,blocklength,polylines,1000)
             #print(sleep_time, self.rsh_buffer_length)
             time.sleep(sleep_time)
 
         self.setBinaryMode(0)
+
         
         #Write out imported points and RSH feedback
         #flattened_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
@@ -399,18 +415,29 @@ class MachineController(threading.Thread):
         sleep_time = max((block_length*polylines)/1000 - (Kp*((set_point_buffer_length-current_buffer_length)))/1000,0)
         return sleep_time
 
-    def formatPoints(self,filename,blocklen):
-        print('formatting points')
-        pts = np.loadtxt(filename)/25.4;
-        # Pad with zeros to make array length correct
-        pts = np.pad(pts, [(0,(blocklen - pts.shape[0]) % blocklen),(0,0)], 'edge');
-        coords = [np.reshape(pts[:,index],(-1,blocklen)) for index in np.arange(0,3)]
-        coords.append(90 * np.ones_like(coords[0]))
-        coords.append(np.zeros_like(coords[0]))
-        return np.asarray(coords)
+    # def formatPoints(self,filename,blocklen):
+    #     print('formatting points')
+    #     pts = np.loadtxt(filename)/25.4;
+    #     # Pad with zeros to make array length correct
+    #     pts = np.pad(pts, [(0,(blocklen - pts.shape[0]) % blocklen),(0,0)], 'edge');
+    #     coords = [np.reshape(pts[:,index],(-1,blocklen)) for index in np.arange(0,3)]
+    #     coords.append(90 * np.ones_like(coords[0]))
+    #     coords.append(np.zeros_like(coords[0]))
+    #     return np.asarray(coords)
 
     ## Trajectory Generation
-    def generateMove(self, move_type, start_points, end_points, move_velocity, max_joint_velocities, max_joint_accelerations):
+    def generateMove(self, end_points, start_points = -1, move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
+        #FIXME check for out of limit move generation
+        #FIXME return 0 if move_vector == 0
+
+        #Handle arguments
+        if start_points == -1:
+            start_points = self.machine.current_position
+        if max_joint_velocities == -1:
+            max_joint_velocities = self.machine.max_joint_velocity
+        if max_joint_accelerations == -1:
+            max_joint_accelerations = self.machine.max_joint_acceleration
+
         #FIXME add capability to scale move velocity
         #Trapezoidal velocity profile generation
         #USAGE:
@@ -430,8 +457,15 @@ class MachineController(threading.Thread):
             #move_time = np.zeros([1,self.machine.num_joints]).tolist()[0]
             for joint in range(0,self.machine.num_joints):
                 #move_direction[joint] = np.sign(end_points[joint] - start_points[joint])
-                no_cruise_time_to_center = math.sqrt(math.fabs(end_points[joint]-start_points[joint])/max_joint_accelerations[joint])
-                if (max_joint_accelerations[joint] * no_cruise_time_to_center) >= max_joint_velocities[joint]:
+                #no_cruise_time_to_center = math.sqrt(math.fabs(end_points[joint]-start_points[joint])/max_joint_accelerations[joint])
+                no_cruise_time_to_center = math.sqrt(
+                    math.fabs(move_vector[joint]) / max_joint_accelerations[joint])
+                if move_vector[joint] == 0:
+                    #Do not move this joint
+                    print('joint ' + str(joint) + ' holding position')
+                    #max_move_velocity[joint] = 0
+                    #max_joint_accelerations[joint] = 0
+                elif (max_joint_accelerations[joint] * no_cruise_time_to_center) >= max_joint_velocities[joint]:
                     #We can reach cruise phase
                     max_move_velocity[joint] = max_joint_velocities[joint]
                 else:
@@ -464,10 +498,16 @@ class MachineController(threading.Thread):
                     #dist_points[2][joint] = dist_points[1][joint] + dist_points[0][joint]
 
             #Find limiting joint
-            slowest_joint = np.where(time_points[:,-1] == np.max(time_points[:,-1]))[0][0]
+            slowest_joint = np.where(time_points[-1,:] == np.max(time_points[-1,:]))[0][0]
             print('slowest joint is ' + str(slowest_joint))
             move_time = time_points[2][slowest_joint]
+            print('move time is ' + str(move_time))
+
             motion_scale_factors = (np.asarray(time_points[2][:])/move_time)
+            # Scale waypoint times for slowest axis
+            time_points = np.multiply(np.asarray(time_points), np.divide(1,motion_scale_factors,out = np.zeros_like(motion_scale_factors),where = motion_scale_factors != 0)).tolist()
+            print(time_points)
+            #time_points = [[0,1,0,0,0],[0,1.5,0,0,0],[0,2,0,0,0]]
 
             #Sample time points to plan trajectories
             servo_times = np.arange(0,math.ceil(move_time/self.machine.servo_dt)*self.machine.servo_dt,self.machine.servo_dt)
@@ -484,13 +524,16 @@ class MachineController(threading.Thread):
 
             max_move_velocity = np.multiply(motion_scale_factors,max_move_velocity)
             max_joint_accelerations = np.multiply(np.power(motion_scale_factors,2), max_joint_accelerations)
-            time_points = np.multiply(np.asarray(time_points),1/np.asarray(motion_scale_factors)).tolist()
+
             for ndx in range(0,np.size(servo_times)):
                 t = servo_times[ndx]
                 for joint in range(0, self.machine.num_joints):
                     #last_joint_position = joint_position_samples[np.clip(ndx-1,0,np.size(servo_times))][joint]
+                    #Phase -1: Joint hold position
+                    if time_points[0][joint] == 0 and time_points[1][joint] == 0 and time_points[2][joint] == 0:
+                        joint_position_samples[ndx][joint] = start_points[joint]
                     #Phase 1: Acceleration
-                    if t < time_points[0][joint]:
+                    elif t < time_points[0][joint]:
                         #We are in phase one (acceleration) for this joint
                         joint_position_samples[ndx][joint] = start_points[joint] + 0.5*move_direction[joint]*max_joint_accelerations[joint]*np.power(t,2)
                         last_joint_positions[0][joint] = joint_position_samples[ndx][joint]
@@ -519,6 +562,8 @@ class MachineController(threading.Thread):
                                                               0.5 * max_joint_accelerations[joint] * np.power(t-phase_switch_times[1][joint],2))
                         last_joint_positions[2][joint] = joint_position_samples[ndx][joint]
                         phase_switch_times[2][joint] = t
+
+
             #Force last position
             joint_position_samples[-1,:] = end_points
 
@@ -527,7 +572,7 @@ class MachineController(threading.Thread):
             plt.plot(servo_times, joint_position_samples[:, 1])
             plt.plot(servo_times, joint_position_samples[:, 2])
             plt.plot(servo_times, joint_position_samples[:, 3])
-            #plt.plot(servo_times, joint_position_samples[:, 4])
+            plt.plot(servo_times, joint_position_samples[:, 4])
             plt.show()
             return joint_position_samples
 
