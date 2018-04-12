@@ -23,7 +23,6 @@ class DataStore():
         ### DATA STORES ###
         #Timers -- time_delta - 1 for each record, times_interpolated 
         self.machine_time_delta = np.zeros(1,dtype=float)
-        self.machine_clock_times = np.zeros(1,dtype=float)
         self.machine_times_interpolated = np.zeros(1,dtype=float)
 
         #Buffer fill level
@@ -59,9 +58,6 @@ class DataStore():
                 print('current encoder record is ' + str(self.encoder_feedback_num_records))
                 self.encoder_feedback_num_records += 1
 
-            if 'machine_clock_times' in record:
-                self.machine_clock_times = np.append(self.machine_clock_times, record['machine_clock_times'])
-
             if 'machine_time_delta' in record:
                 self.machine_time_delta = np.append(self.machine_time_delta, record['machine_time_delta'])
 
@@ -76,6 +72,8 @@ class DataStore():
 
             if 'machine_time_delta' in record:
                 self.machine_running_time += record['machine_time_delta']
+
+
 
 
     def appendMachineControlRecords(self, records):

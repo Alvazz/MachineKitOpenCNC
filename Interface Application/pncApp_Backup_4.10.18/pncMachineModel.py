@@ -6,7 +6,7 @@ class MachineModel():
         #State variables
         self.modes = ['MANUAL', 'MDI', 'AUTO']
         self.statuses = ['IDLE', 'RUNNING', 'PAUSED']
-        self.rsh_feedback_strings = ['*', 'bL=', 'PROGRAM_STATUS', 'MODE', 'ON', 'NAK']
+        self.rsh_feedback_strings = ['bL=', 'PROGRAM_STATUS', 'MODE', 'ON', 'NAK']
         self.axes = ['X','Y','Z','A','B']
         self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
 
@@ -42,11 +42,6 @@ class MachineModel():
         self.udp_port = 515
         self.listen_ip = '0.0.0.0'
         self.comm_port = 'COM12'
-
-        #Servo log parameters
-        self.servo_log_num_axes = 5
-        self.servo_log_sub_sample_rate = 10
-        self.servo_log_buffer_size = 50
 
         #Motion State Machine
         self.current_position = [0.0, 0.0, 0.0, 0.0, 0.0]

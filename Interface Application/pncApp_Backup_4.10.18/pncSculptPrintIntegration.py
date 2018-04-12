@@ -16,10 +16,9 @@ def start():
     #commInit()
     print('initializing')
     #pnc.pncApp.appInit()
-    feedback_listener, machine_controller, encoder_interface, data_store = pncApp.appInit()
+    feedback_listener, machine_controller, motion_controller, encoder_interface, data_store = pncApp.appInit()
 	
     #Log machine feedback start point
-    print('preparing to busy wait')
     while machine_controller == []:
         print('busy waiting')
         pass
@@ -28,12 +27,9 @@ def start():
     machine_controller.machine.machine_feedback_written_record_id = machine_controller.data_store.machine_feedback_num_records
     machine_controller.machine.encoder_feedback_written_record_id = machine_controller.data_store.encoder_feedback_num_records
     time.sleep(1)
-    print('logging in')
     machine_controller.login()
     # We are setup -- start commanding points using the motion controller
-    #motion_controller.start()
-    #time.sleep(3)
-    #machine_controller.motion_controller.testMachine()
+    motion_controller.start()
 
     return True
 

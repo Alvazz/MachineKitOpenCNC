@@ -2,22 +2,22 @@ import socket
 import sys
 
 #PNC Modules
-#from pnc.pncMachineControl import MachineController
-#from pnc.pncMachineFeedback import MachineFeedbackListener
-#from pnc.pncDataStore import DataStore
-#from pnc.pncMachineModel import MachineModel
+from pnc.pncMachineControl import MachineController
+from pnc.pncMachineFeedback import MachineFeedbackListener
+from pnc.pncDataStore import DataStore
+from pnc.pncMachineModel import MachineModel
 
-from pncMachineControl import MachineController
-from pncMachineFeedback import MachineFeedbackListener, SerialInterface
-from pncDataStore import DataStore
-from pncMachineModel import MachineModel
+#from pncApp.pncMachineControl import MachineController
+#from pncApp.pncMachineFeedback import MachineFeedbackListener
+#from pncApp.pncDataStore import DataStore
+#from pncApp.pncMachineModel import MachineModel
 
 #Handles
-global data_store, machine_controller, machine, encoder_interface
+global data_source, machine_controller
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
-def_feedback_listen_port = 515
+def_feedback_listen_port = 514
 def_control_client_ip = '129.1.15.5'
 def_control_client_port = 5007
 
@@ -27,11 +27,9 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
              feedback_listen_port = def_feedback_listen_port,
              control_client_ip = def_control_client_ip,
              control_client_port = def_control_client_port):
-    global data_store, machine_controller, machine, encoder_interface
+    global data_source, machine_controller
 
-    data_store = DataStore()
     machine = MachineModel()
-    print(machine.axis_offsets)
 
     try:
         feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -52,32 +50,23 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     print ('[+] Connection to control client (emcrsh) established at address',
                 control_client_ip,'on port', control_client_port)
 
-    machine_controller = MachineController(control_socket, machine, data_store)
-    machine_controller.start()
-
-    feedback_listener = MachineFeedbackListener(feedback_socket, machine, machine_controller, data_store)
+    feedback_listener = MachineFeedbackListener(feedback_socket, data_source)
     feedback_listener.start()
 
-    encoder_interface = SerialInterface(machine, data_store)
-    encoder_interface.start()
-    return feedback_listener, machine_controller, encoder_interface, data_store
+    machine_controller = MachineController(control_socket, machine, data_source)
+    machine_controller.start()
 
 def appClose():
-    print('closing sockets')
-    if machine_controller != []:
-        #machine_controller.shutdown()
-        machine_controller.close()
-    if feedback_listener != []:
-        #feedback_listener.shutdown()
-        feedback_listener.close()
-    if encoder_interface != []:
-        print('encoder interface exists')
-        encoder_interface.close()
-    #bokehIntf.close()
+	print('closing sockets')
+	if machine_controller != []:
+		#machine_controller.shutdown()
+		machine_controller.close()
+	if feedback_listener != []:
+		#feedback_listener.shutdown()
+		feedback_listener.close()
+	#bokehIntf.close()
 	
 # Global variables
-#data_store = DataStore()
-data_store = []
+data_source = DataStore()
 machine_controller = []
 feedback_listener = []
-encoder_interface = []

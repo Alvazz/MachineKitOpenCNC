@@ -8,75 +8,214 @@ global machine
 
 class MachineFeedbackListener(threading.Thread):
     global machine
-    def __init__(self, conn, machine, data_store):
+    def __init__(self, socket, machine, machine_controller, data_store):
         super(MachineFeedbackListener, self).__init__()
-        self.conn = conn
+        self.rsyslog_socket = socket
         self._running = True
 
-        self.data_store = data_store
         self.machine = machine
+        self.machine_controller = machine_controller
+        self.rsh_socket = machine_controller.rsh_socket
+        self.data_store = data_store
         self.received_data_string = ""
         print('Feedback thread started')
 
     def run(self):
         while self._running:
-            data_available = select.select([self.conn], [], [], 0.5)
-            #print('waiting on select')
+            # Process feedback from EMCRSH
+            data_available = select.select([self.rsh_socket], [], [], 0.5)
             if data_available[0]:
-                (bytes_received, rec_address) = self.conn.recvfrom(65536)
-                string_received = bytes_received.decode("utf-8")
-                self.received_data_string += string_received
-
-                # A complete record of machine data has been received
-                if self.received_data_string.endswith(u"*|"):
-                    print('received machine feedback')
-                    machine_feedback_records = self.processMachineDataString(self.received_data_string)
-                    self.data_store.appendMachineFeedbackRecords(machine_feedback_records)
-                    self.received_data_string = ""
+                string_received = self.rsh_socket.recv(65536).decode("utf-8")
+                complete_data_string = ''
+                if '\n' in string_received or '\r' in string_received:
+                    #split_received_strings = string_received.split('\n')
+                    split_received_strings = re.split(r'\r|\n', string_received)
+                    #print('split received string is: ')
+                    #print(split_received_strings)
+                    #Complete the first entry of the split string list from incomplete data, probably doesn't actually happen?
+                    split_received_strings[0] = self.received_data_string + split_received_strings[0]
+                    for string in split_received_strings:
+                        #Drop null strings
+                        #print('going through the split received strings.')
+                        #print(string)
+                        if string:
+                            self.processRSHString(string.strip())
+                    #data_to_process = self.received_data_string + split_received_string[0]
+                    #complete_data_string = self.received_data_string + split_received_string[0]
+                    #print('complete data string ' + complete_data_string + '\n')
+                    #self.received_data_string = ''.join(split_received_string[1:])
+                    self.received_data_string = ''
+                elif string_received:
+                    #Incomplete data received
+                    print('got incomplete data with received = ' + self.received_data_string + ' and string_received = ' + string_received)
+                    self.received_data_string += string_received
+                else:
+                    #Null string received
+                    print('received null string: ' + string_received)
+                # print(self.received_data_string)
 
         #Flag set, shutdown
-        self.conn.shutdown(socket.SHUT_RDWR)
-        self.conn.close()
+        print('flagging feedback socket')
+        self.machine_controller._running = False
+        #self.rsyslog_socket.shutdown(socket.SHUT_RDWR)
+        #self.rsyslog_socket.close()
 
-    def processMachineDataString(self, machine_data_string):
+    def processRSHString(self, data_string):
+        if any(s in data_string for s in self.machine.rsh_feedback_strings):
+            # Check for error first
+            if self.machine.rsh_feedback_strings[-1] in data_string:
+                # Error in RSH command
+                print('RSH error')
+                self.handleRSHError()
+            if self.machine.rsh_feedback_strings[0] in data_string:
+                #Position feedback
+                #print('processing position feedback with data string: ' + data_string)
+                self.processPositionFeedback(data_string)
+            elif self.machine.rsh_feedback_strings[1] in data_string:
+                # Buffer Length
+                self.processBLFeedback(data_string)
+            elif self.machine.rsh_feedback_strings[2] in data_string:
+                # Program Status
+                print('program status')
+                self.machine.status = data_string.split(' ')[1].strip()
+                print('set program status to ' + self.machine.status)
+            elif self.machine.rsh_feedback_strings[3] in data_string:
+                # Machine Mode
+                print('mode set')
+                self.machine.mode = data_string.split(' ')[1].strip()
+                print('set machine mode to ' + self.machine.mode)
+        # if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
+        #     # Check for error first
+        #     if self.machine.rsh_feedback_strings[-1] in current_data_string:
+        #         # Error in RSH command
+        #         print('RSH error')
+        #         self.handleRSHError()
+        #     if self.machine.rsh_feedback_strings[0] in current_data_string:
+        #         #Position feedback
+        #         self.processPositionFeedback(complete_data_string)
+        #     elif self.machine.rsh_feedback_strings[1] in current_data_string:
+        #         # Buffer Length
+        #         self.processBLFeedback(complete_data_string)
+        #     elif self.machine.rsh_feedback_strings[2] in current_data_string:
+        #         # Program Status
+        #         print('program status')
+        #         self.machine.status = complete_data_string.split(' ')[1].strip()
+        #         print('set program status to ' + self.machine.status)
+        #     elif self.machine.rsh_feedback_strings[3] in current_data_string:
+        #         # Machine Mode
+        #         print('mode set')
+        #         self.machine.mode = complete_data_string.split(' ')[1].strip()
+        #         print('set machine mode to ' + self.machine.mode)
+
+    def processBLFeedback(self, data_string):
+        #print('trying to parse buffer level feedback string: ' + data_string)
+        m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)', data_string)
+        self.rsh_buffer_length = int(m.group(1))
+        self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
+
+    def processPositionFeedback(self, data_string):
         machine_feedback_records = []
-        if '0: tc' in machine_data_string:
-            parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', machine_data_string)
-            if parsed_string:
-                record = dict()
+        samples = data_string.strip('*').strip('|').split('*')
+        #samples = data_string.split('*')[1:-1]
+        feedback_num_points = len(samples)
+        #print('the samples are:: ')
+        #print(samples)
+        #print('the number of points is ' + str(feedback_num_points))
 
-                feedback_num_points = machine_data_string.count('&')
-                tcq_length = float(parsed_string.group(1)) 
-                delta_thread_cycles = float(parsed_string.group(2))
-                delta_machine_clock = float(parsed_string.group(3))
+        stepgen_feedback_positions = np.zeros([feedback_num_points,self.machine.servo_log_num_axes])
+        machine_clock_times = np.zeros([1,feedback_num_points])
+        for sample_num in range(0,feedback_num_points):
+            sample = samples[sample_num].strip('|').split('|')
+            machine_clock_times[0,sample_num] = float(sample[0])
+            #print('the sample is: ')
+            #print(sample)
+            #print(stepgen_feedback_positions)
+            stepgen_feedback_positions[sample_num,:] = np.asarray([float(s) for s in sample[1:]])+np.asarray(self.machine.axis_offsets)
+            #np.vstack((stepgen_feedback_positions, sample.split('|')[1:-1]))
 
-                data_points = parsed_string.group(4).strip()
-                data_points = re.sub('S[0-9]*:', '', data_points)
-                
-                #Each time sample delimited with &
-                samples = data_points.split('&')
-                coords = [sample.split('|') for sample in samples]
-                coords = np.asarray([[float(coord) for coord in coords[index][:-1]] for index in range(len(coords[:-1]))])
-                
-                print(self.machine.axis_offsets)
-                commanded_joint_positions = coords[:,0:5]+self.machine.axis_offsets
-                stepgen_feedback_positions = coords[:,5:]+self.machine.axis_offsets
+        record = dict()
+        record['machine_clock_times'] = machine_clock_times
+        record['stepgen_feedback_positions'] = stepgen_feedback_positions
+        print('logging position feedback')
+        # if '0: tc' in data_string:
+        #     parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', data_string)
+        #     if parsed_string:
+        #
+        #
+        #         feedback_num_points = data_string.count('&')
+        #         tcq_length = float(parsed_string.group(1))
+        #         delta_thread_cycles = float(parsed_string.group(2))
+        #         delta_machine_clock = float(parsed_string.group(3))
+        #
+        #         data_points = parsed_string.group(4).strip()
+        #         data_points = re.sub('S[0-9]*:', '', data_points)
+        #
+        #         # Each time sample delimited with &
+        #         samples = data_points.split('&')
+        #         coords = [sample.split('|') for sample in samples]
+        #         coords = np.asarray(
+        #             [[float(coord) for coord in coords[index][:-1]] for index in range(len(coords[:-1]))])
+        #
+        #         print(self.machine.axis_offsets)
+        #         commanded_joint_positions = coords[:, 0:5] + self.machine.axis_offsets
+        #         stepgen_feedback_positions = coords[:, 5:] + self.machine.axis_offsets
+        #
+        #         # Store parsed data
+        #         record['machine_time_delta'] = delta_machine_clock
+        #         record['machine_times_interpolated'] = np.linspace(delta_machine_clock / feedback_num_points,
+        #                                                            delta_machine_clock, feedback_num_points)
+        #         record['machine_tcq_length'] = tcq_length
+        #         record['commanded_joint_positions'] = commanded_joint_positions
+        #         record['stepgen_feedback_positions'] = stepgen_feedback_positions
+        #         record['rt_thread_num_executions_delta'] = delta_thread_cycles
 
-                #Store parsed data
-                record['machine_time_delta'] = delta_machine_clock
-                record['machine_times_interpolated'] = np.linspace(delta_machine_clock/feedback_num_points,
-                                                                   delta_machine_clock,feedback_num_points)
-                record['machine_tcq_length'] = tcq_length              
-                record['commanded_joint_positions'] = commanded_joint_positions
-                record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                record['rt_thread_num_executions_delta'] = delta_thread_cycles
-
-                machine_feedback_records.append(record)
+        #machine_feedback_records.append(record)
+        self.data_store.appendMachineFeedbackRecords([record])
         return machine_feedback_records
+        # machine_feedback_records = []
+        # if '0: tc' in machine_data_string:
+        #     parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', machine_data_string)
+        #     if parsed_string:
+        #         record = dict()
+        #
+        #         feedback_num_points = machine_data_string.count('&')
+        #         tcq_length = float(parsed_string.group(1))
+        #         delta_thread_cycles = float(parsed_string.group(2))
+        #         delta_machine_clock = float(parsed_string.group(3))
+        #
+        #         data_points = parsed_string.group(4).strip()
+        #         data_points = re.sub('S[0-9]*:', '', data_points)
+        #
+        #         #Each time sample delimited with &
+        #         samples = data_points.split('&')
+        #         coords = [sample.split('|') for sample in samples]
+        #         coords = np.asarray([[float(coord) for coord in coords[index][:-1]] for index in range(len(coords[:-1]))])
+        #
+        #         print(self.machine.axis_offsets)
+        #         commanded_joint_positions = coords[:,0:5]+self.machine.axis_offsets
+        #         stepgen_feedback_positions = coords[:,5:]+self.machine.axis_offsets
+        #
+        #         #Store parsed data
+        #         record['machine_time_delta'] = delta_machine_clock
+        #         record['machine_times_interpolated'] = np.linspace(delta_machine_clock/feedback_num_points,
+        #                                                            delta_machine_clock,feedback_num_points)
+        #         record['machine_tcq_length'] = tcq_length
+        #         record['commanded_joint_positions'] = commanded_joint_positions
+        #         record['stepgen_feedback_positions'] = stepgen_feedback_positions
+        #         record['rt_thread_num_executions_delta'] = delta_thread_cycles
+        #
+        #         machine_feedback_records.append(record)
+        # return machine_feedback_records
+
+    def handleRSHError(self):
+        self.machine.rsh_error = 1
+
+    def resetRSHError(self):
+        self.machine.rsh_error = 0
 
     def close(self):
         self._running = True
-
+        self._running = False
 
 
 #serialLock = threading.Lock()
@@ -147,7 +286,7 @@ class SerialInterface(threading.Thread):
         #time.sleep(0.1)
         readData = ''
         while 'C&' not in readData:
-            # print("waiting to read")
+            #print("waiting to read")
             readData += self.serialPort.read(1).decode("utf-8")
         #print('Successful get of encoder count')
         #print(readData.strip())
@@ -156,9 +295,11 @@ class SerialInterface(threading.Thread):
     def run(self):
         #global encoderData, serialLock
         self.setEncoderCount(self.machine.encoder_init)
+        #print('setting encoder count in run')
         #time.sleep(0.1)
         while self._running:
             #serialLock.acquire()
+            print('running')
             counts = self.requestEncoderCount()
             #time.sleep(0.1)
             #print(counts)
@@ -183,13 +324,14 @@ class SerialInterface(threading.Thread):
                 print(record['encoder_feedback_positions'])
                 #time.sleep(0.1)
             #serialLock.release()
-            time.sleep(0.2)
+            #time.sleep(0.2)
+            #print('running serial')
 
         #Flag set, shutdown
+        print('Closing serial port')
         self.serialPort.close()
 
     def close(self):
-        print('Closing serial port')
+        print('setting serial port close flag')
         self._running = False
-
         #sys.exit()

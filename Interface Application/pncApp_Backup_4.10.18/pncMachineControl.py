@@ -27,27 +27,12 @@ class MotionController(threading.Thread):
         super(MotionController, self).__init__()
         self.machine = machine
         self.machine_controller = machine_controller
-        self.point_buffer = 0
 
     def run(self):
         while True:
             #Wait to send commands?
-            #print('testing machine')
-            time.sleep(5)
-            self.testMachine()
-            if self.point_buffer:
-                #run points
-                pass
-            else:
-                pass
+            pass
         #self.machine_controller.commandPoints(1, 25, -1)
-
-    def testMachine(self):
-        while not self.commandPoints(self.machine_controller.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
-            pass
-        #time.sleep(5)
-        while not self.commandPoints(self.machine_controller.generateMove([0.5, -0.5, 0, 0, 0]), 2, 25, -1):
-            pass
 
     def commandPoints(self, points, polylines, blocklength, commands_to_send):
         axis_coords = self.machine_controller.formatPoints(points, polylines, blocklength)
@@ -107,7 +92,7 @@ class MotionController(threading.Thread):
                         # print(axisCoords[(command*polylines)+polyLine,point,axis]*scale)
 
             frame.extend(struct.pack('!f', np.inf))
-            self.machine_controller.rsh_socket.send(frame)
+            self.machine_controller.conn.send(frame)
 
             ## FIXME store current position from feedback thread
             self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.num_joints])[0]
@@ -117,9 +102,8 @@ class MotionController(threading.Thread):
             time.sleep(sleep_time)
 
         self.machine_controller.setBinaryMode(0)
-        return True
 
-    def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.02, Ki=0,
+    def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.01, Ki=0,
                       Kd=0):
         # sleepTime = (blockLength*polyLines)/1000 - (Kp*((1000-self.rshQueueData[-1])))/1000
         sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_length - current_buffer_length))) / 1000,0)
@@ -127,10 +111,10 @@ class MotionController(threading.Thread):
 
 
 class MachineController(threading.Thread):
-    def __init__(self, socket, machine, data_store):
+    def __init__(self, conn, machine, data_store):
         super(MachineController, self).__init__()
         #print('in machine controller init')
-        self.rsh_socket = socket
+        self.conn = conn
         self.machine = machine
         self.motion_controller = MotionController(self,machine)
 
@@ -141,64 +125,54 @@ class MachineController(threading.Thread):
 
         
     def run(self):
-        self.motion_controller.start()
         while self._running:
-            pass
-            # # Process feedback from EMCRSH
-            # data_available = select.select([self.conn], [], [], 0.5)
-            # if data_available[0]:
-            #     string_received = self.conn.recv(4096).decode("utf-8")
-            #     complete_data_string = ''
-            #     if '\n' in string_received:
-            #         split_received_string = string_received.split('\n')
-            #         complete_data_string = self.received_data_string + split_received_string[0]
-            #         print('complete data string ' + complete_data_string + '\n')
-            #         self.received_data_string = ''.join(split_received_string[1:])
-            #     else:
-            #         self.received_data_string += string_received
-            #     # print(self.received_data_string)
-            #     if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
-            #         # Check for error first
-            #         if self.machine.rsh_feedback_strings[-1] in string_received:
-            #             # Error in RSH command
-            #             print('RSH error')
-            #             self.handleRSHError()
-            #         if self.machine.rsh_feedback_strings[0] in string_received:
-            #             # Buffer Length
-            #             self.processRSHFeedback(complete_data_string)
-            #         elif self.machine.rsh_feedback_strings[1] in string_received:
-            #             # Program Status
-            #             print('program status')
-            #             self.machine.status = complete_data_string.split(' ')[1].strip()
-            #             print('set program status to ' + self.machine.status)
-            #         elif self.machine.rsh_feedback_strings[2] in string_received:
-            #             # Machine Mode
-            #             print('mode set')
-            #             self.machine.mode = complete_data_string.split(' ')[1].strip()
-            #             print('set machine mode to ' + self.machine.mode)
+            # Process feedback from EMCRSH
+            data_available = select.select([self.conn], [], [], 0.5)
+            if data_available[0]:
+                string_received = self.conn.recv(4096).decode("utf-8")
+                complete_data_string = ''
+                if '\n' in string_received:
+                    split_received_string = string_received.split('\n')
+                    complete_data_string = self.received_data_string + split_received_string[0]
+                    print('complete data string ' + complete_data_string + '\n')
+                    self.received_data_string = ''.join(split_received_string[1:])
+                else:
+                    self.received_data_string += string_received
+                # print(self.received_data_string)
+                if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
+                    # Check for error first
+                    if self.machine.rsh_feedback_strings[-1] in string_received:
+                        # Error in RSH command
+                        print('RSH error')
+                        self.handleRSHError()
+                    if self.machine.rsh_feedback_strings[0] in string_received:
+                        # Buffer Length
+                        self.processRSHFeedback(complete_data_string)
+                    elif self.machine.rsh_feedback_strings[1] in string_received:
+                        # Program Status
+                        print('program status')
+                        self.machine.status = complete_data_string.split(' ')[1].strip()
+                        print('set program status to ' + self.machine.status)
+                    elif self.machine.rsh_feedback_strings[2] in string_received:
+                        # Machine Mode
+                        print('mode set')
+                        self.machine.mode = complete_data_string.split(' ')[1].strip()
+                        print('set machine mode to ' + self.machine.mode)
 
         # We are done running, clean up sockets
-        self.rsh_socket.shutdown(socket.SHUT_RDWR)
-        self.rsh_socket.close()
+        self.conn.shutdown(socket.SHUT_RDWR)
+        self.conn.close()
 
-    #def testMachine(self):
-        # while not self.motion_controller.commandPoints(self.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
-        #     pass
-        # #time.sleep(5)
-        # while not self.motion_controller.commandPoints(self.generateMove([0.5, -0.5, 0, 0, 0]), 2, 25, -1):
-        #     pass
-        #time.sleep(5)
+    def processRSHFeedback(self, fbString):
+        m = re.search(self.machine.rsh_feedback_strings[0] + '(\d+)', fbString)
+        self.rsh_buffer_length = int(m.group(1))
+        self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
 
-    # def processRSHFeedback(self, fbString):
-    #     m = re.search(self.machine.rsh_feedback_strings[0] + '(\d+)', fbString)
-    #     self.rsh_buffer_length = int(m.group(1))
-    #     self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
-    #
-    # def handleRSHError(self):
-    #     self.machine.rsh_error = 1
-    #
-    # def resetRSHError(self):
-    #     self.machine.rsh_error = 0
+    def handleRSHError(self):
+        self.machine.rsh_error = 1
+
+    def resetRSHError(self):
+        self.machine.rsh_error = 0
 
     ### Data Handling ###
     def convertFloat2Bin(self, num):
@@ -212,12 +186,12 @@ class MachineController(threading.Thread):
         
     ### Writing Functions ###
     def writeLineUTF(self,data):
-        self.rsh_socket.send((data+'\r').encode('utf-8'))
+        self.conn.send((data+'\r').encode('utf-8'))
         time.sleep(0.25)
 
     def writeLineBin(self,frame):
         frame.extend(struct.pack('!f',np.inf))
-        self.rsh_socket.send(frame)
+        self.conn.send(frame)
 
     ### API for Common RSH Commands ###
     def login(self):
@@ -225,11 +199,11 @@ class MachineController(threading.Thread):
         self.writeLineUTF('set enable EMCTOO')
         self.setEcho(0)
         self.setDrivePower(1)
-        self.setLogging(0)
+        self.setLogging(0,5,10,50,0,0)
         #self.setAutoMode()
         #self.setMachineMode('auto')
         self.modeSwitchWait('auto')
-        #self.setMachineUnits('inch')
+        self.setMachineUnits('inch')
 
     def getProgramStatus(self):
         self.writeLineUTF('get program_status')
@@ -248,7 +222,7 @@ class MachineController(threading.Thread):
             self.machine.binary_mode = 1
         else:
             print('setting binary mode off')
-            self.rsh_socket.send(struct.pack('!f',-np.inf))
+            self.conn.send(struct.pack('!f',-np.inf))
             self.machine.binary_mode = 0
             time.sleep(0.05)
 
@@ -267,14 +241,7 @@ class MachineController(threading.Thread):
             sendstr += 'off'
         self.writeLineUTF(sendstr)
 
-    def setLogging(self, flag, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
-        if not sub_sample_rate:
-            sub_sample_rate = self.machine.servo_log_sub_sample_rate
-        if not buffer_size:
-            buffer_size = self.machine.servo_log_buffer_size
-        if not axes:
-            axes = self.machine.servo_log_num_axes
-
+    def setLogging(self, flag, sub_sample_rate, buffer_size, axes=5, dump_flag=0, write_buffer=0):
         if flag != self.machine.logging_mode:
             # Need to toggle logging mode
             if self.machine.binary_mode:
@@ -693,12 +660,12 @@ class MachineController(threading.Thread):
             joint_position_samples[-1,:] = end_points
 
             #Done
-            # plt.plot(servo_times,joint_position_samples[:,0])
-            # plt.plot(servo_times, joint_position_samples[:, 1])
-            # plt.plot(servo_times, joint_position_samples[:, 2])
-            # plt.plot(servo_times, joint_position_samples[:, 3])
-            # plt.plot(servo_times, joint_position_samples[:, 4])
-            # plt.show()
+            plt.plot(servo_times,joint_position_samples[:,0])
+            plt.plot(servo_times, joint_position_samples[:, 1])
+            plt.plot(servo_times, joint_position_samples[:, 2])
+            plt.plot(servo_times, joint_position_samples[:, 3])
+            plt.plot(servo_times, joint_position_samples[:, 4])
+            plt.show()
 
             return joint_position_samples
 
