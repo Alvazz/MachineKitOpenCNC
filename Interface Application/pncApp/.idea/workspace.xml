@@ -3,11 +3,9 @@
   <component name="ChangeListManager">
     <list default="true" id="8bd26cf1-5304-4d98-8138-03fba3eca374" name="Default" comment="">
       <change beforePath="$PROJECT_DIR$/pncApp.py" afterPath="$PROJECT_DIR$/pncApp.py" />
-      <change beforePath="$PROJECT_DIR$/pncDataStore.py" afterPath="$PROJECT_DIR$/pncDataStore.py" />
       <change beforePath="$PROJECT_DIR$/pncMachineControl.py" afterPath="$PROJECT_DIR$/pncMachineControl.py" />
       <change beforePath="$PROJECT_DIR$/pncMachineFeedback.py" afterPath="$PROJECT_DIR$/pncMachineFeedback.py" />
       <change beforePath="$PROJECT_DIR$/pncMachineModel.py" afterPath="$PROJECT_DIR$/pncMachineModel.py" />
-      <change beforePath="$PROJECT_DIR$/pncSculptPrintIntegration.py" afterPath="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
       <change beforePath="$PROJECT_DIR$/../../ODrive" afterPath="$PROJECT_DIR$/../../ODrive" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -22,8 +20,8 @@
       <file leaf-file-name="pncApp.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncApp.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="722">
-              <caret line="61" column="4" lean-forward="true" selection-start-line="61" selection-start-column="4" selection-end-line="61" selection-end-column="4" />
+            <state relative-caret-position="167">
+              <caret line="16" column="84" lean-forward="false" selection-start-line="16" selection-start-column="84" selection-end-line="16" selection-end-column="84" />
               <folding>
                 <element signature="e#0#13#0" expanded="true" />
               </folding>
@@ -31,11 +29,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="pncMachineFeedback.py" pinned="false" current-in-tab="true">
+      <file leaf-file-name="pncMachineFeedback.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="315">
-              <caret line="327" column="13" lean-forward="true" selection-start-line="327" selection-start-column="13" selection-end-line="327" selection-end-column="13" />
+            <state relative-caret-position="3540">
+              <caret line="242" column="39" lean-forward="false" selection-start-line="242" selection-start-column="39" selection-end-line="242" selection-end-column="39" />
               <folding>
                 <element signature="e#0#13#0" expanded="true" />
               </folding>
@@ -43,11 +41,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="pncMachineControl.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="pncMachineControl.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="273">
-              <caret line="35" column="24" lean-forward="false" selection-start-line="35" selection-start-column="24" selection-end-line="35" selection-end-column="24" />
+            <state relative-caret-position="8640">
+              <caret line="603" column="176" lean-forward="false" selection-start-line="603" selection-start-column="176" selection-end-line="603" selection-end-column="176" />
               <folding>
                 <element signature="e#0#16#0" expanded="true" />
               </folding>
@@ -70,7 +68,7 @@
       <file leaf-file-name="pncDataStore.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncDataStore.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="527">
+            <state relative-caret-position="1080">
               <caret line="78" column="0" lean-forward="true" selection-start-line="78" selection-start-column="0" selection-end-line="78" selection-end-column="0" />
               <folding />
             </state>
@@ -80,8 +78,8 @@
       <file leaf-file-name="pncMachineModel.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="705">
-              <caret line="47" column="43" lean-forward="true" selection-start-line="47" selection-start-column="43" selection-end-line="47" selection-end-column="43" />
+            <state relative-caret-position="107">
+              <caret line="23" column="40" lean-forward="false" selection-start-line="23" selection-start-column="40" selection-end-line="23" selection-end-column="40" />
               <folding />
             </state>
           </provider>
@@ -102,6 +100,7 @@
       <find>motion_scale_factors</find>
       <find>logging</find>
       <find>conn</find>
+      <find>MDICommandWaitDone</find>
     </findStrings>
   </component>
   <component name="Git.Settings">
@@ -110,18 +109,17 @@
   <component name="IdeDocumentHistory">
     <option name="CHANGED_PATHS">
       <list>
-        <option value="$PROJECT_DIR$/pncMachineModel.py" />
         <option value="$PROJECT_DIR$/pncDataStore.py" />
         <option value="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
-        <option value="$PROJECT_DIR$/pncApp.py" />
-        <option value="$PROJECT_DIR$/pncMachineControl.py" />
         <option value="$PROJECT_DIR$/pncMachineFeedback.py" />
+        <option value="$PROJECT_DIR$/pncApp.py" />
+        <option value="$PROJECT_DIR$/pncMachineModel.py" />
+        <option value="$PROJECT_DIR$/pncMachineControl.py" />
       </list>
     </option>
   </component>
   <component name="ProjectFrameBounds">
     <option name="x" value="22" />
-    <option name="y" value="16" />
     <option name="width" value="1864" />
     <option name="height" value="1012" />
   </component>
@@ -213,7 +211,7 @@
     <servers />
   </component>
   <component name="ToolWindowManager">
-    <frame x="22" y="16" width="1864" height="1012" extended-state="0" />
+    <frame x="22" y="0" width="1864" height="1012" extended-state="0" />
     <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.18722944" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
@@ -240,13 +238,6 @@
   </component>
   <component name="XDebuggerManager">
     <breakpoint-manager>
-      <breakpoints>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
-          <line>702</line>
-          <option name="timeStamp" value="9" />
-        </line-breakpoint>
-      </breakpoints>
       <option name="time" value="12" />
     </breakpoint-manager>
     <watches-manager />
@@ -281,42 +272,6 @@
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncDataStore.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="527">
-          <caret line="78" column="0" lean-forward="true" selection-start-line="78" selection-start-column="0" selection-end-line="78" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="705">
-          <caret line="47" column="43" lean-forward="true" selection-start-line="47" selection-start-column="43" selection-end-line="47" selection-end-column="43" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncApp.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="722">
-          <caret line="61" column="4" lean-forward="true" selection-start-line="61" selection-start-column="4" selection-end-line="61" selection-end-column="4" />
-          <folding>
-            <element signature="e#0#13#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="273">
-          <caret line="35" column="24" lean-forward="false" selection-start-line="35" selection-start-column="24" selection-end-line="35" selection-end-column="24" />
-          <folding>
-            <element signature="e#0#16#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="345">
@@ -327,12 +282,48 @@
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/pncDataStore.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1080">
+          <caret line="78" column="0" lean-forward="true" selection-start-line="78" selection-start-column="0" selection-end-line="78" selection-end-column="0" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="315">
-          <caret line="327" column="13" lean-forward="true" selection-start-line="327" selection-start-column="13" selection-end-line="327" selection-end-column="13" />
+        <state relative-caret-position="3540">
+          <caret line="242" column="39" lean-forward="false" selection-start-line="242" selection-start-column="39" selection-end-line="242" selection-end-column="39" />
           <folding>
             <element signature="e#0#13#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncApp.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="167">
+          <caret line="16" column="84" lean-forward="false" selection-start-line="16" selection-start-column="84" selection-end-line="16" selection-end-column="84" />
+          <folding>
+            <element signature="e#0#13#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="107">
+          <caret line="23" column="40" lean-forward="false" selection-start-line="23" selection-start-column="40" selection-end-line="23" selection-end-column="40" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="8640">
+          <caret line="603" column="176" lean-forward="false" selection-start-line="603" selection-start-column="176" selection-end-line="603" selection-end-column="176" />
+          <folding>
+            <element signature="e#0#16#0" expanded="true" />
           </folding>
         </state>
       </provider>

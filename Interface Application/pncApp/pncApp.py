@@ -1,5 +1,6 @@
 import socket
 import sys
+import numpy as np
 
 #PNC Modules
 #from pnc.pncMachineControl import MachineController
@@ -13,12 +14,13 @@ from pncDataStore import DataStore
 from pncMachineModel import MachineModel
 
 #Handles
-global data_store, machine_controller, machine, encoder_interface
+global data_store, machine_controller, machine, encoder_interface, feedback_listener
 
 # Default connection parameters
 def_feedback_listen_ip = '0.0.0.0'
 def_feedback_listen_port = 515
 def_control_client_ip = '129.1.15.5'
+#def_control_client_ip = '129.1.15.69'
 def_control_client_port = 5007
 
 # Initialize control communication with PocketNC using TCP and feedback read
@@ -27,7 +29,7 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
              feedback_listen_port = def_feedback_listen_port,
              control_client_ip = def_control_client_ip,
              control_client_port = def_control_client_port):
-    global data_store, machine_controller, machine, encoder_interface
+    global data_store, machine_controller, machine, encoder_interface, feedback_listener
 
     data_store = DataStore()
     machine = MachineModel()
@@ -43,7 +45,7 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
 
     try:
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        control_socket.connect((control_client_ip, control_client_port))
+        control_socket.connect((machine.ip_address, control_client_port))
     except socket.error:
         print ('Failed to connect to client ip for giving it control')
         sys.exit()      
@@ -52,14 +54,15 @@ def appInit(feedback_listen_ip = def_feedback_listen_ip,
     print ('[+] Connection to control client (emcrsh) established at address',
                 control_client_ip,'on port', control_client_port)
 
-    machine_controller = MachineController(control_socket, machine, data_store)
+    encoder_interface = SerialInterface(machine, data_store)
+    # encoder_interface.start()
+
+    machine_controller = MachineController(control_socket, machine, data_store, encoder_interface)
     machine_controller.start()
 
     feedback_listener = MachineFeedbackListener(feedback_socket, machine, machine_controller, data_store)
     feedback_listener.start()
 
-    encoder_interface = SerialInterface(machine, data_store)
-    encoder_interface.start()
     return feedback_listener, machine_controller, encoder_interface, data_store
 
 def appClose():

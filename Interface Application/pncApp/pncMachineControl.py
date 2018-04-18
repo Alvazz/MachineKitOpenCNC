@@ -21,33 +21,67 @@ points_file = 'E:\SculptPrint\PocketNC\Standards\opt_code'
 points_file = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\5axTrapezoid'
 points_file = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\opt_code_patchup'
 
+class Move():
+    def __init__(self,point_samples):
+        super(Move, self).__init__()
+        self.serial_number = -1
+        self.point_samples = point_samples
 
 class MotionController(threading.Thread):
     def __init__(self, machine_controller, machine):
         super(MotionController, self).__init__()
         self.machine = machine
         self.machine_controller = machine_controller
-        self.point_buffer = 0
+
+        self.move_queue = []
+        self.last_move_serial_number = 0
+
+        ### Network control parameters
+        self.polylines_per_tx = 1
+        self.points_per_polyline = 25
 
     def run(self):
         while True:
-            #Wait to send commands?
+            #FIFO for point arrays. Initialize as length 0 with last_move_serial_number of -1
+            if len(self.move_queue) > self.last_move_serial_number and len(self.move_queue) > 0:
+                print('length of move queue is ' + str(len(self.move_queue)))
+                #There are new moves in the queue, find the one to be executed next
+                #self.point_buffer[self.last_move_serial_number + 1].serial_number = self.last_move_serial_number + 1
+                move_to_execute = self.move_queue[self.last_move_serial_number + 1 - 1]
+                print('executing move ' + str(move_to_execute.serial_number))
+                while not self.commandPoints(move_to_execute.point_samples,self.polylines_per_tx,self.points_per_polyline,-1):
+                    pass
+                self.last_move_serial_number = move_to_execute.serial_number
+                print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
+
+                #self.point_buffer[-1].serial_number = self.last_move_serial_number + 1
+                #self.last_move_serial_number = self.point_buffer[-1].serial_number
+
+
+                #Start moving
+                #Wait to send commands?
             #print('testing machine')
-            time.sleep(5)
-            self.testMachine()
-            if self.point_buffer:
-                #run points
-                pass
-            else:
-                pass
+            # time.sleep(5)
+            # self.testMachine()
+            # if self.point_buffer:
+            #     #run points
+            #     pass
+            # else:
+            #     pass
         #self.machine_controller.commandPoints(1, 25, -1)
 
-    def testMachine(self):
-        while not self.commandPoints(self.machine_controller.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
-            pass
-        #time.sleep(5)
-        while not self.commandPoints(self.machine_controller.generateMove([0.5, -0.5, 0, 0, 0]), 2, 25, -1):
-            pass
+    # def testMachine(self):
+    #     while not self.commandPoints(self.machine_controller.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
+    #         pass
+    #     #time.sleep(5)
+    #     while not self.commandPoints(self.machine_controller.generateMove([0.5, -0.5, 0, 0, 0]), 2, 25, -1):
+    #         pass
+
+    def insertMove(self, move):
+        move.serial_number = len(self.move_queue) + 1
+        self.move_queue.append(move)
+        print('the move queue is now: ')
+        print(self.move_queue)
 
     def commandPoints(self, points, polylines, blocklength, commands_to_send):
         axis_coords = self.machine_controller.formatPoints(points, polylines, blocklength)
@@ -55,26 +89,6 @@ class MotionController(threading.Thread):
 
         # Store imported axis points in data repository
         self.machine_controller.data_store.imported_axes_points = axis_coords
-
-        # if self.machine.units == 'mm':
-        #     scale_translational = 25.4
-        # else:
-        #     scale_translational = 1.0
-        # scale_translational = 5.0 / 25.4
-        # scale_translational = 1
-
-        # dont need machine reset
-        # self.resetMachine()
-        # retval = self.resetPosition(axisCoords[0][0][0],
-        #                             axisCoords[0][0][1],
-        #                             axisCoords[0][0][2],
-        #                             axisCoords[0][0][3], axisCoords[0][0][4], 20)
-        # if not retval:
-        #     print("start position error, exiting...")
-        #     return
-        #
-        # print(axisCoords[0][0][0] * scale_translational, axisCoords[0][0][1] * scale_translational,
-        #       axisCoords[0][0][2] * scale_translational, axisCoords[0][0][3], axisCoords[0][0][4])
 
         self.machine_controller.readyMachine()
         if not self.machine_controller.checkMachineReady(2):
@@ -127,11 +141,12 @@ class MotionController(threading.Thread):
 
 
 class MachineController(threading.Thread):
-    def __init__(self, socket, machine, data_store):
+    def __init__(self, socket, machine, data_store, encoder_interface):
         super(MachineController, self).__init__()
         #print('in machine controller init')
         self.rsh_socket = socket
         self.machine = machine
+        self.encoder_interface = encoder_interface
         self.motion_controller = MotionController(self,machine)
 
         self._running = True
@@ -139,47 +154,22 @@ class MachineController(threading.Thread):
         self.data_store = data_store
         self.rsh_buffer_length = 0
 
-        
     def run(self):
         self.motion_controller.start()
         while self._running:
+            if self.machine.logging_mode:
+                self.machine.current_position = self.data_store.stepgen_feedback_positions[-1,:] - self.machine.table_zero
             pass
-            # # Process feedback from EMCRSH
-            # data_available = select.select([self.conn], [], [], 0.5)
-            # if data_available[0]:
-            #     string_received = self.conn.recv(4096).decode("utf-8")
-            #     complete_data_string = ''
-            #     if '\n' in string_received:
-            #         split_received_string = string_received.split('\n')
-            #         complete_data_string = self.received_data_string + split_received_string[0]
-            #         print('complete data string ' + complete_data_string + '\n')
-            #         self.received_data_string = ''.join(split_received_string[1:])
-            #     else:
-            #         self.received_data_string += string_received
-            #     # print(self.received_data_string)
-            #     if any(s in complete_data_string for s in self.machine.rsh_feedback_strings):
-            #         # Check for error first
-            #         if self.machine.rsh_feedback_strings[-1] in string_received:
-            #             # Error in RSH command
-            #             print('RSH error')
-            #             self.handleRSHError()
-            #         if self.machine.rsh_feedback_strings[0] in string_received:
-            #             # Buffer Length
-            #             self.processRSHFeedback(complete_data_string)
-            #         elif self.machine.rsh_feedback_strings[1] in string_received:
-            #             # Program Status
-            #             print('program status')
-            #             self.machine.status = complete_data_string.split(' ')[1].strip()
-            #             print('set program status to ' + self.machine.status)
-            #         elif self.machine.rsh_feedback_strings[2] in string_received:
-            #             # Machine Mode
-            #             print('mode set')
-            #             self.machine.mode = complete_data_string.split(' ')[1].strip()
-            #             print('set machine mode to ' + self.machine.mode)
 
         # We are done running, clean up sockets
         self.rsh_socket.shutdown(socket.SHUT_RDWR)
         self.rsh_socket.close()
+
+    def testMachine(self,X,Y,Z,A,B):
+        points = self.generateMove([X, Y, Z, A, B])
+        #points = self.generateHoldPosition(5)
+        linear_move_1 = Move(points)
+        self.motion_controller.insertMove(linear_move_1)
 
     #def testMachine(self):
         # while not self.motion_controller.commandPoints(self.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
@@ -200,7 +190,7 @@ class MachineController(threading.Thread):
     # def resetRSHError(self):
     #     self.machine.rsh_error = 0
 
-    ### Data Handling ###
+    ######################## Data Handling ########################
     def convertFloat2Bin(self, num):
         return struct.pack('!f', num)
 
@@ -209,8 +199,35 @@ class MachineController(threading.Thread):
 
     def formatBinaryLine(self,axisCoords,polyLines,blockLength,positionInFile):
         return #position in file#
-        
-    ### Writing Functions ###
+
+    def padAndFormatAxisPoints(self, points, polylines, blocklength):
+        # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
+        pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
+                                constant_values=points[-1])
+        shape_points = pad_points.reshape((-1, blocklength), order='C')
+        # print(shape_points.shape)
+        return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
+                      constant_values=shape_points[-1, -1])
+
+    def importAxisPoints(self, file, polylines, blocklength):
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
+        return self.padAndFormatAxisPoints(points, polylines, blocklength)
+
+    def importAxesPoints(self, file, polylines, blocklength):
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
+        axis_coords = []
+        for axis in range(points.shape[1]):
+            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
+        return np.asarray(axis_coords).transpose(1, 2, 0)
+
+    def formatPoints(self, points, polylines, block_length):
+        axis_coords = []
+        #FIXME fix if not divisible by polylines*blocklength
+        for axis in range(points.shape[1]):
+            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
+        return np.asarray(axis_coords).transpose(1, 2, 0)
+
+    ######################## Writing Functions ########################
     def writeLineUTF(self,data):
         self.rsh_socket.send((data+'\r').encode('utf-8'))
         time.sleep(0.25)
@@ -219,17 +236,47 @@ class MachineController(threading.Thread):
         frame.extend(struct.pack('!f',np.inf))
         self.rsh_socket.send(frame)
 
-    ### API for Common RSH Commands ###
+    ######################## API for Common RSH Commands ########################
     def login(self):
         self.writeLineUTF('hello EMC robie 1')
         self.writeLineUTF('set enable EMCTOO')
         self.setEcho(0)
         self.setDrivePower(1)
         self.setLogging(0)
-        #self.setAutoMode()
-        #self.setMachineMode('auto')
         self.modeSwitchWait('auto')
         #self.setMachineUnits('inch')
+
+    def homeMachine(self,X=1,Y=1,Z=1,A=1,B=1,C=0):
+        #FIXME home each axis individually and wait for all to complete
+        self.machine.pushState()
+        self.modeSwitchWait('manual')
+
+        for i in range(0,self.machine.num_joints):
+            send_str = 'set home'
+
+        if X:
+            send_str += ' 1'
+        if Y:
+            send_str += ' 2'
+        if Z:
+            send_str += ' 3'
+        if A:
+            send_str += ' 4'
+        if B:
+            send_str += ' 5'
+
+        self.writeLineUTF(send_str)
+
+        #Wait for completion for 10 sec
+        if not self.commandWaitDone(10):
+            print('homing error')
+            retval = False
+        else:
+            self.machine.homed = [X, Y, Z, A, B]
+            retval = True
+
+        self.modeSwitchWait(self.machine.popState())
+        return retval
 
     def getProgramStatus(self):
         self.writeLineUTF('get program_status')
@@ -280,9 +327,6 @@ class MachineController(threading.Thread):
             if self.machine.binary_mode:
                 print('disabling binary')
                 self.setBinaryMode(0)
-                #self.setMDIMode()
-                #self.setMDILine('G68')
-                #self.setAutoMode()
                 self.setMachineMode('auto')
                 self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) +
                                   ' ' + str(sub_sample_rate) + ' ' + str(buffer_size) +
@@ -290,33 +334,12 @@ class MachineController(threading.Thread):
                 self.setBinaryMode(1)
                 self.machine.logging_mode = not(self.machine.logging_mode)
             else:
-                #self.setMDIMode()
-                #self.setMDILine('G68')
-                #self.setAutoMode()
                 self.setMachineMode('auto')
                 self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) +
                                   ' ' + str(sub_sample_rate) + ' ' + str(buffer_size) +
                                   ' ' + str(dump_flag) + ' ' + str(write_buffer))
                 self.machine.logging_mode = not (self.machine.logging_mode)
             print('logging mode ' + str(int(self.machine.logging_mode)))
-
-    # def setLogging(self, flag):
-    #     if flag != self.loggingMode:
-    #         # Need to toggle logging mode
-    #         if self.binaryMode:
-    #             print('disabling binary')
-    #             self.setBinaryMode(0)
-    #             self.setMDIMode()
-    #             self.setMDILine('G68')
-    #             self.setAutoMode()
-    #             self.setBinaryMode(1)
-    #             self.loggingMode = not(self.loggingMode)
-    #         else:
-    #             self.setMDIMode()
-    #             self.setMDILine('G68')
-    #             self.setAutoMode()
-    #             self.loggingMode = not(self.loggingMode)
-    #     print('logging mode ' + str(int(self.loggingMode)))
 
     def setMachineUnits(self,units):
         sendstr = 'set units '
@@ -341,24 +364,24 @@ class MachineController(threading.Thread):
             sendstr += 'off'
         self.writeLineUTF(sendstr)
 
-    def setHome(self, fX, fY, fZ, fA, fB):
-        self.saveState()
-        self.setManualMode()
-        sendstr = 'set home '
-        if fX:
-            sendstr = sendstr + '0 '
-        if fY:
-            sendstr = sendstr + '1 '
-        if fZ:
-            sendstr = sendstr + '2 '
-        if fA:
-            sendstr = sendstr + '3 '
-        if fB:
-            sendstr = sendstr + '4 '
-        self.writeLineUTF(sendstr)
+    # def setHome(self, fX, fY, fZ, fA, fB):
+    #     self.saveState()
+    #     self.setManualMode()
+    #     sendstr = 'set home '
+    #     if fX:
+    #         sendstr = sendstr + '0 '
+    #     if fY:
+    #         sendstr = sendstr + '1 '
+    #     if fZ:
+    #         sendstr = sendstr + '2 '
+    #     if fA:
+    #         sendstr = sendstr + '3 '
+    #     if fB:
+    #         sendstr = sendstr + '4 '
+    #     self.writeLineUTF(sendstr)
 
     ### Control Functions ###
-    def MDICommandWaitDone(self, timeout=2):
+    def commandWaitDone(self, timeout=2):
         start_time = time.time()
         while (time.time() - start_time) < timeout:
             self.getProgramStatus()
@@ -416,32 +439,32 @@ class MachineController(threading.Thread):
         #self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
         #return self.commanded_points
 
-    def padAndFormatAxisPoints(self, points, polylines, blocklength):
-        # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
-        pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
-                                constant_values=points[-1])
-        shape_points = pad_points.reshape((-1, blocklength), order='C')
-        # print(shape_points.shape)
-        return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
-                      constant_values=shape_points[-1, -1])
-
-    def importAxisPoints(self, file, polylines, blocklength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-        return self.padAndFormatAxisPoints(points, polylines, blocklength)
-
-    def importAxesPoints(self, file, polylines, blocklength):
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
-        axis_coords = []
-        for axis in range(points.shape[1]):
-            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
-        return np.asarray(axis_coords).transpose(1, 2, 0)
-
-    def formatPoints(self, points, polylines, block_length):
-        axis_coords = []
-        #FIXME fix if not divisible by polylines*blocklength
-        for axis in range(points.shape[1]):
-            axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
-        return np.asarray(axis_coords).transpose(1, 2, 0)
+    # def padAndFormatAxisPoints(self, points, polylines, blocklength):
+    #     # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
+    #     pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
+    #                             constant_values=points[-1])
+    #     shape_points = pad_points.reshape((-1, blocklength), order='C')
+    #     # print(shape_points.shape)
+    #     return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
+    #                   constant_values=shape_points[-1, -1])
+    #
+    # def importAxisPoints(self, file, polylines, blocklength):
+    #     points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
+    #     return self.padAndFormatAxisPoints(points, polylines, blocklength)
+    #
+    # def importAxesPoints(self, file, polylines, blocklength):
+    #     points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
+    #     axis_coords = []
+    #     for axis in range(points.shape[1]):
+    #         axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
+    #     return np.asarray(axis_coords).transpose(1, 2, 0)
+    #
+    # def formatPoints(self, points, polylines, block_length):
+    #     axis_coords = []
+    #     #FIXME fix if not divisible by polylines*blocklength
+    #     for axis in range(points.shape[1]):
+    #         axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
+    #     return np.asarray(axis_coords).transpose(1, 2, 0)
 
     # def commandPoints(self,points,polylines,blocklength,commands_to_send):
     #     # X = self.importAxisPoints(Xpts,polylines,blocklength)
@@ -567,9 +590,20 @@ class MachineController(threading.Thread):
     # #     return np.asarray(coords)
 
     ## Trajectory Generation
+    def generateHoldPosition(self, hold_time=1,X=np.nan,Y=np.nan,Z=np.nan,A=np.nan,B=np.nan):
+        if np.isnan(X) or np.isnan(Y) or np.isnan(Z) or np.isnan(A) or np.isnan(B):
+            position_to_hold = self.machine.current_position
+        else:
+            position_to_hold = np.array([X,Y,Z,A,B])
+
+        joint_position_samples = np.zeros([np.clip(int(np.round(hold_time/self.machine.servo_dt)),1,np.inf), int(self.machine.num_joints)]) + position_to_hold
+        return joint_position_samples
+
     def generateMove(self, end_points, start_points = -1, move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
         #FIXME check for out of limit move generation
-        #FIXME return 0 if move_vector == 0
+        if any(end_points[k] < self.machine.limits[k][1] for k in range(1,len(end_points))) or any(end_points[k] > self.machine.limits[k][2] for k in range(1,len(end_points))):
+            print('move exceeds bounds')
+            return self.generateHoldPosition(0)
 
         #Handle arguments
         if start_points == -1:
@@ -578,7 +612,8 @@ class MachineController(threading.Thread):
             max_joint_velocities = self.machine.max_joint_velocity
         if max_joint_accelerations == -1:
             max_joint_accelerations = self.machine.max_joint_acceleration
-
+        print('starting move from ')
+        print(self.machine.current_position)
         #FIXME add capability to scale move velocity
         #Trapezoidal velocity profile generation
         #USAGE:
@@ -591,6 +626,12 @@ class MachineController(threading.Thread):
 
         if move_type == 'trapezoidal':
             move_vector = (np.asarray(end_points) - np.asarray(start_points))
+            if not move_vector.all():
+                # FIXME return 0 if move_vector == 0
+                #Null move
+                print('move is null')
+                return self.generateHoldPosition(0)
+
             move_direction = np.sign(move_vector)
             #Check if we can reach cruise for each joint
             max_move_velocity = np.zeros([1,self.machine.num_joints])[0]

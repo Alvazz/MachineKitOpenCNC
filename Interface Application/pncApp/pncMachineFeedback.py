@@ -136,7 +136,7 @@ class MachineFeedbackListener(threading.Thread):
         record = dict()
         record['machine_clock_times'] = machine_clock_times
         record['stepgen_feedback_positions'] = stepgen_feedback_positions
-        print('logging position feedback')
+        #print('logging position feedback')
         # if '0: tc' in data_string:
         #     parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', data_string)
         #     if parsed_string:
@@ -237,9 +237,10 @@ class SerialInterface(threading.Thread):
 
         except IOError:  # if port is already opened, close it and open it again and print message
             print('excepting')
-            self.serialPort.close()
-            self.serialPort.open()
-            print("port was already open, was closed and opened again!")
+            #self.serialPort.close()
+            #self.serialPort.open()
+            #print("port was already open, was closed and opened again!")
+            print('port does not exist')
 #        try:
 #            self.serialPort = serial.Serial('COM12', 115200)
         #except:
@@ -299,7 +300,7 @@ class SerialInterface(threading.Thread):
         #time.sleep(0.1)
         while self._running:
             #serialLock.acquire()
-            print('running')
+            #print('running')
             counts = self.requestEncoderCount()
             #time.sleep(0.1)
             #print(counts)
