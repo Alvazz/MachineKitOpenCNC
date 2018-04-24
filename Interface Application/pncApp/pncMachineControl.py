@@ -27,6 +27,14 @@ class Move():
         self.serial_number = -1
         self.point_samples = point_samples
 
+        ## To be populated when move is inserted into MotionController queue
+        self.servo_tx_array = -1
+        self.polylines = -1
+        self.blocklength = -1
+
+        self.start_points = np.array([],dtype=float)
+        self.end_points = np.array([],dtype=float)
+
 class MotionController(threading.Thread):
     def __init__(self, machine_controller, machine):
         super(MotionController, self).__init__()
@@ -37,22 +45,35 @@ class MotionController(threading.Thread):
         self.last_move_serial_number = 0
 
         ### Network control parameters
-        self.polylines_per_tx = 1
-        self.points_per_polyline = 25
+        self.polylines = self.machine.polylines_per_tx
+        self.blocklength = self.machine.points_per_polyline
 
     def run(self):
         while True:
             #FIFO for point arrays. Initialize as length 0 with last_move_serial_number of -1
             if len(self.move_queue) > self.last_move_serial_number and len(self.move_queue) > 0:
                 print('length of move queue is ' + str(len(self.move_queue)))
+
+                #Prepare for direct control
+                self.machine_controller.readyMachine()
+                if not self.machine_controller.checkMachineReady(2):
+                    # Ensure machine ready to control
+                    print('machine wasn''t ready in timeout period, aborting...')
+                    return
+                self.machine_controller.setBinaryMode(1)
+                current_queue_length = len(self.move_queue)
                 #There are new moves in the queue, find the one to be executed next
                 #self.point_buffer[self.last_move_serial_number + 1].serial_number = self.last_move_serial_number + 1
-                move_to_execute = self.move_queue[self.last_move_serial_number + 1 - 1]
-                print('executing move ' + str(move_to_execute.serial_number))
-                while not self.commandPoints(move_to_execute.point_samples,self.polylines_per_tx,self.points_per_polyline,-1):
-                    pass
-                self.last_move_serial_number = move_to_execute.serial_number
-                print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
+                ## FIXME make while loop?
+                for move_queue_position in range(self.last_move_serial_number,current_queue_length):
+                    move_to_execute = self.move_queue[self.last_move_serial_number + 1 - 1]
+                    print('executing move ' + str(move_to_execute.serial_number))
+                    while not self.commandPoints(move_to_execute.servo_tx_array,self.polylines,self.blocklength,-1):
+                        pass
+                    self.last_move_serial_number = move_to_execute.serial_number
+                    print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
+
+                self.machine_controller.setBinaryMode(0)
 
                 #self.point_buffer[-1].serial_number = self.last_move_serial_number + 1
                 #self.last_move_serial_number = self.point_buffer[-1].serial_number
@@ -77,30 +98,36 @@ class MotionController(threading.Thread):
     #     while not self.commandPoints(self.machine_controller.generateMove([0.5, -0.5, 0, 0, 0]), 2, 25, -1):
     #         pass
 
-    def insertMove(self, move):
-        move.serial_number = len(self.move_queue) + 1
-        self.move_queue.append(move)
-        print('the move queue is now: ')
-        print(self.move_queue)
+    # def insertMove(self, move):
+    #     move.serial_number = len(self.move_queue) + 1
+    #     #Populate parameters of the move
+    #     move.polylines = self.polylines
+    #     move.blocklength = self.blocklength
+    #     move.servo_tx_array = self.machine_controller.formatPoints(move.point_samples, move.polylines, move.blocklength)
+    #
+    #     self.move_queue.append(move)
+    #     print('the move queue is now: ')
+    #     print(self.move_queue)
 
-    def commandPoints(self, points, polylines, blocklength, commands_to_send):
-        axis_coords = self.machine_controller.formatPoints(points, polylines, blocklength)
+    def commandPoints(self, servo_points, polylines, blocklength, commands_to_send = -1):
+        #axis_coords = self.machine_controller.formatPoints(points, polylines, blocklength)
+        #servo_points = points
         # = data_to_send
 
         # Store imported axis points in data repository
-        self.machine_controller.data_store.imported_axes_points = axis_coords
+        self.machine_controller.data_store.current_servo_points = servo_points
 
-        self.machine_controller.readyMachine()
-        if not self.machine_controller.checkMachineReady(2):
-            # Ensure machine ready to control
-            print('machine wasn''t ready in timeout period, aborting...')
-            return
+        # self.machine_controller.readyMachine()
+        # if not self.machine_controller.checkMachineReady(2):
+        #     # Ensure machine ready to control
+        #     print('machine wasn''t ready in timeout period, aborting...')
+        #     return
 
-        self.machine_controller.setBinaryMode(1)
+        #self.machine_controller.setBinaryMode(1)
 
         if commands_to_send == -1:
             print("sending all 2")
-            commands_to_send = int(axis_coords.shape[0] / polylines)
+            commands_to_send = int(servo_points.shape[0] / polylines)
             print(commands_to_send)
 
         #Form binary command string
@@ -110,27 +137,27 @@ class MotionController(threading.Thread):
             frame.extend(self.machine_controller.convertInt2Bin(blocklength))
             for polyLine in range(0, polylines):
                 # print(command)
-                for axis in range(0, axis_coords.shape[2]):
+                for axis in range(0, servo_points.shape[2]):
                     # if axis <= 2:
                     #     scale = scale_translational
                     # else:
                     #     scale = 1
-                    for point in range(0, axis_coords.shape[1]):
+                    for point in range(0, servo_points.shape[1]):
                         frame.extend(self.machine_controller.convertFloat2Bin(
-                            axis_coords[(command * polylines) + polyLine, point, axis]))
+                            servo_points[(command * polylines) + polyLine, point, axis]))
                         # print(axisCoords[(command*polylines)+polyLine,point,axis]*scale)
 
             frame.extend(struct.pack('!f', np.inf))
             self.machine_controller.rsh_socket.send(frame)
 
             ## FIXME store current position from feedback thread
-            self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.num_joints])[0]
+            #self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.num_joints])[0]
 
             sleep_time = self.runNetworkPID(self.machine_controller.rsh_buffer_length, blocklength, polylines, 1000)
             # print(sleep_time, self.rsh_buffer_length)
             time.sleep(sleep_time)
 
-        self.machine_controller.setBinaryMode(0)
+        #self.machine_controller.setBinaryMode(0)
         return True
 
     def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.02, Ki=0,
@@ -165,11 +192,29 @@ class MachineController(threading.Thread):
         self.rsh_socket.shutdown(socket.SHUT_RDWR)
         self.rsh_socket.close()
 
+    ######################## Motion Controller Interface ########################
+    def insertMove(self, move):
+        move.serial_number = len(self.motion_controller.move_queue) + 1
+        # Populate parameters of the move
+        move.polylines = self.motion_controller.polylines
+        move.blocklength = self.motion_controller.blocklength
+        move.servo_tx_array = self.formatPoints(move.point_samples, move.polylines, move.blocklength)
+
+        self.motion_controller.move_queue.append(move)
+        print('the move queue is now: ')
+        print(self.motion_controller.move_queue)
+
     def testMachine(self,X,Y,Z,A,B):
-        points = self.generateMove([X, Y, Z, A, B])
+        hold_points = self.generateHoldPosition(1)
+        #points = self.generateMove([X, Y, Z, A, B])
         #points = self.generateHoldPosition(5)
-        linear_move_1 = Move(points)
-        self.motion_controller.insertMove(linear_move_1)
+        self.insertMove(Move(hold_points))
+        self.insertMove(Move(self.generateMove([-1, -1, 0, 0, 0])))
+        #for i in range(0,10):
+        self.insertMove(Move(self.generateMove([1,1,-1,50,50],[-1, -1, 0, 0, 0])))
+        self.insertMove(Move(self.generateMove([-1, -1, 0, 0, 0],[1,1,-1,50,50])))
+        #linear_move_1 = Move(points)
+        #self.insertMove(linear_move_1)
 
     #def testMachine(self):
         # while not self.motion_controller.commandPoints(self.generateMove([-0.5, 0.5, 0, 50, 0]), 2, 25, -1):
@@ -315,6 +360,8 @@ class MachineController(threading.Thread):
         self.writeLineUTF(sendstr)
 
     def setLogging(self, flag, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
+        ## FIXME confirm logging actually set up before changing state machine
+        ## FIXME sync clocks here
         if not sub_sample_rate:
             sub_sample_rate = self.machine.servo_log_sub_sample_rate
         if not buffer_size:
@@ -340,6 +387,14 @@ class MachineController(threading.Thread):
                                   ' ' + str(dump_flag) + ' ' + str(write_buffer))
                 self.machine.logging_mode = not (self.machine.logging_mode)
             print('logging mode ' + str(int(self.machine.logging_mode)))
+
+    def getLogging(self):
+        #FIXME write this to get servo logging parameters
+        self.writeLineUTF('get servo_log_params')
+
+    def waitForSet(self,set_function,set_params,get_function):
+        # FIXME something here like commandWaitDone that will take a function handle as an argument
+        pass
 
     def setMachineUnits(self,units):
         sendstr = 'set units '
@@ -435,173 +490,22 @@ class MachineController(threading.Thread):
     def resetMachine(self, timeout = 2):
         #self.setEstop(0)
         self.setDrivePower(1)
-    #def loadPoints(self, points_file, polylines, blocklength):
-        #self.commanded_points = self.importAxesPoints(points_file, polylines, blocklength)
-        #return self.commanded_points
 
-    # def padAndFormatAxisPoints(self, points, polylines, blocklength):
-    #     # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
-    #     pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
-    #                             constant_values=points[-1])
-    #     shape_points = pad_points.reshape((-1, blocklength), order='C')
-    #     # print(shape_points.shape)
-    #     return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
-    #                   constant_values=shape_points[-1, -1])
-    #
-    # def importAxisPoints(self, file, polylines, blocklength):
-    #     points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-    #     return self.padAndFormatAxisPoints(points, polylines, blocklength)
-    #
-    # def importAxesPoints(self, file, polylines, blocklength):
-    #     points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
-    #     axis_coords = []
-    #     for axis in range(points.shape[1]):
-    #         axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
-    #     return np.asarray(axis_coords).transpose(1, 2, 0)
-    #
-    # def formatPoints(self, points, polylines, block_length):
-    #     axis_coords = []
-    #     #FIXME fix if not divisible by polylines*blocklength
-    #     for axis in range(points.shape[1]):
-    #         axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
-    #     return np.asarray(axis_coords).transpose(1, 2, 0)
+    ######################## Trajectory Generation ########################
+    ## FIXME only allow movement generation when logging is enabled?
 
-    # def commandPoints(self,points,polylines,blocklength,commands_to_send):
-    #     # X = self.importAxisPoints(Xpts,polylines,blocklength)
-    #     # Y = self.importAxisPoints(Ypts,polylines,blocklength)
-    #     # Z = self.importAxisPoints(Zpts,polylines,blocklength)
-    #     # A = self.importAxisPoints(Apts,polylines,blocklength)
-    #     # B = self.importAxisPoints(Bpts,polylines,blocklength)
-    #     # axisCoords = np.stack((X,Y,Z,30+np.zeros_like(A),1+np.zeros_like(B)),axis=2)
-    #
-    #     #a = self.importAxesPoints(points_file,polylines,blocklength)
-    #     #print(a)
-    #     #(X, Y, Z, A, B) = self.importAxesPoints(points_file,polylines,blocklength)
-    #
-    #     #axisCoords = self.importAxesPoints(points_file,polylines,blocklength)
-    #     # data_to_send = self.formatPoints(
-    #     #     self.generateMove([0,0,0,0,0],[point,point,-point,point,point],10),
-    #     #     polylines, blocklength)
-    #
-    #     data_to_send = self.formatPoints(points, polylines, blocklength)
-    #
-    #     axisCoords = data_to_send
-    #
-    #     #Store imported axis points in data repository
-    #     self.data_store.imported_axes_points = axisCoords
-    #     #self.data_store.flattened_imported_axes_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
-    #
-    #     #axisCoords[:,:,2] = axisCoords[:,:,2] + 1
-    #
-    #     #axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-		# #axisCoords = np.stack((X,Y,Z,A,B),axis=2)
-    #     #print(axisCoords)
-    #
-    #     #axisCoords = self.loadPoints(points_file, polylines, blocklength)
-    #     #print(axisCoords)
-    #     #axisCoords[:,:,:3] = -0.5 * np.ones_like(axisCoords[:,:,:3])
-    #     #axisCoords[:,:,3:] = np.zeros_like(axisCoords[:,:,3:])
-    #
-    #     if self.machine.units == 'mm':
-    #         scale_translational = 25.4
-    #     else:
-    #         scale_translational = 1.0
-    #     scale_translational = 5.0/25.4
-    #     scale_translational = 1
-    #
-    #     self.resetMachine()
-    #     retval = self.resetPosition(axisCoords[0][0][0],
-    #                        axisCoords[0][0][1],
-    #                        axisCoords[0][0][2],
-    #                        axisCoords[0][0][3],axisCoords[0][0][4],20)
-    #     if not retval:
-    #         print("start position error, exiting...")
-    #         return
-    #
-    #     print(axisCoords[0][0][0]*scale_translational,axisCoords[0][0][1]*scale_translational,axisCoords[0][0][2]*scale_translational,axisCoords[0][0][3],axisCoords[0][0][4])
-    #
-    #     #self.MDICommandWaitDone(5)
-    #     #self.setManualMode()
-    #     #self.modeSwitchWait('manual')
-    #     #time.sleep(1)
-    #     #self.setAutoMode()
-    #     #self.modeSwitchWait('auto')
-    #     #time.sleep(1)
-    #     #time.sleep(1)
-    #     self.readyMachine()
-    #     if not self.checkMachineReady(2):
-    #         #Ensure machine ready to control
-    #         print('machine wasn''t ready in timeout period, aborting...')
-    #         return
-    #
-    #     self.setBinaryMode(1)
-    #
-    #     if commands_to_send == -1:
-    #         print("sending all 2")
-    #         commands_to_send = int(axisCoords.shape[0]/polylines)
-    #         print(commands_to_send)
-    #
-    #     for command in range(0,commands_to_send):
-    #         frame = bytearray()
-    #         frame.extend(self.convertInt2Bin(polylines))
-    #         frame.extend(self.convertInt2Bin(blocklength))
-    #         for polyLine in range(0,polylines):
-    #             #print(command)
-    #             for axis in range(0,axisCoords.shape[2]):
-    #                 if axis <= 2:
-    #                     scale = scale_translational
-    #                 else:
-    #                     scale = 1
-    #                 for point in range(0,axisCoords.shape[1]):
-    #                     frame.extend(self.convertFloat2Bin(axisCoords[(command*polylines)+polyLine,point,axis]*scale))
-    #                     #print(axisCoords[(command*polylines)+polyLine,point,axis]*scale)
-    #
-    #         frame.extend(struct.pack('!f',np.inf))
-    #         self.conn.send(frame)
-    #
-    #         self.machine.current_position = np.reshape(axisCoords[-1,-1,:],[1,self.machine.num_joints])[0]
-    #
-    #         sleep_time = self.runNetworkPID(self.rsh_buffer_length,blocklength,polylines,1000)
-    #         #print(sleep_time, self.rsh_buffer_length)
-    #         time.sleep(sleep_time)
-    #
-    #     self.setBinaryMode(0)
-    #
-    #
-    #     #Write out imported points and RSH feedback
-    #     #flattened_points = self.data_store.imported_axes_points.reshape(commands_to_send*blocklength,axisCoords.shape[2])
-    #     #np.savetxt("imported_points.csv",flattened_points,delimiter=",")
-    #     #np.savetxt("buffer_level.csv",self.data_store.highres_tc_queue_length, delimiter=",")
-    #     #self.resetPosition()
-    #
-    # def runNetworkPID(self,current_buffer_length,block_length,polylines,set_point_buffer_length,Kp=.01,Ki=0,Kd=0):
-    #     #sleepTime = (blockLength*polyLines)/1000 - (Kp*((1000-self.rshQueueData[-1])))/1000
-    #     sleep_time = max((block_length*polylines)/1000 - (Kp*((set_point_buffer_length-current_buffer_length)))/1000,0)
-    #     return sleep_time
-    #
-    # # def formatPoints(self,filename,blocklen):
-    # #     print('formatting points')
-    # #     pts = np.loadtxt(filename)/25.4;
-    # #     # Pad with zeros to make array length correct
-    # #     pts = np.pad(pts, [(0,(blocklen - pts.shape[0]) % blocklen),(0,0)], 'edge');
-    # #     coords = [np.reshape(pts[:,index],(-1,blocklen)) for index in np.arange(0,3)]
-    # #     coords.append(90 * np.ones_like(coords[0]))
-    # #     coords.append(np.zeros_like(coords[0]))
-    # #     return np.asarray(coords)
-
-    ## Trajectory Generation
     def generateHoldPosition(self, hold_time=1,X=np.nan,Y=np.nan,Z=np.nan,A=np.nan,B=np.nan):
         if np.isnan(X) or np.isnan(Y) or np.isnan(Z) or np.isnan(A) or np.isnan(B):
             position_to_hold = self.machine.current_position
         else:
             position_to_hold = np.array([X,Y,Z,A,B])
 
-        joint_position_samples = np.zeros([np.clip(int(np.round(hold_time/self.machine.servo_dt)),1,np.inf), int(self.machine.num_joints)]) + position_to_hold
+        joint_position_samples = np.zeros([int(np.clip(np.round(hold_time/self.machine.servo_dt),1,np.inf)), int(self.machine.num_joints)]) + position_to_hold
         return joint_position_samples
 
     def generateMove(self, end_points, start_points = -1, move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
         #FIXME check for out of limit move generation
-        if any(end_points[k] < self.machine.limits[k][1] for k in range(1,len(end_points))) or any(end_points[k] > self.machine.limits[k][2] for k in range(1,len(end_points))):
+        if any(end_points[k] < self.machine.limits[k][0] for k in range(0,len(end_points))) or any(end_points[k] > self.machine.limits[k][1] for k in range(0,len(end_points))):
             print('move exceeds bounds')
             return self.generateHoldPosition(0)
 
@@ -613,7 +517,7 @@ class MachineController(threading.Thread):
         if max_joint_accelerations == -1:
             max_joint_accelerations = self.machine.max_joint_acceleration
         print('starting move from ')
-        print(self.machine.current_position)
+        print(start_points)
         #FIXME add capability to scale move velocity
         #Trapezoidal velocity profile generation
         #USAGE:
@@ -626,11 +530,11 @@ class MachineController(threading.Thread):
 
         if move_type == 'trapezoidal':
             move_vector = (np.asarray(end_points) - np.asarray(start_points))
-            if not move_vector.all():
+            if not np.count_nonzero(move_vector):
                 # FIXME return 0 if move_vector == 0
                 #Null move
                 print('move is null')
-                return self.generateHoldPosition(0)
+                return self.generateHoldPosition(0.0)
 
             move_direction = np.sign(move_vector)
             #Check if we can reach cruise for each joint

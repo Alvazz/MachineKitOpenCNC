@@ -12,6 +12,7 @@ class MachineModel():
         #Stepgen calibration
         self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
         self.axis_offsets = [-2.5, -2.5, -0.1, 0.0, 0.0]
+        self.axis_offsets = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.table_zero = [-2.55023, 0.00002, -0.0003, -0.03703, 360.03]
         self.table_zero = [0.00087, 0.00002, -0.00234, 0.227, 360.003]
         self.table_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
@@ -57,6 +58,10 @@ class MachineModel():
         self.servo_log_sub_sample_rate = 10
         self.servo_log_buffer_size = 50
 
+        #TCP Control Parameters
+        self.polylines_per_tx = 1
+        self.points_per_polyline = 25
+
         #Motion State Machine
         self.current_position = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.current_velocity = [0, 0, 0, 0, 0]
@@ -65,6 +70,9 @@ class MachineModel():
 
         #State stack
         self.prev_mode = self.modes[0]
+
+        #SculptPrint Data Format
+        #self.SP_data_format = ['X','Z','S','Y','A','B','V','W']
 
     ######################## State Machine ########################
     def pushState(self):

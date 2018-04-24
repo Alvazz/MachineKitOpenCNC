@@ -1,8 +1,8 @@
 import socket
-import threading
+import threading, time
 import re
 import numpy as np
-import serial, math, time, sys, select
+import serial, math, sys, select
 
 global machine
 
@@ -25,6 +25,8 @@ class MachineFeedbackListener(threading.Thread):
             # Process feedback from EMCRSH
             data_available = select.select([self.rsh_socket], [], [], 0.5)
             if data_available[0]:
+                #Clock when these data were received
+                rx_received_time = time.clock()
                 string_received = self.rsh_socket.recv(65536).decode("utf-8")
                 complete_data_string = ''
                 if '\n' in string_received or '\r' in string_received:
@@ -39,11 +41,14 @@ class MachineFeedbackListener(threading.Thread):
                         #print('going through the split received strings.')
                         #print(string)
                         if string:
-                            self.processRSHString(string.strip())
+                            self.processRSHString(string.strip(),rx_received_time)
                     #data_to_process = self.received_data_string + split_received_string[0]
                     #complete_data_string = self.received_data_string + split_received_string[0]
                     #print('complete data string ' + complete_data_string + '\n')
                     #self.received_data_string = ''.join(split_received_string[1:])
+                    if len(self.received_data_string) > 0:
+                        print('had incomplete data, parsed ')
+                        print(split_received_strings)
                     self.received_data_string = ''
                 elif string_received:
                     #Incomplete data received
@@ -60,7 +65,7 @@ class MachineFeedbackListener(threading.Thread):
         #self.rsyslog_socket.shutdown(socket.SHUT_RDWR)
         #self.rsyslog_socket.close()
 
-    def processRSHString(self, data_string):
+    def processRSHString(self, data_string,rx_received_time):
         if any(s in data_string for s in self.machine.rsh_feedback_strings):
             # Check for error first
             if self.machine.rsh_feedback_strings[-1] in data_string:
@@ -70,10 +75,11 @@ class MachineFeedbackListener(threading.Thread):
             if self.machine.rsh_feedback_strings[0] in data_string:
                 #Position feedback
                 #print('processing position feedback with data string: ' + data_string)
-                self.processPositionFeedback(data_string)
+                self.machine.logging_mode = 1
+                self.processPositionFeedback(data_string,rx_received_time)
             elif self.machine.rsh_feedback_strings[1] in data_string:
                 # Buffer Length
-                self.processBLFeedback(data_string)
+                self.processBLFeedback(data_string,rx_received_time)
             elif self.machine.rsh_feedback_strings[2] in data_string:
                 # Program Status
                 print('program status')
@@ -107,35 +113,57 @@ class MachineFeedbackListener(threading.Thread):
         #         self.machine.mode = complete_data_string.split(' ')[1].strip()
         #         print('set machine mode to ' + self.machine.mode)
 
-    def processBLFeedback(self, data_string):
+    def processBLFeedback(self, data_string, rx_received_time):
         #print('trying to parse buffer level feedback string: ' + data_string)
+        #rx_received_time = time.clock()
         m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)', data_string)
         self.rsh_buffer_length = int(m.group(1))
-        self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
-
-    def processPositionFeedback(self, data_string):
-        machine_feedback_records = []
-        samples = data_string.strip('*').strip('|').split('*')
-        #samples = data_string.split('*')[1:-1]
-        feedback_num_points = len(samples)
-        #print('the samples are:: ')
-        #print(samples)
-        #print('the number of points is ' + str(feedback_num_points))
-
-        stepgen_feedback_positions = np.zeros([feedback_num_points,self.machine.servo_log_num_axes])
-        machine_clock_times = np.zeros([1,feedback_num_points])
-        for sample_num in range(0,feedback_num_points):
-            sample = samples[sample_num].strip('|').split('|')
-            machine_clock_times[0,sample_num] = float(sample[0])
-            #print('the sample is: ')
-            #print(sample)
-            #print(stepgen_feedback_positions)
-            stepgen_feedback_positions[sample_num,:] = np.asarray([float(s) for s in sample[1:]])+np.asarray(self.machine.axis_offsets)
-            #np.vstack((stepgen_feedback_positions, sample.split('|')[1:-1]))
-
+        #self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
         record = dict()
-        record['machine_clock_times'] = machine_clock_times
-        record['stepgen_feedback_positions'] = stepgen_feedback_positions
+        record['highres_tcq_length'] = self.rsh_buffer_length
+        record['highfreq_ethernet_received_times'] = rx_received_time
+        self.data_store.appendMachineFeedbackRecords([record])
+
+    def processPositionFeedback(self, data_string, rx_received_time):
+        try:
+            machine_feedback_records = []
+            samples = data_string.strip('*').strip('|').split('*')
+            #samples = data_string.split('*')[1:-1]
+            feedback_num_points = len(samples)
+            #print('the samples are:: ')
+            #print(samples)
+            #print('the number of points is ' + str(feedback_num_points))
+
+            ## FIXME why are these not all column vectors?
+            stepgen_feedback_positions = np.zeros([feedback_num_points,self.machine.servo_log_num_axes])
+            machine_clock_times = np.zeros([feedback_num_points,1])
+            received_times_interpolated = np.zeros([feedback_num_points, 1])
+            RTAPI_feedback_indices = np.zeros([feedback_num_points, 1])
+
+            #rx_received_time = time.clock()
+            for sample_num in range(0,feedback_num_points):
+                sample = samples[sample_num].strip('|').split('|')
+                RTAPI_feedback_indices[sample_num, :] = float(sample_num)
+                machine_clock_times[sample_num,:] = float(sample[0])
+                #print('the sample is: ')
+                #print(sample)
+                #print(stepgen_feedback_positions)
+                stepgen_feedback_positions[sample_num,:] = np.asarray([float(s) for s in sample[1:]])+np.asarray(self.machine.axis_offsets)
+                ## FIXME use clock delta between samples instead of straight interpolation
+                #received_times_interpolated[sample_num,:] = np.hstack([float(sample_num), rx_received_time + self.machine.servo_dt*float(sample_num)])
+                ## FIXME if you are going to interpolate, at least do it with the subsample rate...
+                received_times_interpolated[sample_num, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_num)
+
+                #np.vstack((stepgen_feedback_positions, sample.split('|')[1:-1]))
+
+            record = dict()
+            record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+            record['machine_clock_times'] = machine_clock_times
+            record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            record['lowfreq_ethernet_received_times'] = received_times_interpolated
+        except:
+            print('had error processing feedback string. The data string is: ' + data_string)
+
         #print('logging position feedback')
         # if '0: tc' in data_string:
         #     parsed_string = re.search('tcqLen(.+?)T(.+?)dC(.+?):(.+)', data_string)
@@ -302,11 +330,13 @@ class SerialInterface(threading.Thread):
             #serialLock.acquire()
             #print('running')
             counts = self.requestEncoderCount()
+
             #time.sleep(0.1)
             #print(counts)
 
             #if line and str.isnumeric(axisCounts[0]):
             if 'C&' in counts:
+                rx_received_time = time.clock()
                 record = dict()
                 counts = counts.split(' ')[0:-1]
                 #print(axisCounts[0], axisCounts[1])
@@ -318,8 +348,10 @@ class SerialInterface(threading.Thread):
 
                 # Create feedback record that respects encoder calibration
                 #record['encoder_feedback_positions'] = np.multiply(encoder_counts-self.machine.encoder_init,self.machine.encoder_scale) + self.machine.encoder_offset
+                ## FIXME add encoder scaling function
                 record['encoder_feedback_positions'] = np.multiply(encoder_counts - self.machine.encoder_init,
                                                                    self.machine.encoder_scale) + self.machine.machine_zero
+                record['serial_received_times'] = rx_received_time
                 #machine_feedback_records.append(record)
                 self.data_store.appendMachineFeedbackRecords([record])
                 print(record['encoder_feedback_positions'])
