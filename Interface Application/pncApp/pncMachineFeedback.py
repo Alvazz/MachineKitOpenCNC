@@ -138,12 +138,15 @@ class MachineFeedbackListener(threading.Thread):
             stepgen_feedback_positions = np.zeros([feedback_num_points,self.machine.servo_log_num_axes])
             machine_clock_times = np.zeros([feedback_num_points,1])
             received_times_interpolated = np.zeros([feedback_num_points, 1])
-            RTAPI_feedback_indices = np.zeros([feedback_num_points, 1])
+            if len(self.data_store.RTAPI_feedback_indices) != 0:
+                RTAPI_feedback_indices = np.zeros([feedback_num_points, 1]) + self.data_store.RTAPI_feedback_indices[-1] + 1
+            else:
+                RTAPI_feedback_indices = np.zeros([feedback_num_points, 1])
 
             #rx_received_time = time.clock()
             for sample_num in range(0,feedback_num_points):
                 sample = samples[sample_num].strip('|').split('|')
-                RTAPI_feedback_indices[sample_num, :] = float(sample_num)
+                RTAPI_feedback_indices[sample_num, :] += float(sample_num)
                 machine_clock_times[sample_num,:] = float(sample[0])
                 #print('the sample is: ')
                 #print(sample)

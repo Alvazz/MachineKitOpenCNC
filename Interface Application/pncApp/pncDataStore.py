@@ -21,27 +21,41 @@ class DataStore():
 
         ### DATA STORES ###
         #Timers -- time_delta - 1 for each record, times_interpolated 
-        self.machine_time_delta = np.zeros(1,dtype=float)
-        self.machine_clock_times = np.zeros(1,dtype=float)
-        self.machine_times_interpolated = np.zeros(1,dtype=float)
+        #self.machine_time_delta = np.zeros(1,dtype=float)
+        #self.machine_clock_times = np.zeros(1,dtype=float)
+        #self.machine_times_interpolated = np.zeros(1,dtype=float)
+        self.machine_time_delta = np.empty((0,1), float)
+        self.machine_clock_times = np.empty((0,1), float)
+        self.machine_times_interpolated = np.empty((0,1), float)
+
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
-        self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
-        self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)
-        self.serial_received_times = np.zeros(1, dtype=float)
+        #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
+        self.lowfreq_ethernet_received_times = np.empty((0,1), float)
+        #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)
+        self.highfreq_ethernet_received_times = np.empty((0,1), float)
+        #self.serial_received_times = np.zeros(1, dtype=float)
+        self.serial_received_times = np.empty((0,1), float)
 
         #Buffer fill level
-        self.machine_tc_queue_length = np.zeros(1,dtype=int)
-        self.highres_tc_queue_length = np.zeros(1,dtype=int)
+        #self.machine_tc_queue_length = np.zeros(1,dtype=int)
+        #self.highres_tc_queue_length = np.zeros(1,dtype=int)
+        self.machine_tc_queue_length = np.empty((0,1), float)
+        self.highres_tc_queue_length = np.empty((0,1), float)
 
         #Positions from stepgen and encoders
-        self.commanded_joint_positions = np.zeros([1,5],dtype=float)
+        #self.commanded_joint_positions = np.zeros([1,5],dtype=float)
+        self.commanded_joint_positions = np.empty((0,5), float)
 
-        self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
+        #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
+        self.RTAPI_feedback_indices = np.empty((0,1), float)
         self.stepgen_feedback_positions = np.zeros([1,5],dtype=float)
-        self.encoder_feedback_positions = np.zeros([1,5],dtype=float)
+        #self.encoder_feedback_positions = np.zeros([1,5],dtype=float)
+        #self.stepgen_feedback_positions = np.empty((0,5), float)
+        self.encoder_feedback_positions = np.empty((0,5), float)
 
         #Thread counter
-        self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
+        #self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
+        self.rt_thread_num_executions_delta = np.empty((0,1), float)
         
         #Imported command points
         self.imported_axes_points = []
