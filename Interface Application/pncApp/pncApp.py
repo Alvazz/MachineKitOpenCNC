@@ -84,3 +84,7 @@ data_store = []
 machine_controller = []
 feedback_listener = []
 encoder_interface = []
+
+# appInit()
+# machine_controller.login()
+# machine_controller.testMachine(1,1,1,1,1)

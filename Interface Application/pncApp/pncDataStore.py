@@ -1,4 +1,6 @@
 import numpy as np
+import threading
+import queue
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -7,8 +9,32 @@ import numpy as np
 #    c) A set of n stepgen feedback positions before T
 #    d) n time values approximating when each stepgen feedback point was generated
 #    e) A snapshot of the tcq length at T
+
+class Record():
+    def __init__(self, timestamp, data):
+        self.timestamp = timestamp
+        self.data = data
+
+class DataStoreManager(threading.Thread):
+    def __init__(self, socket, machine, data_store, encoder_interface):
+        super(DataStoreManager, self).__init__()
+        self.record_queue = queue.Queue()
+        self.data_store = DataStore()
+
+        self._running = True
+
+    def run(self):
+        while self._running:
+            if not self.record_queue.empty():
+                records = self.record_queue.get()
+                self.appendMachineFeedbackRecords(records)
+
+
 class DataStore():
     def __init__(self):
+        # Thread locks
+        self.data_store_lock = threading.Lock()
+
         #Timers for each data source
         self.machine_running_time = 0
         self.encoder_running_time = 0
@@ -31,20 +57,21 @@ class DataStore():
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
         #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
         self.lowfreq_ethernet_received_times = np.empty((0,1), float)
+        self.rtapi_clock_times = np.empty((0,1), float)
         #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)
         self.highfreq_ethernet_received_times = np.empty((0,1), float)
+        self.rsh_clock_times = np.empty((0,1), float)
         #self.serial_received_times = np.zeros(1, dtype=float)
         self.serial_received_times = np.empty((0,1), float)
 
         #Buffer fill level
-        #self.machine_tc_queue_length = np.zeros(1,dtype=int)
-        #self.highres_tc_queue_length = np.zeros(1,dtype=int)
         self.machine_tc_queue_length = np.empty((0,1), float)
         self.highres_tc_queue_length = np.empty((0,1), float)
 
         #Positions from stepgen and encoders
         #self.commanded_joint_positions = np.zeros([1,5],dtype=float)
         self.commanded_joint_positions = np.empty((0,5), float)
+        self.sent_servo_commands = []
 
         #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
         self.RTAPI_feedback_indices = np.empty((0,1), float)
@@ -60,8 +87,13 @@ class DataStore():
         #Imported command points
         self.imported_axes_points = []
 
+        #Successfully executed moves
+        self.completed_moves = []
+
+    ##FIXME implement data store manager class for threadlocks, methods, etc
 
     def appendMachineFeedbackRecords(self, records):
+        self.data_store_lock.acquire()
         for record in records:
             if 'RTAPI_feedback_indices' in record:
                 self.RTAPI_feedback_indices = np.vstack((self.RTAPI_feedback_indices,record['RTAPI_feedback_indices']))
@@ -104,16 +136,26 @@ class DataStore():
             if 'lowfreq_ethernet_received_times' in record:
                 self.lowfreq_ethernet_received_times = np.vstack((self.lowfreq_ethernet_received_times, record['lowfreq_ethernet_received_times']))
 
+            if 'rtapi_clock_times' in record:
+                self.rtapi_clock_times = np.vstack((self.rtapi_clock_times,record['rtapi_clock_times']))
+
             if 'highfreq_ethernet_received_times' in record:
                 self.highfreq_ethernet_received_times = np.vstack((self.highfreq_ethernet_received_times, record['highfreq_ethernet_received_times']))
+
+            if 'rsh_clock_times' in record:
+                self.rsh_clock_times = np.vstack((self.rsh_clock_times,record['rsh_clock_times']))
 
             if 'serial_received_times' in record:
                 self.serial_received_times = np.vstack((self.serial_received_times, record['serial_received_times']))
 
+            if 'network_PID_delay' in record:
+                self.network_PID_delays = np.vstack((self.network_PID_delays, record['network_PID_delay']))
 
-    def appendMachineControlRecords(self, records):
-        for record in records:
-            self.highres_tc_queue_length = np.append(self.highres_tc_queue_length, record['highres_tcq_length'])
+        self.data_store_lock.release()
+
+    # def appendMachineControlRecords(self, records):
+    #     for record in records:
+    #         self.highres_tc_queue_length = np.append(self.highres_tc_queue_length, record['highres_tcq_length'])
 
     def appendEncoderFeedbackRecords(self, records):
         for record in records:
