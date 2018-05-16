@@ -6,6 +6,11 @@ class MachineModel():
     global machine_controller
 
     def __init__(self):
+        #Threads
+        self.feedback_listener_handle = None
+        self.machine_controller_handle = None
+        self.encoder_thread_handle = None
+
         #State variables
         self.modes = ['MANUAL', 'MDI', 'AUTO']
         self.statuses = ['IDLE', 'RUNNING', 'PAUSED']
@@ -68,9 +73,12 @@ class MachineModel():
         self.logging_mode_change_event = threading.Event()
 
         #Comm parameters
+        self.bytes_to_receive = 65536
+        self.endianness = 'little'
+        self.size_of_feedback_double = 8
         self.tcp_port = 5007
-        self.ip_address = '129.1.15.5'
-        #self.ip_address = '129.1.15.69'
+        #self.ip_address = '129.1.15.5'
+        self.ip_address = '129.1.15.69'
         self.udp_port = 515
         self.listen_ip = '0.0.0.0'
         self.comm_port = 'COM12'

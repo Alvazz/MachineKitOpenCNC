@@ -82,8 +82,8 @@ def start():
     #Configure SP data format in machine model
     machine_controller.machine.SP_data_format = SP_data_format
 
-    time.sleep(1)
-    print('logging in')
+    #time.sleep(1)
+    #print('logging in')
     machine_controller.connectAndLink()
     #machine_controller.setLogging(1)
     #machine_controller.waitForSet(machine_controller.setLogging,1,machine_controller.getLogging)
@@ -92,7 +92,8 @@ def start():
     #motion_controller.start()
     #time.sleep(3)
     #machine_controller.motion_controller.testMachine()
-
+    machine_controller.testMachine(1,1,1,1,1)
+    #machine_controller.motion_controller._running_motion = True
     return True
 
 # def read():
@@ -170,8 +171,6 @@ def mergeSortByIndex(times_LF, times_HF, data_LF, data_HF):
     LF_index, HF_index = (0, 0)
     output_data = []
     while LF_index != times_LF.size and HF_index != times_HF.size:
-        print(times_LF.shape)
-        print(data_LF.shape)
         if times_LF[LF_index] < times_HF[HF_index]:
             data_time = times_LF[LF_index]
             data_positions = data_LF[LF_index]
@@ -274,10 +273,11 @@ def readMachine(axis_sensor_id):
 def isMonitoring():
     return bool(machine_controller.is_alive() & machine_controller.machine.logging_mode)
 
-
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
+    global machine_controller
     print('execute Deez Nut''s(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    machine_controller.testMachine(1,1,1,1,1)
+    #machine_controller.testMachine(1,1,1,1,1)
+    machine_controller.motion_controller._running_motion = True
     return True;
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
@@ -305,6 +305,15 @@ def stop():
     print('closing')
     pncApp.appClose()
     return True
+
+def testMonitoring():
+    while True:
+        z = readMachine(0)
+        if z == []:
+            print('returning nothing')
+        else:
+            print('returning good data')
+        print('read machine')
 
 # start()
 # time.sleep(0.5)

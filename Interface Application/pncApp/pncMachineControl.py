@@ -58,7 +58,10 @@ class MotionController(threading.Thread):
         super(MotionController, self).__init__()
         self.machine = machine
         self.machine_controller = machine_controller
-        self._running = False
+
+        self._running_motion = False
+        self._running_thread = True
+        self._shutdown = False
 
         self.move_queue = []
         self.move_queue = queue.Queue()
@@ -72,10 +75,10 @@ class MotionController(threading.Thread):
 
     def run(self):
         #while self._running:
-        while True:
+        while self._running_thread:
             #FIFO for point arrays. Initialize as length 0 with last_move_serial_number of -1
             ## FIXME use queue.Queue() here
-            if self._running:
+            if self._running_motion:
             #if len(self.move_queue) > self.last_move_serial_number and len(self.move_queue) > 0:
             #print('length of move queue is ' + str(len(self.move_queue)))
                 print('length of move queue is ' + str(self.move_queue.qsize()))
@@ -119,10 +122,13 @@ class MotionController(threading.Thread):
                     self.move_queue = queue.Queue()
 
             else:
-                #thread idle
+                #thread idle, not running motion
+                #print('motion controller thread idling')
                 pass
 
-
+        #Thread signaled to shutdown
+        print('MOTION CONTROLLER: thread shut down')
+        self._shutdown = True
 
     def commandPoints(self, servo_points, polylines, blocklength, commands_to_send = -1):
         # Store imported axis points in data repository
@@ -191,7 +197,8 @@ class MachineController(threading.Thread):
         self.encoder_interface = encoder_interface
         self.motion_controller = MotionController(self,machine)
 
-        self._running = True
+        self._running_thread = True
+        self._shutdown = False
         self.received_data_string = ""
         self.data_store = data_store
         self.rsh_buffer_length = 0
@@ -200,7 +207,7 @@ class MachineController(threading.Thread):
 
     def run(self):
         self.motion_controller.start()
-        while self._running:
+        while self._running_thread:
             #if self.machine.logging_mode:
             ## FIXME move this to feedback thread
             #self.machine.current_position = self.data_store.stepgen_feedback_positions[-1,:] - self.machine.table_zero
@@ -209,8 +216,23 @@ class MachineController(threading.Thread):
             pass
 
         # We are done running, clean up sockets
+        self.motion_controller._running_thread = False
+        while not self.motion_controller._shutdown and self.motion_controller.is_alive():
+            print('MACHINE CONTROLLER: waiting on motion controller shutdown')
+
+        self.machine.feedback_listener_handle._running_thread = False
+        while not self.machine.feedback_listener_handle._shutdown and self.machine.feedback_listener_handle.is_alive():
+            print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
+
+        self.machine.encoder_thread_handle._running_thread = False
+        while not self.machine.encoder_thread_handle._shutdown and self.machine.encoder_thread_handle.is_alive():
+            print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
+
         self.rsh_socket.shutdown(socket.SHUT_RDWR)
         self.rsh_socket.close()
+        self._shutdown = True
+        print('MACHINE CONTROLLER: thread shut down')
+
 
     ######################## Motion Controller Interface ########################
     def insertMove(self, move):
@@ -243,13 +265,16 @@ class MachineController(threading.Thread):
         self.insertMove(Move(self.generateHoldPositionPoints(1,[0,0,0,0,0]),'hold'))
         self.insertMove(rapid_to_start)
         print('inserted rapid')
-        self.motion_controller._running = True
+        #self.motion_controller._running_motion = True
         self.insertMove(Move(self.generateHoldPositionPoints(1,test_move.start_points.tolist()),'hold'))
         self.insertMove(test_move)
-        for f in range(6,65+1):
+
+        #for f in range(6,35+1):
+        for f in range(6, 28 + 1):
             fname = points_file + str(f)
             imported_move = Move(self.importAxesPoints(fname),'imported',fname)
             self.insertMove(imported_move)
+
         #self.insertMove(Move(self.generateMove([-1.437980999999999954, 1.890032000000000156,-1.515102000000000171, 0.8762108906911221240,-2.578106385065804140])))
 
         #self.insertMove(Move(self.importAxesPoints(r'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code',1,25)))
@@ -272,6 +297,9 @@ class MachineController(threading.Thread):
     ######################## Data Handling ########################
     def convertFloat2Bin(self, num):
         return struct.pack('!f', num)
+
+    def convertBin2Float(self,bytes):
+        return struct.unpack('!f', bytes)
 
     def convertInt2Bin(self, num):
         return struct.pack('!i',num)
@@ -441,8 +469,8 @@ class MachineController(threading.Thread):
         ## FIXME confirm receipt
         if flag:
             print('setting binary mode on')
-            self.writeLineUTF('set comm_mode binary')
             self.machine.binary_mode = 1
+            self.writeLineUTF('set comm_mode binary')
         else:
             print('setting binary mode off')
             self.rsh_socket.send(struct.pack('!f',-np.inf))
@@ -784,6 +812,6 @@ class MachineController(threading.Thread):
 
     def close(self):
         print('in machine controller close')
-        self._running = False
+        self._running_thread = False
         #self.exit()
         #sys.exit()

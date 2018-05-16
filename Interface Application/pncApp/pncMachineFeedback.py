@@ -2,7 +2,7 @@ import socket
 import threading, time
 import re
 import numpy as np
-import serial, math, sys, select, datetime
+import serial, math, sys, select, datetime, struct
 
 global machine
 
@@ -11,63 +11,84 @@ class MachineFeedbackListener(threading.Thread):
     def __init__(self, socket, machine, machine_controller, data_store):
         super(MachineFeedbackListener, self).__init__()
         self.rsyslog_socket = socket
-        self._running = True
+        self._running_thread = True
+        self._shutdown = False
 
         self.machine = machine
         self.machine_controller = machine_controller
         self.rsh_socket = machine_controller.rsh_socket
         self.data_store = data_store
         self.received_data_string = ""
+        self.byte_string = bytearray()
+        self.binary_transmission_length = (machine.servo_log_num_axes*machine.servo_log_buffer_size+machine.servo_log_buffer_size)*machine.size_of_feedback_double+1
         print('Feedback thread started')
         self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
 
     def run(self):
-        while self._running:
+        print('feedback socket is ' + str(self.rsh_socket))
+        while self._running_thread:
             # Process feedback from EMCRSH
             data_available = select.select([self.rsh_socket], [], [], 0.5)
             if data_available[0]:
                 #Clock when these data were received
                 rx_received_time = time.clock()
-                string_received = self.rsh_socket.recv(65536).decode("utf-8")
-                complete_data_string = ''
-                if '\n' in string_received or '\r' in string_received:
-                    #split_received_strings = string_received.split('\n')
-                    split_received_strings = re.split(r'\r|\n', string_received)
-                    #print('split received string is: ')
-                    #print(split_received_strings)
-                    #Complete the first entry of the split string list from incomplete data, probably doesn't actually happen?
-                    split_received_strings[0] = self.received_data_string + split_received_strings[0]
-                    for string in split_received_strings:
-                        #Drop null strings
-                        #print('going through the split received strings.')
-                        #print(string)
-                        if string:
-                            self.log_file_handle.write(string + '\n')
-                            self.log_file_handle.flush()
-                            self.processRSHString(string.strip(),rx_received_time)
-                    #data_to_process = self.received_data_string + split_received_string[0]
-                    #complete_data_string = self.received_data_string + split_received_string[0]
-                    #print('complete data string ' + complete_data_string + '\n')
-                    #self.received_data_string = ''.join(split_received_string[1:])
+                if not self.machine.binary_mode:
+                    string_received = self.rsh_socket.recv(self.machine.bytes_to_receive).decode("utf-8")
+                    complete_data_string = ''
+                    if '\n' in string_received or '\r' in string_received:
+                        #split_received_strings = string_received.split('\n')
+                        split_received_strings = re.split(r'\r|\n', string_received)
+                        #print('split received string is: ')
+                        #print(split_received_strings)
+                        #Complete the first entry of the split string list from incomplete data, probably doesn't actually happen?
+                        split_received_strings[0] = self.received_data_string + split_received_strings[0]
+                        for string in split_received_strings:
+                            #Drop null strings
+                            #print('going through the split received strings.')
+                            #print(string)
+                            if string:
+                                self.log_file_handle.write(string + '\n')
+                                self.log_file_handle.flush()
+                                self.processRSHString(string.strip(),rx_received_time)
+                        #data_to_process = self.received_data_string + split_received_string[0]
+                        #complete_data_string = self.received_data_string + split_received_string[0]
+                        #print('complete data string ' + complete_data_string + '\n')
+                        #self.received_data_string = ''.join(split_received_string[1:])
 
-                    # if len(self.received_data_string) > 0:
-                    #     print('had incomplete data, parsed ')
-                    #     print(split_received_strings)
+                        # if len(self.received_data_string) > 0:
+                        #     print('had incomplete data, parsed ')
+                        #     print(split_received_strings)
 
-                    self.received_data_string = ''
-                elif string_received:
-                    #Incomplete data received
-                    #print('got incomplete data with received = ' + self.received_data_string + ' and string_received = ' + string_received)
-                    self.received_data_string += string_received
+                        self.received_data_string = ''
+                    elif string_received:
+                        #Incomplete data received
+                        #print('got incomplete data with received = ' + self.received_data_string + ' and string_received = ' + string_received)
+                        self.received_data_string += string_received
+                    else:
+                        #Null string received. RSH disconnected?
+                        print('received null string: ' + string_received)
+                        print('RSH disconnected...')
+                    # print(self.received_data_string)
                 else:
-                    #Null string received
-                    print('received null string: ' + string_received)
-                # print(self.received_data_string)
+                    # Receiving data as binary floats
+                    bytes_received = self.rsh_socket.recv(self.machine.bytes_to_receive)
+                    self.byte_string.extend(bytes_received)
+                    print(len(bytes_received))
+                    if len(self.byte_string) >= self.binary_transmission_length:
+                        print('byte string length: ' + str(len(self.byte_string)))
+                        #Number of bytes in transmission
+                        complete_transmission = self.byte_string[:self.binary_transmission_length]
+                        #print(str(complete_transmission))
+                        unpacked_bytes = struct.unpack('!'+'d'*(self.machine.servo_log_num_axes*self.machine.servo_log_buffer_size+self.machine.servo_log_buffer_size)+'c',complete_transmission)
+                        #bytes_received.calcsize('c')
+                        print('received: ' + str(unpacked_bytes))
+                        self.byte_string = self.byte_string[self.binary_transmission_length:]
 
-        #Flag set, shutdown
+        #Flag set, shutdown. Handle socket closure in machine_controller
         print('flagging feedback socket')
-        self.machine_controller._running = False
-        self.fileout.close()
+        #self.machine_controller._running = False
+        self.log_file_handle.close()
+        self._shutdown = True
         #self.rsyslog_socket.shutdown(socket.SHUT_RDWR)
         #self.rsyslog_socket.close()
 
@@ -82,6 +103,7 @@ class MachineFeedbackListener(threading.Thread):
             elif self.machine.rsh_feedback_strings[0] in data_string:
                 # Position Feedback
                 #print('processing position feedback with data string: ' + data_string)
+                print('processing position feedback')
                 #Force logging flag
                 if self.machine.logging_mode != 1:
                     print('state machine sync error')
@@ -223,6 +245,7 @@ class SerialInterface(threading.Thread):
     def __init__(self, machine, data_store):
         super(SerialInterface, self).__init__()
         self._running = True
+        self._shutdown = False
         #FIXME handle if serial is not connected
         try:
             self.serialPort = serial.Serial(  # set parameters, in fact use your own :-)
@@ -298,13 +321,9 @@ class SerialInterface(threading.Thread):
         self.setEncoderCount(self.machine.encoder_init)
         #print('setting encoder count in run')
         #time.sleep(0.1)
-        while self._running:
+        while self._running_thread:
             #serialLock.acquire()
-            #print('running')
             counts = self.requestEncoderCount()
-
-            #time.sleep(0.1)
-            #print(counts)
 
             #if line and str.isnumeric(axisCounts[0]):
             if 'C&' in counts:
@@ -334,9 +353,11 @@ class SerialInterface(threading.Thread):
 
         #Flag set, shutdown
         print('Closing serial port')
+        print('ENCODER INTERFACE: thread shut down')
         self.serialPort.close()
+        self._shutdown = True
 
     def close(self):
         print('setting serial port close flag')
-        self._running = False
+        self._running_thread = False
         #sys.exit()
