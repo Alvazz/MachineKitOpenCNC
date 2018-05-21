@@ -8,7 +8,7 @@ global machine
 
 class MachineFeedbackListener(threading.Thread):
     global machine
-    def __init__(self, socket, machine, machine_controller, data_store):
+    def __init__(self, machine, machine_controller, data_store):
         super(MachineFeedbackListener, self).__init__()
         self.rsyslog_socket = socket
         self._running_thread = True
@@ -32,7 +32,7 @@ class MachineFeedbackListener(threading.Thread):
             if data_available[0]:
                 #Clock when these data were received
                 rx_received_time = time.clock()
-                if not self.machine.binary_mode:
+                if True:#not self.machine.binary_mode:
                     string_received = self.rsh_socket.recv(self.machine.bytes_to_receive).decode("utf-8")
                     complete_data_string = ''
                     if '\n' in string_received or '\r' in string_received:
@@ -78,9 +78,7 @@ class MachineFeedbackListener(threading.Thread):
                         print('byte string length: ' + str(len(self.byte_string)))
                         #Number of bytes in transmission
                         complete_transmission = self.byte_string[:self.binary_transmission_length]
-                        #print(str(complete_transmission))
                         unpacked_bytes = struct.unpack('!'+'d'*(self.machine.servo_log_num_axes*self.machine.servo_log_buffer_size+self.machine.servo_log_buffer_size)+'c',complete_transmission)
-                        #bytes_received.calcsize('c')
                         print('received: ' + str(unpacked_bytes))
                         self.byte_string = self.byte_string[self.binary_transmission_length:]
 
@@ -95,15 +93,20 @@ class MachineFeedbackListener(threading.Thread):
     def processRSHString(self, data_string,rx_received_time):
         ##FIXME detect if RSH crashed
         if any(s in data_string for s in self.machine.rsh_feedback_strings):
-            # Check for error first
-            if self.machine.rsh_feedback_strings[-1] in data_string:
+            # #Check ping first
+            if self.machine.rsh_feedback_strings[13] in data_string:
+                self.machine.ping_rx_time = rx_received_time
+                self.machine.estimated_network_latency = (self.machine.ping_rx_time-self.machine.ping_tx_time)/2
+                self.machine.ping_event.set()
+            elif self.machine.rsh_feedback_strings[-1] in data_string:
                 # Error in RSH command
                 print('RSH error')
                 self.handleRSHError()
             elif self.machine.rsh_feedback_strings[0] in data_string:
+                #FIXME raise error if feedback state active but we aren't getting data for 500ms, also measure receiption time of all data
                 # Position Feedback
                 #print('processing position feedback with data string: ' + data_string)
-                print('processing position feedback')
+                #print('processing position feedback')
                 #Force logging flag
                 if self.machine.logging_mode != 1:
                     print('state machine sync error')
@@ -120,18 +123,20 @@ class MachineFeedbackListener(threading.Thread):
                 self.processBLFeedback(data_string,rx_received_time)
             elif self.machine.rsh_feedback_strings[3] in data_string:
                 # Program Status
-                print('program status')
+                #print('program status')
                 self.machine.status = data_string.split(' ')[1].strip()
-                print('set program status to ' + self.machine.status)
+                #print('set program status to ' + self.machine.status)
                 self.machine.status_change_event.set()
             elif self.machine.rsh_feedback_strings[4] in data_string:
                 # Machine Mode
                 #print('mode set')
+                #print('got mode ' + data_string.split(' ')[1].strip())
                 self.machine.mode = data_string.split(' ')[1].strip()
                 self.machine.mode_change_event.set()
                 #print('set machine mode to ' + self.machine.mode)
             elif self.machine.rsh_feedback_strings[6] in data_string:
                 # Servo Log Params
+                #print('got logging ' + data_string.split(' ')[1].strip())
                 self.machine.logging_mode = int(data_string.split()[1].strip())
                 self.machine.logging_mode_change_event.set()
             elif self.machine.rsh_feedback_strings[7] in data_string:
@@ -140,24 +145,42 @@ class MachineFeedbackListener(threading.Thread):
                 self.machine.drive_power_change_event.set()
             elif self.machine.rsh_feedback_strings[8] in data_string:
                 # Echo
-                print('got set echo: ' + data_string)
+                #print('got set echo: ' + data_string)
                 self.machine.echo = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
                 self.machine.echo_change_event.set()
             elif self.machine.rsh_feedback_strings[9] in data_string:
                 # Hello
-                print('got hello')
+                #print('got hello')
                 self.machine.connected = 1
                 self.machine.connection_change_event.set()
             elif self.machine.rsh_feedback_strings[10] in data_string:
                 # Enable
-                print('got enable')
+                #print('got enable')
                 self.machine.linked = 1
                 self.machine.link_change_event.set()
             elif self.machine.rsh_feedback_strings[11] in data_string:
                 # EStop
-                print('got estop: ' + data_string)
+                #print('got estop: ' + data_string)
                 self.machine.estop = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
                 self.machine.estop_change_event.set()
+            elif self.machine.rsh_feedback_strings[12] in data_string:
+                #Joint homed
+                #print('got joint home: ' + data_string)
+                for axis in range(0,self.machine.num_joints):
+                    #self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
+                    self.machine.axis_home_state[axis] = self.machine.checkOnOff(data_string.split()[axis + 1]) % 2
+                    #print('joint home state is ' + str(self.machine.axis_home_state))
+
+                if all(self.machine.axis_home_state):
+                    print('all joints homed')
+                    self.machine.all_homed_event.set()
+                    #self.machine.home_change_event.set()
+
+                self.machine.home_change_event.set()
+            elif self.machine.rsh_feedback_strings[14] in data_string:
+                #Time
+                self.machine.last_unix_time = float(data_string.split()[1])
+                self.machine.clock_event.set()
             else:
                 print('received unrecognized string ' + data_string)
 
@@ -217,13 +240,17 @@ class MachineFeedbackListener(threading.Thread):
                 self.machine.current_position = stepgen_feedback_positions[sample_num,:]
                 #np.vstack((stepgen_feedback_positions, sample.split('|')[1:-1]))
 
+            lowfreq_ethernet_received_times = np.zeros([feedback_num_points, 1]) + rx_received_time
+
             record = dict()
             record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
             record['rtapi_clock_times'] = rtapi_clock_times
             record['stepgen_feedback_positions'] = stepgen_feedback_positions
-            record['lowfreq_ethernet_received_times'] = received_times_interpolated
+            #record['lowfreq_ethernet_received_times'] = received_times_interpolated
+            record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
         except:
             print('had error processing feedback string. The data string is: ' + data_string)
+            return
 
         #machine_feedback_records.append(record)
         self.data_store.appendMachineFeedbackRecords([record])
@@ -231,9 +258,6 @@ class MachineFeedbackListener(threading.Thread):
 
     def handleRSHError(self):
         self.machine.rsh_error = 1
-
-    def resetRSHError(self):
-        self.machine.rsh_error = 0
 
     def close(self):
         self._running = True

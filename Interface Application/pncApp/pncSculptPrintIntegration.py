@@ -1,10 +1,14 @@
 ######### SCULPTPRINT INTEGRATION CODE #########
 #import pnc
-import pncApp, time
-from pnc.pncApp import *
+#import pncApp, time
+#from pnc.pncApp import *
+
+from pncApp import appInit, appClose
+from pncDataStore import DataStore
 import numpy as np
-import copy
 import threading
+import copy
+import threading, time
 
 machine_feedback_record_id = 0
 encoder_feedback_record_id = 0
@@ -16,8 +20,10 @@ SP_data_format = ['T','X','Z','S','Y','A','B','V','W','BL']
 
 #from pncApp import machine_controller, data_store, feedback_listener
 global feedback_listener, machine_controller, encoder_interface, data_store
+#global machine
 
-######################## Setup ########################
+############################# Setup Functions #############################
+
 def monitoredMachineCount():
     return 2
 
@@ -50,27 +56,25 @@ def setupMachineDescriptors(nMachine):
     return columnTypeArray
 
 def setupUserDataNames():
-    stringArray = [r'Deez Nut 1', r'my data 2', r'my data 3', r'my data 4', r'my data 5']
+    stringArray = [r'Start File', r'End File', r'my data 3', r'my data 4', r'my data 5']
     return stringArray
 
 # Returns an array of user defined function names that are displayed on the function buttons in the feature UI. The array affects
 # feature UI functionality only.  The array must be sized on the interval [1,3]. Defining this method is optional.
 def setupUserFunctionNames():
-    stringArray = [r'Deez Nuts',r'my function 2',r'my function 3']
+    stringArray = [r'Enqueue Movements',r'Begin Motion Execution',r'my function 3']
     return stringArray
 
 ######################## Operation ########################
 def start():
     #global machine_controller
-    global feedback_listener, machine_controller, encoder_interface, data_store
-    global data_store_lock
+    global machine, feedback_listener, machine_controller, encoder_interface, data_store, data_store_lock
     #commInit()
     print('initializing')
     #pnc.pncApp.appInit()
-    feedback_listener, machine_controller, encoder_interface, data_store = pncApp.appInit()
+    machine, feedback_listener, machine_controller, encoder_interface, data_store = appInit()
 	
     #Log machine feedback start point
-    print('preparing to busy wait')
     while machine_controller == []:
         print('busy waiting')
         pass
@@ -92,7 +96,7 @@ def start():
     #motion_controller.start()
     #time.sleep(3)
     #machine_controller.motion_controller.testMachine()
-    machine_controller.testMachine(1,1,1,1,1)
+    #machine_controller.testMachine(1,1,1,1,1)
     #machine_controller.motion_controller._running_motion = True
     return True
 
@@ -128,6 +132,8 @@ def start():
 #             return []
 #     return []
 
+############################# Data Handling #############################
+
 def findNextClosestTimeIndex(sample_time,data_time_array):
     if len(data_time_array) == 0:
         return -1
@@ -158,7 +164,7 @@ def formatFeedbackDataForSP(time, positions, aux):
         elif label_text == 'B':
             SP_formatted_data[label] = float(positions[4])
         elif label_text == 'T':
-            SP_formatted_data[label] = float(time)
+            SP_formatted_data[label] = float((time-machine_controller.machine.RT_clock_offset)/machine.clock_resolution)
         elif label_text == 'BL':
             SP_formatted_data[label] = float(aux)
         elif label_text == 'S':
@@ -251,16 +257,18 @@ def readMachine(axis_sensor_id):
 
         #Pull relevant section of data from data_store_snapshot
         #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.serial_received_times)
-        LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]
+        #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
+        LF_ethernet_time_slice = data_store_snapshot.rtapi_clock_times[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
         LF_ethernet_data_slice = data_store_snapshot.stepgen_feedback_positions[LF_start_time_index:]
-        HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]
+        #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
+        HF_ethernet_time_slice = data_store_snapshot.rsh_clock_times[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
         HF_ethernet_data_slice = data_store_snapshot.highres_tc_queue_length[HF_start_time_index:]
 
 
         BBB_feedback, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(LF_ethernet_time_slice,HF_ethernet_time_slice,LF_ethernet_data_slice,HF_ethernet_data_slice)
         LF_start_time_index += LF_start_time_index_increment
         HF_start_time_index += HF_start_time_index_increment
-        print(LF_start_time_index)
+        #print(LF_start_time_index)
         if BBB_feedback is None:
             return []
         else:
@@ -273,15 +281,21 @@ def readMachine(axis_sensor_id):
 def isMonitoring():
     return bool(machine_controller.is_alive() & machine_controller.machine.logging_mode)
 
+############################# User Functions #############################
+
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    global machine_controller
-    print('execute Deez Nut''s(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+    global machine
+    print('execute enqueueMoves from ' + str(arg0) +' to ' + str(arg1))#(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
     #machine_controller.testMachine(1,1,1,1,1)
-    machine_controller.motion_controller._running_motion = True
+    #machine_controller.motion_controller._running_motion = True
+    machine.sculptprint_interface.start_file = arg0
+    machine.sculptprint_interface.end_file = arg1
+    machine.sculptprint_interface.enqueue_moves_event.set()
     return True;
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+    machine.sculptprint_interface.run_motion_event.set()
     return True;
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
@@ -291,19 +305,8 @@ def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
 def stop():
-    print('stopping')
-    #global feed_thread
-    #if feedback.is_alive():
-    #    print('Feed thread is still alive')
-    #else:
-    #    print('Feed thread is not alive')
-    #feedback.deactivate()
-    #feedback.join()
-    #feedback.close()
-    #print('Buffer file was closed.\n')
-	#pnc.pncApp.appClose()
     print('closing')
-    pncApp.appClose()
+    appClose()
     return True
 
 def testMonitoring():
@@ -315,8 +318,9 @@ def testMonitoring():
             print('returning good data')
         print('read machine')
 
-# start()
-# time.sleep(0.5)
+#start()
+#time.sleep(1)
+#readMachine(0)
 #
 # while True:
 #     readMachine(0)

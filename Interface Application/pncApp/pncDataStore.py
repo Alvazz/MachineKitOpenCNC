@@ -56,6 +56,7 @@ class DataStore():
 
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
         #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
+        self.ping_times = np.empty((0,2), float)
         self.lowfreq_ethernet_received_times = np.empty((0,1), float)
         self.rtapi_clock_times = np.empty((0,1), float)
         #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)

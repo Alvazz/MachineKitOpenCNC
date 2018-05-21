@@ -2,6 +2,7 @@ import socket
 import sys
 import numpy as np
 import threading
+import time
 
 #PNC Modules
 #from pnc.pncMachineControl import MachineController
@@ -13,16 +14,17 @@ from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackListener, SerialInterface
 from pncDataStore import DataStore
 from pncMachineModel import MachineModel
+from pncCamUserInterface import SculptPrintInterface
 
 #Handles
 global data_store, machine_controller, machine, encoder_interface, feedback_listener
 
 # Default connection parameters
-def_feedback_listen_ip = '0.0.0.0'
-def_feedback_listen_port = 515
-def_control_client_ip = '129.1.15.5'
-#def_control_client_ip = '129.1.15.69'
-def_control_client_port = 5007
+# def_feedback_listen_ip = '0.0.0.0'
+# def_feedback_listen_port = 515
+# def_control_client_ip = '129.1.15.5'
+# #def_control_client_ip = '129.1.15.69'
+# def_control_client_port = 5007
 
 # Initialize control communication with PocketNC using TCP and feedback read
 # communication with UDP.
@@ -32,8 +34,13 @@ def appInit(feedback_listen_ip = -1,
              control_client_port = -1):
     global data_store, machine_controller, machine, encoder_interface, feedback_listener
 
+    #Begin CPU clock
+    local_epoch = time.clock()
+
     data_store = DataStore()
     machine = MachineModel()
+    machine.sculptprint_interface = SculptPrintInterface()
+    machine.local_epoch = local_epoch
     #print(machine.axis_offsets)
 
     if feedback_listen_ip == -1:
@@ -45,19 +52,19 @@ def appInit(feedback_listen_ip = -1,
     if control_client_port == -1:
         control_client_port = machine.tcp_port
 
-    try:
-        feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        feedback_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        feedback_socket.bind((feedback_listen_ip, feedback_listen_port))
-    except socket.error:
-        print ('Failed to bind to feedback socket to listen on 2')
-        sys.exit()
+    # try:
+    #     feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    #     feedback_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    #     feedback_socket.bind((feedback_listen_ip, feedback_listen_port))
+    # except socket.error:
+    #     print ('Failed to bind to feedback socket to listen on 2')
+    #     sys.exit()
 
     try:
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         control_socket.connect((machine.ip_address, control_client_port))
     except socket.error:
-        print ('Failed to connect to client IP')
+        print ('Failed to connect to client IP. Is machine ON?')
         sys.exit()      
 
     print ('[+] Listening for feedback data on port', feedback_listen_port)
@@ -69,14 +76,14 @@ def appInit(feedback_listen_ip = -1,
     # encoder_interface.start()
 
     machine_controller = MachineController(control_socket, machine, data_store, encoder_interface)
-    machine.machine_controller_handle = machine_controller
+    machine.machine_controller_thread_handle = machine_controller
     machine_controller.start()
 
-    feedback_listener = MachineFeedbackListener(feedback_socket, machine, machine_controller, data_store)
-    machine.feedback_listener_handle = feedback_listener
+    feedback_listener = MachineFeedbackListener(machine, machine_controller, data_store)
+    machine.feedback_listener_thread_handle = feedback_listener
     feedback_listener.start()
 
-    return feedback_listener, machine_controller, encoder_interface, data_store
+    return machine, feedback_listener, machine_controller, encoder_interface, data_store
 
 def appClose():
     print('closing sockets')
@@ -85,8 +92,9 @@ def appClose():
         machine_controller._running_thread = False
         while not machine_controller._shutdown:
             #Wait for shutdown flag
-            print('pncApp: waiting for machine controller shutdown')
+            #print('pncApp: waiting for machine controller shutdown')
             pass
+        print('pncApp: machine controller shutdown')
     #     machine_controller.deactivate()
     #     machine_controller.close()
     # if feedback_listener != []:
@@ -115,8 +123,8 @@ machine_controller = []
 feedback_listener = []
 encoder_interface = []
 
-appInit()
-machine_controller.connectAndLink()
-machine_controller.setBinaryMode(1)
+#appInit()
+#machine_controller.connectAndLink()
+#machine_controller.setBinaryMode(1)
 # machine_controller.login()
 # machine_controller.testMachine(1,1,1,1,1)

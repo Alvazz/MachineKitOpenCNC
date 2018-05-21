@@ -10,6 +10,7 @@ import socket, select
 import math
 import queue
 import signal
+import paramiko
 import matplotlib.pyplot as plt
 
 Xpts = r'E:\SculptPrint\PocketNC\Position Sampling\Xpts_opt.csv'
@@ -53,6 +54,23 @@ class Command():
         if ack_function_parameters != None:
             self.ack_function_parameters = ack_function_parameters
 
+class SystemController(threading.Thread):
+    def __init__(self, machine):
+        super(SystemController, self).__init__()
+        #FIXME set up SSH session here
+        self.machine = machine
+        self._running_thread = True
+        self._run_ssh_connection = False
+
+        self.ssh_client = paramiko.SSHClient()
+
+    def run(self):
+        while self._running_thread:
+            if self._run_ssh_connection:
+                while True:
+                    pass
+        self.ssh_client.close()
+
 class MotionController(threading.Thread):
     def __init__(self, machine_controller, machine):
         super(MotionController, self).__init__()
@@ -76,24 +94,20 @@ class MotionController(threading.Thread):
     def run(self):
         #while self._running:
         while self._running_thread:
-            #FIFO for point arrays. Initialize as length 0 with last_move_serial_number of -1
-            ## FIXME use queue.Queue() here
             if self._running_motion:
-            #if len(self.move_queue) > self.last_move_serial_number and len(self.move_queue) > 0:
-            #print('length of move queue is ' + str(len(self.move_queue)))
                 print('length of move queue is ' + str(self.move_queue.qsize()))
                 #Prepare for direct control
                 #self.machine_controller.readyMachine()
                 if not self.machine_controller.checkMachineReady():
+                    print('MOTION CONTROLLER: Abort, machine not ready')
+                    return
                     # Ensure machine ready to control
                     self.machine_controller.readyMachine()
                     print('machine wasn''t ready in timeout period, aborting...')
                     return
                 self.machine_controller.setBinaryMode(1)
-                #current_queue_length = len(self.move_queue)
+
                 #There are new moves in the queue, find the one to be executed next
-                #self.point_buffer[self.last_move_serial_number + 1].serial_number = self.last_move_serial_number + 1
-                ## FIXME make while loop?
                 while not self.move_queue.empty() and not self.machine.rsh_error:
                 #for move_queue_position in range(self.last_move_serial_number,current_queue_length):
                     move_to_execute = self.move_queue.get()
@@ -114,7 +128,7 @@ class MotionController(threading.Thread):
                     print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
 
                 self.machine_controller.setBinaryMode(0)
-                self._running = False
+                self._running_motion = False
 
                 if self.machine.rsh_error:
                     #Clear out move queue
@@ -208,6 +222,7 @@ class MachineController(threading.Thread):
     def run(self):
         self.motion_controller.start()
         while self._running_thread:
+            self.checkSculptPrintUI()
             #if self.machine.logging_mode:
             ## FIXME move this to feedback thread
             #self.machine.current_position = self.data_store.stepgen_feedback_positions[-1,:] - self.machine.table_zero
@@ -217,16 +232,27 @@ class MachineController(threading.Thread):
 
         # We are done running, clean up sockets
         self.motion_controller._running_thread = False
-        while not self.motion_controller._shutdown and self.motion_controller.is_alive():
-            print('MACHINE CONTROLLER: waiting on motion controller shutdown')
+        print('MACHINE CONTROLLER: waiting on motion controller shutdown')
+        if self.motion_controller.is_alive():
+            self.motion_controller.join()
+        # while not self.motion_controller._shutdown and self.motion_controller.is_alive():
+        #     print('MACHINE CONTROLLER: waiting on motion controller shutdown')
 
-        self.machine.feedback_listener_handle._running_thread = False
-        while not self.machine.feedback_listener_handle._shutdown and self.machine.feedback_listener_handle.is_alive():
-            print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
+        self.waitForSet(self.setLogging, 0, self.getLogging)
+        self.machine.feedback_listener_thread_handle._running_thread = False
+        print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
+        if self.machine.feedback_listener_thread_handle.is_alive():
+            self.machine.feedback_listener_thread_handle.join()
+
+        # while not self.machine.feedback_listener_thread_handle._shutdown and self.machine.feedback_listener_thread_handle.is_alive():
+        #     print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
 
         self.machine.encoder_thread_handle._running_thread = False
-        while not self.machine.encoder_thread_handle._shutdown and self.machine.encoder_thread_handle.is_alive():
-            print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
+        print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
+        if self.machine.encoder_thread_handle.is_alive():
+            self.machine.encoder_thread_handle.join()
+        # while not self.machine.encoder_thread_handle._shutdown and self.machine.encoder_thread_handle.is_alive():
+        #     print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
 
         self.rsh_socket.shutdown(socket.SHUT_RDWR)
         self.rsh_socket.close()
@@ -248,16 +274,33 @@ class MachineController(threading.Thread):
         #print('the move queue is now: ')
         #print(self.motion_controller.move_queue)
 
+    def enqueuePointFiles(self,start_file_number,end_file_number):
+        try:
+            #hold_points = self.generateHoldPositionPoints(1)
+            hold_move = Move(self.generateHoldPositionPoints(1),'hold')
+            #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
+            first_move = Move(self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
+            rapid_to_start = Move(self.generateMovePoints(first_move.start_points.tolist()),'trap')
+
+            self.insertMove(hold_move)
+            self.insertMove(rapid_to_start)
+            self.insertMove(first_move)
+            #
+            # for f in range(start_file_number + 1, end_file_number):
+            #     fname = points_file + str(f)
+            #     imported_move = Move(self.importAxesPoints(fname), 'imported', fname)
+            #     self.insertMove(imported_move)
+        except:
+            print('Can\'t find those files')
+
+
+
     def testMachine(self,X,Y,Z,A,B):
         hold_points = self.generateHoldPositionPoints(1)
-        #points = self.generateMove([X, Y, Z, A, B])
-        #points = self.generateHoldPosition(5)
         self.insertMove(Move(hold_points,'hold'))
         rapid_to_zero = Move(self.generateMovePoints([0,0,0,0,0]),'trap')
         self.insertMove(rapid_to_zero)
-        #self.insertMove(Move(self.generateMove([-1, -1, 0, 0, 0])))
         test_points = self.importAxesPoints(points_file + str('5'))
-        #test_points[:,2] = test_points[:,2] + 1.5
 
         test_move = Move(test_points,'imported')
         rapid_to_start = Move(self.generateMovePoints(test_move.start_points.tolist(),rapid_to_zero.end_points),'trap')
@@ -275,23 +318,25 @@ class MachineController(threading.Thread):
             imported_move = Move(self.importAxesPoints(fname),'imported',fname)
             self.insertMove(imported_move)
 
-        #self.insertMove(Move(self.generateMove([-1.437980999999999954, 1.890032000000000156,-1.515102000000000171, 0.8762108906911221240,-2.578106385065804140])))
-
-        #self.insertMove(Move(self.importAxesPoints(r'E:\SculptPrint\PocketNC\Position Sampling\Diva Head\opt_code',1,25)))
-
-        # #for i in range(0,10):
-        # self.insertMove(Move(self.generateMove([1,1,-1,50,50],[-1, -1, 0, 0, 0])))
-        # self.insertMove(Move(self.generateMove([-1, -1, 0, 0, 0],[1,1,-1,50,50])))
-
-        #linear_move_1 = Move(points)
-        #self.insertMove(linear_move_1)
-
     def visualizePoints(self):
         points = np.empty((0,5), float)
         for move in self.motion_controller.move_queue:
             points = np.vstack((points,move.point_samples))
         plt.plot(points)
         plt.show()
+
+    ######################## SculptPrint Interface ########################
+    def checkSculptPrintUI(self):
+        if self.machine.sculptprint_interface.enqueue_moves_event.isSet():
+            self.enqueuePointFiles(int(self.machine.sculptprint_interface.start_file),int(self.machine.sculptprint_interface.end_file))
+            self.machine.sculptprint_interface.moves_queued_event.set()
+            self.machine.sculptprint_interface.enqueue_moves_event.clear()
+
+        if self.machine.sculptprint_interface.run_motion_event.isSet():
+            if self.machine.sculptprint_interface.moves_queued_event.wait():
+                print('checkSculptPrintInterface running motion')
+                self.motion_controller._running_motion = True
+                self.machine.sculptprint_interface.moves_queued_event.clear()
 
 
     ######################## Data Handling ########################
@@ -308,11 +353,9 @@ class MachineController(threading.Thread):
         return #position in file#
 
     def padAndFormatAxisPoints(self, points, polylines, blocklength):
-        # print(points.shape, blocklength, np.size(points, 0), blocklength-(np.size(points,0)%blocklength))
         pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
                                 constant_values=points[-1])
         shape_points = pad_points.reshape((-1, blocklength), order='C')
-        # print(shape_points.shape)
         return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
                       constant_values=shape_points[-1, -1])
 
@@ -323,15 +366,7 @@ class MachineController(threading.Thread):
     def importAxesPoints(self, file):
         ##FIXME check for overtravel
         points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:self.machine.num_joints]
-        #points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")
-        #HACK HACK
-        #points[:,2] = points[:,2]+1.5
         return points
-
-        # axis_coords = []
-        # for axis in range(points.shape[1]):
-        #     axis_coords.append(self.padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, blocklength))
-        # return np.asarray(axis_coords).transpose(1, 2, 0)
 
     def formatPoints(self, points, polylines, block_length):
         axis_coords = []
@@ -343,24 +378,32 @@ class MachineController(threading.Thread):
     ######################## Writing Functions ########################
     def writeLineUTF(self,data):
         self.rsh_socket.send((data+'\r').encode('utf-8'))
-        time.sleep(0.25)
+        ##FIXME can we get rid of this?
+        #time.sleep(0.25)
 
     def writeLineBin(self,frame):
         frame.extend(struct.pack('!f',np.inf))
         self.rsh_socket.send(frame)
 
-    ######################## API for Common RSH Commands ########################
+    ######################## Setup Functions ########################
     ##FIXME implement heartbeat!
     def connectAndLink(self):
         #self.waitForSet(self.login,None,self.getLoginStatus)
         if not self.login()[0]:
-            print('No response from RSH, assume crash')
+            print('No response from RSH or state machine synchronization failure, assume crash. Please investigate')
             ##FIXME ssh to machine and restart process - major bandaid
             return False
         else:
             self.waitForSet(self.setEcho, 0, self.getEcho)
+            #FIXME do this a number of times and average
+            if self.getLatencyEstimate()[0]:
+                print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+
             ##FIXME sync clocks here
             self.readyMachine()
+            while not self.syncMachineClock():
+                #Busy wait for clock sync
+                print('waiting for clock sync')
 
     # def login(self):
     #     self.machine.connection_change_event.clear()
@@ -377,7 +420,7 @@ class MachineController(threading.Thread):
         self.writeLineUTF('hello EMC robie 1')
         self.writeLineUTF('set enable EMCTOO')
         if self.machine.connection_change_event.wait(timeout) and self.machine.link_change_event.wait(timeout):
-            return (True, self.machine.connected, self.machine.linked)
+            return (self.syncStateMachine() and True, self.machine.connected, self.machine.linked)
         else:
             return (False, self.machine.connected, self.machine.linked)
 
@@ -385,40 +428,43 @@ class MachineController(threading.Thread):
         self.waitForSet(self.setEstop, 0, self.getEstop)
         self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
         #self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
+        if not self.machine.isHomed():
+            self.waitForSet(self.setHomeAll,None,self.getAllHomed)
+        print('ready machine done homing')
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
         self.waitForSet(self.setLogging, 1, self.getLogging)
 
-    def homeMachine(self,X=1,Y=1,Z=1,A=1,B=1,C=0):
-        #FIXME home each axis individually and wait for all to complete
-        self.machine.pushState()
-        self.modeSwitchWait('manual')
+    ############################# GETs #############################
 
-        for i in range(0,self.machine.num_joints):
-            send_str = 'set home'
-
-        if X:
-            send_str += ' 1'
-        if Y:
-            send_str += ' 2'
-        if Z:
-            send_str += ' 3'
-        if A:
-            send_str += ' 4'
-        if B:
-            send_str += ' 5'
-
-        self.writeLineUTF(send_str)
-
-        #Wait for completion for 10 sec
-        if not self.commandWaitDone(10):
-            print('homing error')
-            retval = False
+    def getLatencyEstimate(self, timeout = 0.5):
+        self.sendPing()
+        if self.machine.ping_event.wait(timeout):
+            return (True, self.machine.estimated_network_latency)
         else:
-            self.machine.homed = [X, Y, Z, A, B]
-            retval = True
+            return (False, self.machine.estimated_network_latency)
 
-        self.modeSwitchWait(self.machine.popState())
-        return retval
+    def getClock(self):
+        self.writeLineUTF('get time')
+        return (self.machine.clock_event.wait(), self.machine.last_unix_time)
+
+    def getAllHomed(self, timeout = 0.5):
+        #self.writeLineUTF('get joint_homed')
+        self.getHomeState()
+        if self.machine.home_change_event.wait(timeout) and self.machine.all_homed_event.isSet():
+            if not self.machine.restore_mode_event.isSet():
+                print('restoring previous state')
+                self.machine.restoreState()
+            return (True, self.machine.axis_home_state)
+        else:
+            #print('getAllHomed returning False')
+            return (False, self.machine.axis_home_state)
+
+    def getHomeState(self, timeout = 0.5):
+        self.writeLineUTF('get joint_homed')
+        if self.machine.home_change_event.wait(timeout):
+            return (True, self.machine.axis_home_state)
+        else:
+            return (False, self.machine.axis_home_state)
 
     def getEcho(self, timeout = 0.5):
         self.writeLineUTF('get echo')
@@ -437,11 +483,12 @@ class MachineController(threading.Thread):
     def getProgramStatus(self, timeout = 0.5):
         self.machine.status_change_event.clear()
         self.writeLineUTF('get program_status')
-        if self.machine.status_change_event.wait(timeout):
-            return (True, self.machine.status)
-        else:
-            return (False, self.machine.status)
-        return
+        return (self.machine.status_change_event.wait(timeout), self.machine.status)
+        # if self.machine.status_change_event.wait(timeout):
+        #     return (True, self.machine.status)
+        # else:
+        #     return (False, self.machine.status)
+
 
     def getMachineMode(self, timeout = 0.5):
         self.writeLineUTF('get mode')
@@ -464,6 +511,11 @@ class MachineController(threading.Thread):
             return (True, self.machine.logging_mode)
         else:
             return (False, self.machine.logging_mode)
+
+    ############################# SETs #############################
+    def sendPing(self):
+        self.writeLineUTF('set ping')
+        self.machine.ping_tx_time = time.clock()
 
     def setBinaryMode(self, flag):
         ## FIXME confirm receipt
@@ -541,48 +593,64 @@ class MachineController(threading.Thread):
             self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) +
                               ' ' + str(sub_sample_rate) + ' ' + str(buffer_size) +
                               ' ' + str(dump_flag) + ' ' + str(write_buffer))
-            #self.machine.logging_mode = not (self.machine.logging_mode)
-        #print('logging mode ' + str(int(self.machine.logging_mode)))
 
-    def setMachineUnits(self,units):
-        sendstr = 'set units '
-        if units == 'mm':
-            sendstr += 'mm'
-            self.modeSwitchWait('mdi')
-            self.setMDILine('G21')
-        elif units == 'inch':
-            sendstr += 'inches'
-            self.modeSwitchWait('mdi')
-            self.setMDILine('G20')
-        #self.writeLineUTF(sendstr)
-        self.machine.units = 'mm'
-        #FIXME Return state to orig before execution
+    def setHomeAll(self):
+        if not self.machine.isManualMode():
+            print('home all switching to manual')
+            self.machine.pushState()
+            self.waitForSet(self.setMachineMode,'manual',self.getMachineMode)
 
+        for axis in range(0,self.machine.num_joints):
+            self.writeLineUTF('set home ' + str(axis))
 
-    # def setHome(self, fX, fY, fZ, fA, fB):
-    #     self.saveState()
-    #     self.setManualMode()
-    #     sendstr = 'set home '
-    #     if fX:
-    #         sendstr = sendstr + '0 '
-    #     if fY:
-    #         sendstr = sendstr + '1 '
-    #     if fZ:
-    #         sendstr = sendstr + '2 '
-    #     if fA:
-    #         sendstr = sendstr + '3 '
-    #     if fB:
-    #         sendstr = sendstr + '4 '
-    #     self.writeLineUTF(sendstr)
+        self.machine.restore_mode_event.clear()
 
     ######################## Synchronization ########################
-    def synchronizeClocks(self):
-        pass
+    def syncStateMachine(self):
+        print('Starting initial state machine synchronization...')
+        success_flag = True
+        self.machine.estop_change_event.clear()
+        success_flag and self.getEstop()[0]
+        self.machine.drive_power_change_event.clear()
+        success_flag and self.getDrivePower()[0]
+        self.machine.mode_change_event.clear()
+        success_flag and self.getMachineMode()[0]
+        self.machine.logging_mode_change_event.clear()
+        #print('getting logging mode')
+        success_flag and self.getLogging()[0]
+        #print('getting home state')
+        self.machine.home_change_event.clear()
+        success_flag and self.getHomeState()[0]
+        #print('getting machine status')
+        self.machine.status_change_event.clear()
+        success_flag and self.getProgramStatus()[0]
+        return success_flag
+
+    def syncMachineClock(self):
+        if not self.machine.logging_mode or len(self.data_store.rtapi_clock_times) < self.machine.servo_log_buffer_size:
+            print('logging disabled or not enough data, can\'t sync clocks')
+            return False
+
+        # if self.getLatencyEstimate()[0]:
+        #     print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+
+        if self.getClock()[0]:
+            print('Successful clock synchronization')
+
+        self.machine.RT_clock_offset = self.data_store.rtapi_clock_times[0]
+        #self.machine.RT_clock_offset = self.data_store.rtapi_clock_times[self.machine.servo_log_buffer_size-1].item()
+        #FIXME syncing to 0th is not good...
+        self.machine.pncApp_clock_offset = self.data_store.lowfreq_ethernet_received_times[0].item()
+        return True
 
     def waitForSet(self, set_function, set_params, get_function, timeout = 2):
-        # FIXME something here like commandWaitDone that will take a function handle as an argument
-        set_function(set_params)
+        if set_params is not None:
+            set_function(set_params)
+        else:
+            set_function()
+
         while not get_function()[0]:
+            #FIXME check that returned value matches set_params
             print('waiting for ' + str(get_function))
             pass
         ## FIXME call set again after some time?
@@ -619,38 +687,6 @@ class MachineController(threading.Thread):
         else:
             print('Machine not ready: isAutoMode returned ' + str(self.machine.isAutoMode()) + ' and machine status is ' + self.machine.status)
             return False
-
-    # def checkMachineReady(self, timeout=2):
-    #     start_time = time.time()
-    #     while (time.time() - start_time) < timeout:
-    #         print('in check machine ready')
-    #         self.getProgramStatus()
-    #         self.getMachineMode()
-    #         if self.machine.status.upper() == 'IDLE' and self.machine.mode == 'AUTO' and not self.machine.rsh_error:
-    #             print('machine ready')
-    #             return True
-    #         elif self.machine.mode != 'AUTO':
-    #             print('fallthrough: mode was not AUTO')
-    #             self.modeSwitchWait('auto')
-    #     print('machine not ready')
-    #     return False
-
-    # def readyMachine(self,timeout = 2):
-    #     #self.setMachineMode('manual', timeout)
-    #     self.modeSwitchWait('manual', timeout)
-    #     #time.sleep(0.1)
-    #     #self.setMachineMode('auto', timeout)
-    #     self.modeSwitchWait('auto', timeout)
-    #     #time.sleep(0.1)
-
-    # def resetPosition(self,X,Y,Z,A,B,timeout):
-    #     self.modeSwitchWait('mdi',timeout)
-    #     self.writeLineUTF('set mdi g0x'+str(X)+'y'+str(Y)+'z'+str(Z)+'a'+str(A)+'b'+str(B))
-    #     return self.MDICommandWaitDone(timeout)
-
-    def resetMachine(self, timeout = 2):
-        #self.setEstop(0)
-        self.setDrivePower(1)
 
     ######################## Trajectory Generation ########################
     ## FIXME only allow movement generation when logging is enabled?
