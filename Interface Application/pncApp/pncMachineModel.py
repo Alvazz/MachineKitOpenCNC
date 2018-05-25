@@ -17,8 +17,27 @@ class MachineModel():
         #State variables
         self.modes = ['MANUAL', 'MDI', 'AUTO']
         self.statuses = ['IDLE', 'RUNNING', 'PAUSED']
-        self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'EMCTOO', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
-        self.rsh_feedback_flags = ['OFF', 'ON','NO','YES']
+
+        #RSH Comm
+        self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
+        self.rsh_error_string = 'NAK\r\n'
+        self.rsh_echo_strings = ['SET', 'GET', 'DM']
+        self.ascii_rsh_feedback_strings = ['*', 'bTbL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'NAK']
+        self.binary_rsh_feedback_strings = ['SF', 'BL']
+        self.minimum_header_length = 3
+        self.ascii_header_delimiter = ' '
+        self.ascii_line_terminator = '\r\n'
+        self.ascii_servo_feedback_terminator = '|'
+
+        # Header is two characters plus a NULL plus a uint32
+        #self.binary_header_length = 3 + 4
+        self.binary_direct_mode_header = 'DM '
+        self.binary_header_delimiter = b' \x00'
+        self.binary_line_terminator = b'\x7f'
+        self.ascii_header_delimiter_bytes = self.ascii_header_delimiter.encode('utf-8')
+
+
+        self.rsh_feedback_flags = ['OFF', 'ON', 'NO', 'YES', 'ASCII', 'BINARY']
         self.axes = ['X','Y','Z','A','B']
 
         #Stepgen calibration
@@ -53,7 +72,7 @@ class MachineModel():
         self.estop = 0
         self.drive_power = 0
         self.echo = 1
-        self.binary_mode = 0
+        self.comm_mode = 0
         self.logging_mode = 0
         self.units = 'inch'
 
@@ -73,11 +92,16 @@ class MachineModel():
         self.status_change_event.clear()
         self.mode_change_event = threading.Event()
         self.logging_mode_change_event = threading.Event()
+        self.comm_mode_change_event = threading.Event()
         self.home_change_event = threading.Event()
         self.all_homed_event = threading.Event()
         self.restore_mode_event = threading.Event()
         self.ping_event = threading.Event()
         self.clock_event = threading.Event()
+        self.buffer_level_reception_event = threading.Event()
+        self.servo_feedback_reception_event = threading.Event()
+        #FIXME implement this
+        self.position_change_event = threading.Event()
 
         #Timing parameters
         self.clock_resolution = 1e6
@@ -88,24 +112,28 @@ class MachineModel():
         self.pncApp_clock_offset = 0
         self.last_unix_time = 0
 
+        # Servo log parameters
+        self.servo_log_num_axes = 5
+        self.servo_log_sub_sample_rate = 10
+        self.servo_log_buffer_size = 50
+
+
         #Comm parameters
-        self.bytes_to_receive = 65536
         self.endianness = 'little'
         self.size_of_feedback_double = 8
+        self.size_of_feedback_int = 4
+        self.bytes_to_receive = 65536
+        self.binary_transmission_length = (self.servo_log_num_axes * self.servo_log_buffer_size + self.servo_log_buffer_size) * self.size_of_feedback_double + 1
+
         self.tcp_port = 5007
-        self.ip_address = '129.1.15.5'
-        #self.ip_address = '129.1.15.69'
+        #self.ip_address = '129.1.15.5'
+        self.ip_address = '129.1.15.69'
         self.udp_port = 515
         self.listen_ip = '0.0.0.0'
         self.comm_port = 'COM12'
         self.ssh_opts = '-X'
         self.ssh_credentials = 'pocketnc@' + self.ip_address
         self.ssh_hosts_path = 'E:\SculptPrint\PocketNC\OpenCNC\Interface Application\pncApp\Support Files\known_hosts'
-
-        #Servo log parameters
-        self.servo_log_num_axes = 5
-        self.servo_log_sub_sample_rate = 10
-        self.servo_log_buffer_size = 50
 
         #TCP Control Parameters
         self.polylines_per_tx = 1
@@ -147,7 +175,7 @@ class MachineModel():
         #machine_controller.modeSwitchWait(self.prev_mode)
         if len(self.mode_stack):
             mode_to_restore = self.popState()
-            machine_controller.waitForSet(self.machine_controller_thread_handle.setMachineMode,mode_to_restore,self.machine_controller_thread_handle.getMachineMode)
+            self.machine_controller_thread_handle.waitForSet(self.machine_controller_thread_handle.setMachineMode,mode_to_restore,self.machine_controller_thread_handle.getMachineMode)
         else:
             print('mode stack empty, leaving mode unchanged')
         self.restore_mode_event.set()
@@ -196,3 +224,8 @@ class MachineModel():
             print('WARNING: missing clock synchronization flag')
 
         return self.last_unix_time+(time.clock()-self.estimated_network_latency)*self.clock_resolution
+
+    ######################## Comms ########################
+    def calculateBinaryTransmissionLength(self):
+        self.binary_transmission_length = 2 + (self.servo_log_num_axes * self.servo_log_buffer_size + self.servo_log_buffer_size) * self.size_of_feedback_double + 1
+        return self.binary_transmission_length

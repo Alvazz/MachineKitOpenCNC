@@ -1,6 +1,7 @@
 import numpy as np
 import threading
 import queue
+import time
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -26,8 +27,13 @@ class DataStoreManager(threading.Thread):
     def run(self):
         while self._running:
             if not self.record_queue.empty():
+                ## FIXME also store latest position in machine object
                 records = self.record_queue.get()
                 self.appendMachineFeedbackRecords(records)
+                self.record_queue.task_done()
+
+    def push(self, records):
+        self.record_queue.put(Record(time.clock(), records))
 
 
 class DataStore():
@@ -58,7 +64,7 @@ class DataStore():
         #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
         self.ping_times = np.empty((0,2), float)
         self.lowfreq_ethernet_received_times = np.empty((0,1), float)
-        self.rtapi_clock_times = np.empty((0,1), float)
+        self.RTAPI_clock_times = np.empty((0,1), float)
         #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)
         self.highfreq_ethernet_received_times = np.empty((0,1), float)
         self.rsh_clock_times = np.empty((0,1), float)
@@ -113,8 +119,8 @@ class DataStore():
                 print('current encoder record is ' + str(self.encoder_feedback_num_records))
                 self.encoder_feedback_num_records += 1
 
-            if 'highres_tcq_length' in record:
-                self.highres_tc_queue_length = np.vstack((self.highres_tc_queue_length, record['highres_tcq_length']))
+            if 'highres_tc_queue_length' in record:
+                self.highres_tc_queue_length = np.vstack((self.highres_tc_queue_length, record['highres_tc_queue_length']))
 
             if 'machine_clock_times' in record:
                 self.machine_clock_times = np.vstack((self.machine_clock_times, record['machine_clock_times']))
@@ -137,8 +143,8 @@ class DataStore():
             if 'lowfreq_ethernet_received_times' in record:
                 self.lowfreq_ethernet_received_times = np.vstack((self.lowfreq_ethernet_received_times, record['lowfreq_ethernet_received_times']))
 
-            if 'rtapi_clock_times' in record:
-                self.rtapi_clock_times = np.vstack((self.rtapi_clock_times,record['rtapi_clock_times']))
+            if 'RTAPI_clock_times' in record:
+                self.RTAPI_clock_times = np.vstack((self.RTAPI_clock_times,record['RTAPI_clock_times']))
 
             if 'highfreq_ethernet_received_times' in record:
                 self.highfreq_ethernet_received_times = np.vstack((self.highfreq_ethernet_received_times, record['highfreq_ethernet_received_times']))

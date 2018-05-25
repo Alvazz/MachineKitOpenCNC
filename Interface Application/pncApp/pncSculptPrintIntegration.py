@@ -88,7 +88,10 @@ def start():
 
     #time.sleep(1)
     #print('logging in')
-    machine_controller.connectAndLink()
+
+    #machine_controller.connectAndLink()
+    machine.sculptprint_interface.connect_event.set()
+
     #machine_controller.setLogging(1)
     #machine_controller.waitForSet(machine_controller.setLogging,1,machine_controller.getLogging)
 
@@ -247,7 +250,7 @@ def readMachine(axis_sensor_id):
         machine_controller.data_store.data_store_lock.acquire()
         data_store_snapshot = DataStore()
         data_store_snapshot.rsh_clock_times = np.copy(data_store.rsh_clock_times)
-        data_store_snapshot.rtapi_clock_times = np.copy(data_store.rtapi_clock_times)
+        data_store_snapshot.RTAPI_clock_times = np.copy(data_store.RTAPI_clock_times)
         data_store_snapshot.highres_tc_queue_length = np.copy(data_store.highres_tc_queue_length)
         data_store_snapshot.stepgen_feedback_positions = np.copy(data_store.stepgen_feedback_positions)
         data_store_snapshot.lowfreq_ethernet_received_times = np.copy(data_store.lowfreq_ethernet_received_times)
@@ -258,7 +261,7 @@ def readMachine(axis_sensor_id):
         #Pull relevant section of data from data_store_snapshot
         #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.serial_received_times)
         #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
-        LF_ethernet_time_slice = data_store_snapshot.rtapi_clock_times[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        LF_ethernet_time_slice = data_store_snapshot.RTAPI_clock_times[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
         LF_ethernet_data_slice = data_store_snapshot.stepgen_feedback_positions[LF_start_time_index:]
         #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
         HF_ethernet_time_slice = data_store_snapshot.rsh_clock_times[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
@@ -318,7 +321,11 @@ def testMonitoring():
             print('returning good data')
         print('read machine')
 
-#start()
+start()
+
+machine.sculptprint_interface.enqueue_moves_event.set()
+machine.sculptprint_interface.run_motion_event.set()
+
 #time.sleep(1)
 #readMachine(0)
 #

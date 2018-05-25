@@ -13,6 +13,7 @@ import time
 from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackListener, SerialInterface
 from pncDataStore import DataStore
+from pncDataStore import DataStoreManager
 from pncMachineModel import MachineModel
 from pncCamUserInterface import SculptPrintInterface
 
@@ -38,6 +39,7 @@ def appInit(feedback_listen_ip = -1,
     local_epoch = time.clock()
 
     data_store = DataStore()
+    data_store_manager = DataStoreManager()
     machine = MachineModel()
     machine.sculptprint_interface = SculptPrintInterface()
     machine.local_epoch = local_epoch
@@ -71,6 +73,9 @@ def appInit(feedback_listen_ip = -1,
     print ('[+] Connection to control client (emcrsh) established at address',
                 control_client_ip,'on port', control_client_port)
 
+    machine.data_store_manager_thread_handle = data_store_manager
+    data_store_manager.start()
+
     encoder_interface = SerialInterface(machine, data_store)
     machine.encoder_thread_handle = encoder_interface
     # encoder_interface.start()
@@ -89,6 +94,7 @@ def appClose():
     print('closing sockets')
     if machine_controller != []:
         #machine_controller.shutdown()
+        print('flagging machine controller thread to shutdown')
         machine_controller._running_thread = False
         while not machine_controller._shutdown:
             #Wait for shutdown flag
