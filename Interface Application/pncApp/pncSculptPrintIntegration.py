@@ -115,7 +115,7 @@ def start():
 #         #fb_data = [machine_controller.data_store.stepgen_feedback_positions[-1][np.array([0,2])].tolist(),[-90.], machine_controller.data_store.stepgen_feedback_positions[-1][np.array([1,3,4])].tolist(),[0.,0.]]
 #         fb_data = [machine_controller.data_store.encoder_feedback_positions[-1][np.array([0, 2])].tolist(), [-90.],
 #                    machine_controller.data_store.encoder_feedback_positions[-1][np.array([1, 3, 4])].tolist(), [0., 0.],
-#                    [float(machine_controller.data_store.highres_tc_queue_length[-1])]]
+#                    [float(machine_controller.data_store.HIGHRES_TC_QUEUE_LENGTH[-1])]]
 #         print(machine_controller.data_store.encoder_feedback_num_records)
 #         print([[item for sublist in fb_data for item in sublist]])
 #         print(machine_controller.data_store.encoder_feedback_positions[-1])
@@ -249,23 +249,23 @@ def readMachine(axis_sensor_id):
 
         machine_controller.data_store.data_store_lock.acquire()
         data_store_snapshot = DataStore()
-        data_store_snapshot.rsh_clock_times = np.copy(data_store.rsh_clock_times)
-        data_store_snapshot.RTAPI_clock_times = np.copy(data_store.RTAPI_clock_times)
-        data_store_snapshot.highres_tc_queue_length = np.copy(data_store.highres_tc_queue_length)
-        data_store_snapshot.stepgen_feedback_positions = np.copy(data_store.stepgen_feedback_positions)
-        data_store_snapshot.lowfreq_ethernet_received_times = np.copy(data_store.lowfreq_ethernet_received_times)
-        data_store_snapshot.highfreq_ethernet_received_times = np.copy(data_store.highfreq_ethernet_received_times)
+        data_store_snapshot.RSH_CLOCK_TIMES = np.copy(data_store.rsh_clock_times)
+        data_store_snapshot.RTAPI_CLOCK_TIMES = np.copy(data_store.RTAPI_clock_times)
+        data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH = np.copy(data_store.highres_tc_queue_length)
+        data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS = np.copy(data_store.stepgen_feedback_positions)
+        data_store_snapshot.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.lowfreq_ethernet_received_times)
+        data_store_snapshot.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.highfreq_ethernet_received_times)
         machine_controller.data_store.data_store_lock.release()
         #data_store_snapshot = copy.deepcopy(machine_controller.data_store)
 
         #Pull relevant section of data from data_store_snapshot
         #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.serial_received_times)
         #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
-        LF_ethernet_time_slice = data_store_snapshot.RTAPI_clock_times[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
-        LF_ethernet_data_slice = data_store_snapshot.stepgen_feedback_positions[LF_start_time_index:]
+        LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        LF_ethernet_data_slice = data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS[LF_start_time_index:]
         #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
-        HF_ethernet_time_slice = data_store_snapshot.rsh_clock_times[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
-        HF_ethernet_data_slice = data_store_snapshot.highres_tc_queue_length[HF_start_time_index:]
+        HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        HF_ethernet_data_slice = data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH[HF_start_time_index:]
 
 
         BBB_feedback, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(LF_ethernet_time_slice,HF_ethernet_time_slice,LF_ethernet_data_slice,HF_ethernet_data_slice)

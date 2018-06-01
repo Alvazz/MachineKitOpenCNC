@@ -41,8 +41,11 @@ def appInit(feedback_listen_ip = -1,
     data_store = DataStore()
     data_store_manager = DataStoreManager()
     machine = MachineModel()
+
     machine.sculptprint_interface = SculptPrintInterface()
     machine.local_epoch = local_epoch
+    machine.data_store_manager_thread_handle = data_store_manager
+    data_store_manager.machine = machine
     #print(machine.axis_offsets)
 
     if feedback_listen_ip == -1:

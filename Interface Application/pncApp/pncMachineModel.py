@@ -146,6 +146,7 @@ class MachineModel():
         self.current_velocity = [0.0]*self.num_joints
         self.current_acceleration = [0.0]*self.num_joints
         self.current_jerk = [0.0]*self.num_joints
+        self.rsh_buffer_length = 0
 
         #File Handling
         self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'

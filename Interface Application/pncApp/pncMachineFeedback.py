@@ -294,6 +294,8 @@ class MachineFeedbackListener(threading.Thread):
 
     def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
         if feedback_encoding == 'ascii':
+            if type(feedback_type) is str:
+                print('break)')
             feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
             feedback_data = [s.upper() for s in feedback_data]
             #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
@@ -627,7 +629,7 @@ class MachineFeedbackListener(threading.Thread):
             # rsh_clock_time = float(m.group(2))
             #self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
             # record = dict()
-            # record['highres_tc_queue_length'] = self.rsh_buffer_length
+            # record['HIGHRES_TC_QUEUE_LENGTH'] = self.rsh_buffer_length
             # record['highfreq_ethernet_received_times'] = rx_received_time
             # record['rsh_clock_times'] = rsh_clock_time
         elif feedback_encoding == 'binary':
@@ -636,15 +638,16 @@ class MachineFeedbackListener(threading.Thread):
             rsh_buffer_length = feedback_data[1]
 
         record = dict()
-        record['highres_tc_queue_length'] = rsh_buffer_length
+        record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_length
 
         #FIXME this is shit
-        self.machine_controller.rsh_buffer_length = rsh_buffer_length
+        #self.machine.rsh_buffer_length = rsh_buffer_length
 
         record['highfreq_ethernet_received_times'] = rx_received_time
         record['rsh_clock_times'] = rsh_clock_time
 
-        self.data_store.appendMachineFeedbackRecords([record])
+        #self.data_store.appendMachineFeedbackRecords([record])
+        self.machine.data_store_manager_thread_handle.push(record)
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         try:
@@ -671,12 +674,13 @@ class MachineFeedbackListener(threading.Thread):
                 stepgen_feedback_positions = np.zeros([number_of_feedback_points,self.machine.servo_log_num_axes])
                 RTAPI_clock_times = np.zeros([number_of_feedback_points,1])
                 received_times_interpolated = np.zeros([number_of_feedback_points, 1])
+                RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
 
-                #FIXME move this to DataStoreManager
-                if len(self.data_store.RTAPI_feedback_indices) != 0:
-                    RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1]) + self.data_store.RTAPI_feedback_indices[-1] + 1
-                else:
-                    RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+                # #FIXME move this to DataStoreManager
+                # if len(self.data_store.RTAPI_feedback_indices) != 0:
+                #     RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1]) + self.data_store.RTAPI_feedback_indices[-1] + 1
+                # else:
+                #     RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
 
                 #rx_received_time = time.clock()
                 if len(feedback_data) < 10:
@@ -736,7 +740,8 @@ class MachineFeedbackListener(threading.Thread):
             return
 
         #machine_feedback_records.append(record)
-        self.data_store.appendMachineFeedbackRecords([record])
+        #self.data_store.appendMachineFeedbackRecords([record])
+        self.machine.data_store_manager_thread_handle.push(record)
         #return machine_feedback_records
 
     def handleRSHError(self):

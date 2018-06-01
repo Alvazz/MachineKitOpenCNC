@@ -125,6 +125,7 @@ class MotionController(threading.Thread):
                             pass
                     self.last_move_serial_number = move_to_execute.serial_number
                     self.move_queue.task_done()
+                    #FIXME use data_store_manager thread
                     self.machine_controller.data_store.completed_moves.append(move_to_execute)
                     print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
 
@@ -186,11 +187,15 @@ class MotionController(threading.Thread):
             #FIXME do this better insertion into data_store
             self.machine_controller.data_store.sent_servo_commands.append(commanded_points)
             self.machine_controller.rsh_socket.send(binary_command)
+            print('length is: ' + str(len(binary_command)))
+            print(str(binary_command))
+            print('commanded points are: ' + str(commanded_points))
+            #FIXME check buffer was flushed
 
             ## FIXME store current position from feedback thread
             #self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.num_joints])[0]
 
-            sleep_time = self.runNetworkPID(self.machine_controller.rsh_buffer_length, blocklength, polylines, self.machine.buffer_level_setpoint)
+            sleep_time = self.runNetworkPID(self.machine.rsh_buffer_length, blocklength, polylines, self.machine.buffer_level_setpoint)
             # print(sleep_time, self.rsh_buffer_length)
             time.sleep(sleep_time)
 
@@ -265,6 +270,11 @@ class MachineController(threading.Thread):
         # while not self.machine.encoder_thread_handle._shutdown and self.machine.encoder_thread_handle.is_alive():
         #     print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
 
+        print('MACHINE CONTROLLER: waiting on database thread shutdown')
+        self.machine.data_store_manager_thread_handle._running_thread = False
+        if self.machine.data_store_manager_thread_handle.is_alive():
+            self.machine.data_store_manager_thread_handle.join()
+
         self.rsh_socket.shutdown(socket.SHUT_RDWR)
         self.rsh_socket.close()
         self._shutdown = True
@@ -290,7 +300,7 @@ class MachineController(threading.Thread):
             start_file_number = 5
             end_file_number = 7
             #hold_points = self.generateHoldPositionPoints(1)
-            hold_move = Move(self.generateHoldPositionPoints(2),'hold')
+            hold_move = Move(self.generateHoldPositionPoints(0.5),'hold')
             #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
             first_move = Move(self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
             rapid_to_start = Move(self.generateMovePoints(first_move.start_points.tolist()),'trap')
@@ -302,9 +312,9 @@ class MachineController(threading.Thread):
             for f in range(start_file_number + 1, end_file_number):
                 fname = points_file + str(f)
                 imported_move = Move(self.importAxesPoints(fname), 'imported', fname)
-                self.insertMove(imported_move)
-        except:
-            print('Can\'t find those files')
+                #self.insertMove(imported_move)
+        except Exception as error:
+            print('Can\'t find those files, error ' + str(error))
 
 
 
@@ -680,17 +690,23 @@ class MachineController(threading.Thread):
         return success_flag
 
     def syncMachineClock(self):
-        if not self.machine.logging_mode or len(self.data_store.RTAPI_clock_times) < self.machine.servo_log_buffer_size:
+        #if not self.machine.logging_mode or len(self.data_store.RTAPI_clock_times) < self.machine.servo_log_buffer_size:
+        clock_data = self.machine.data_store_manager_thread_handle.pull(['RTAPI_clock_times', 'lowfreq_ethernet_received_times'],[0, 0],[1, 1])
+        #pncApp_clock_data = self.machine.data_store_manager_thread_handle.pull(['lowfreq_ethernet_received_times'],[None],[1])
+
+        if not self.machine.logging_mode or not clock_data[0]:
             print('logging disabled or not enough data, can\'t sync clocks')
             return False
 
         if self.getClock()[0]:
             print('Successful clock synchronization')
 
-        self.machine.RT_clock_offset = self.data_store.RTAPI_clock_times[0]
+        self.machine.RT_clock_offset = clock_data[1][0].item()
+        #self.machine.RT_clock_offset = self.machine.last_unix_time
         #self.machine.RT_clock_offset = self.data_store.RTAPI_clock_times[self.machine.servo_log_buffer_size-1].item()
-        #FIXME syncing to 0th is not good...
-        self.machine.pncApp_clock_offset = self.data_store.lowfreq_ethernet_received_times[0].item()
+        #FIXME syncing to 0th is not good... subtract servo_period*num_samples
+        #self.machine.pncApp_clock_offset = self.data_store.lowfreq_ethernet_received_times[0].item()
+        self.machine.pncApp_clock_offset = clock_data[1][1].item()
         return True
 
     def waitForSet(self, set_function, set_params, get_function, timeout = 2):
