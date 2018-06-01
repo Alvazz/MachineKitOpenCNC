@@ -21,7 +21,8 @@ class MachineFeedbackListener(threading.Thread):
 
 
         print('Feedback thread started')
-        self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
+        #self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
+        self.log_file_handle = open('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
 
         self.rx_received_time = 0
 

@@ -18,11 +18,16 @@ typedef struct {
   bool readResult;
   bool cmdResult;
   bool cmdError;
-  //Received data
   int bytesRead;
-  //Returned data
-  //uint32_t encoderCounts[numAxes];
+  int bytesToRead;
   char commandString[BUFFER_SIZE];
+
+  //SET command specific items
+  uint32_t targetIC;
+  uint32_t setCount;
+
+  //BANDWIDTH command specific items
+  uint32_t newBandwidth;
 } commandData_t;
 
 typedef struct {
@@ -47,6 +52,10 @@ void initializeCommandData(commandData_t *commandData) {
   commandData->cmdResult = false;
   commandData->cmdError = false;
   commandData->bytesRead = 0;
+
+  commandData->targetIC = 0;
+  commandData->newBandwidth = 0;
+  
   memset(&commandData->commandString, '\0', BUFFER_SIZE*sizeof(char));
 }
 
@@ -62,7 +71,7 @@ int waitForBytes(char* bufPosition, int bytesToRead) {
   while (bytesRead < bytesToRead) {
     if (Serial.available()) {
       *bufPosition = Serial.read();
-      Serial.println(*bufPosition);
+      //Serial.println(*bufPosition);
       bufPosition++;
       bytesRead++;
     }
@@ -79,7 +88,7 @@ void resetCommandData(commandData_t *commandData) {
 }
 
 void resetEncoderError(stateData_t *stateData) {
-    for (int axis = 0; axis < numAxes; axis++) {
+  for (int axis = 0; axis < numAxes; axis++) {
     stateData->encoderError[axis] = false;
   }
 }
@@ -113,17 +122,16 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
         
         waitForByte(&targetIC);
         commandData->commandString[command_string_index] = targetIC;
+        commandData->targetIC = targetIC;
         command_string_index++;
         waitForByte(&bytesToRead);
         commandData->commandString[command_string_index] = bytesToRead;
         command_string_index++;
-        Serial.println(targetIC);
-        Serial.println(bytesToRead);
         
         if (bytesToRead == waitForBytes(inBufPosition, bytesToRead)) {
-          Serial.print("Successful read of ");
-          Serial.print(bytesToRead, DEC);
-          Serial.println(" bytes");
+//          Serial.print("Successful read of ");
+//          Serial.print(bytesToRead, DEC);
+//          Serial.println(" bytes");
           memcpy(&commandData->commandString[command_string_index],&inBuf,bytesToRead*sizeof(char));
           commandData->commandString[command_string_index+bytesToRead] = '&';
           commandData->bytesRead = bytesToRead;
@@ -138,8 +146,7 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
         if (commandData->bytesRead > 0) {
           //Have bytes to write to CNTRs
           long setCount = strtol(&commandData->commandString[command_string_index], NULL, 10);
-          Serial.print("setcount is ");
-          Serial.println(setCount,DEC);
+          commandData->setCount = (uint32_t) setCount;
           commandData->cmdResult = true;
 
           switch (targetIC) {
@@ -157,16 +164,6 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
                   stateData->encoderError[axis] = true;
                 }
               }
-              if (commandData->cmdResult) {
-                Serial.print("SUCCESS: wrote ");
-                Serial.print(setCount,DEC);
-                Serial.println(" S& to all axes");
-              }
-              else {
-                Serial.print("FAILURE: did not write ");
-                Serial.print(setCount,DEC);
-                Serial.println(" F& to all axes");
-              }
               break;
               
             default:
@@ -180,19 +177,6 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
                 commandData->cmdResult = 0;
                 stateData->encoderError[targetICAddress] = true;
               }
-                            
-              if (commandData->cmdResult) {
-                Serial.print("SUCCESS: wrote ");
-                Serial.print(setCount,DEC);
-                Serial.print(" S& to axis ");
-                Serial.println(targetIC,DEC);
-              }
-              else {
-                Serial.print("FAILURE: did not write ");
-                Serial.print(setCount,DEC);
-                Serial.print(" F& to axis ");
-                Serial.println(targetIC,DEC);
-              }
           }
         }
         break;
@@ -202,11 +186,42 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
         commandData->cmd = 'G';
         commandData->cmdResult = true;
         break;
+        
       case 'R':
         //"READ" encoder counts for all axes
-        updateEncoderCounts(&encoderStateData);
         commandData->cmd = 'R';
         commandData->cmdResult = true;
+        updateEncoderCounts(&encoderStateData);
+        break;
+        
+      case 'B':
+        //"BANDWIDTH" sets the speed of the UART link
+        commandData->cmd = 'B';
+        uint32_t newBandwidth;
+        
+        waitForByte(&bytesToRead);
+        commandData->commandString[command_string_index] = bytesToRead;
+        command_string_index++;
+        
+        if (bytesToRead == waitForBytes(inBufPosition, bytesToRead)) {
+          memcpy(&commandData->commandString[command_string_index],&inBuf,bytesToRead*sizeof(char));
+          commandData->commandString[command_string_index+bytesToRead] = '&';
+          commandData->bytesRead = bytesToRead;
+          commandData->readResult = true;
+          commandData->cmdError = false;
+        } else {
+          Serial.println("Read failure");
+          commandData->readResult = false;
+          commandData->cmdError = true;
+        }
+        
+        if (commandData->bytesRead > 0) {
+          long newBandwidth = strtol(&commandData->commandString[command_string_index], NULL, 10);
+          commandData->newBandwidth = (uint32_t) newBandwidth;
+          //Serial.print("new bandwidth command is ");
+          //Serial.println(newBandwidth,DEC);
+          commandData->cmdResult = true;
+        }
         break;
     }
   } else {
@@ -223,7 +238,7 @@ void timerCallBack(){
 void setup() {
   //initialize SPI and serial port
   initSpi(axes);
-  Serial.begin(250000);
+  Serial.begin(DEFAULT_BAUD);
   delay(100);
 
   // initialize counter by setting control registers and clearing flag & counter registers
@@ -250,12 +265,12 @@ void loop() {
     case 'R':
       //Count request from master
       if (commandData.cmdResult) {
-        for (int axis = 0; axis < numAxes; axis++) {
-          Serial.print(encoderStateData.encoderCounts[axis], DEC);
-          Serial.print(' ');
-        }
         Serial.print(commandData.cmd);
-        Serial.println('&');
+        for (int axis = 0; axis < numAxes; axis++) {
+          Serial.print(' ');
+          Serial.print(encoderStateData.encoderCounts[axis], DEC);
+        }
+        Serial.println(" &");
       } else {
         Serial.println("F&");
       }
@@ -266,11 +281,19 @@ void loop() {
       break;
     case 'S':
       if (commandData.cmdResult) {
-        Serial.println("S&");
+        Serial.println("S &");
       } else {
         Serial.println("F&");
       }
       break;
+    case 'B':
+      if (commandData.cmdResult) {
+        Serial.print("B ");
+        Serial.print(commandData.newBandwidth,DEC);
+        Serial.println(" &");
+        delay(100);
+        Serial.begin(commandData.newBandwidth);
+      }
     default:
     //NULL command
     break;
