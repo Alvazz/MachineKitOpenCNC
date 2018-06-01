@@ -7,14 +7,13 @@
 #define SS1 4
 #define SS2 5
 #define SS3 6
-#define SS4 8
-#define SS5 7
-
+#define SS4 7
+#define SS5 8
 #define SS6 9
 
 //Number of ICs to read
-const int numAxes = 5;
-const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
+const int numAxes = 6;
+const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5, SS6};
 
 /***   MDR0   ***/
 //Count modes
@@ -79,10 +78,11 @@ const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5};
 #define LOAD_OTR      0xE4
 
 #define NON           0x00
-#define INI_CNTR      10000
 
 /*** Code Parameters ***/
-#define setCmdTimeout 1
+#define SETCMD_TIMEOUT   1
+#define BUFFER_SIZE     64
+#define INI_CNTR         0
 
 // 4 byte counter
 union byte4{
@@ -151,7 +151,7 @@ uint32_t readFourBytes(const uint8_t ss_pin, const uint8_t op_code) {
   return res.comb;
 }
 
-void initCounter(const uint8_t ss[], const int count) {
+void initCounters(const uint8_t ss[]) {
   // set PWM for CLK
   /*  setup PWM on pin: DAC1
   *  freq = 500K
@@ -178,12 +178,19 @@ void initCounter(const uint8_t ss[], const int count) {
 }
 
 // set counter register to a desired number
-void setCounter(const uint8_t ss_pin, const int count) {
+bool setCounter(const uint8_t ss_pin, const int count) {
   byte4 binCount;
   binCount.comb = count;
   writeFourBytes(ss_pin, WRITE_DTR, binCount);
   //Move written data from DTR to CNTR register
   clrLoadReg(ss_pin, LOAD_CNTR);
+  
+  //FIXME should this busywait?
+  if (readFourBytes(ss_pin, READ_CNTR) == count) {
+    return true;
+  } else {
+    return false;
+  }
 }
 
 void initTimer(void (*isr)(), uint32_t timerFreq){
