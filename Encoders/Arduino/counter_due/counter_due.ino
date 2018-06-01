@@ -39,6 +39,13 @@ typedef struct {
   uint32_t encoder5pos;
 } stateData_t;
 
+void waitForByte(&byteValue) {
+  while (Serial.available() == 0) {
+    delayMicroseconds(1);
+  }
+  *byteValue = Serial.read() - '0';
+}
+
 commandData_t readCommand(void) {
   //Check for command string
   
@@ -57,6 +64,7 @@ commandData_t readCommand(void) {
     //int axis = 0;
     uint32_t byteCount = 0;
     uint32_t bytesToRead = 0;
+    uint32_t targetIC = 0;
     //uint32_t setCount = 0;
     
     //Read command character
@@ -64,15 +72,24 @@ commandData_t readCommand(void) {
       
       case 'S':
         //"SET" encoder counts for all axes: syntax "SXYYYY", X is numberof digits in desired counter setting YYYY
+        //"SET" encoder counts for all axes: syntax "SYXZZZZ", X is numberof digits in desired counter setting ZZZZ for axis Y
         //Serial.println("Setting encoder count");
         commandData.cmd = 'S';
         
         //wait for the rest of the command
-        while (Serial.available() == 0) {
-          delayMicroseconds(1);
-        }
-        bytesToRead = Serial.read() - '0';
+//        while (Serial.available() == 0) {
+//          delayMicroseconds(1);
+//        }
+        waitForByte(&targetIC);
+        waitForByte(&bytesToRead);
+        
+        
+//        targetIC = Serial.read() - '0';
+//        bytesToRead = Serial.read() - '0';
+        
+        Serial.println(targetIC);
         Serial.println(bytesToRead);
+        
         while (Serial.available() < bytesToRead) {
           delayMicroseconds(1);
         }

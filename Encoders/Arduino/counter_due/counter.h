@@ -9,6 +9,7 @@
 #define SS3 6
 #define SS4 8
 #define SS5 7
+
 #define SS6 9
 
 //Number of ICs to read
