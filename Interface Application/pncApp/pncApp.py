@@ -48,10 +48,10 @@ def appInit(feedback_listen_ip = -1,
     data_store_manager.machine = machine
     #print(machine.axis_offsets)
 
-    if feedback_listen_ip == -1:
-        feedback_listen_ip = machine.listen_ip
-    if feedback_listen_port == -1:
-        feedback_listen_port = machine.udp_port
+    # if feedback_listen_ip == -1:
+    #     feedback_listen_ip = machine.listen_ip
+    # if feedback_listen_port == -1:
+    #     feedback_listen_port = machine.udp_port
     if control_client_ip == -1:
         control_client_ip = machine.ip_address
     if control_client_port == -1:
@@ -68,6 +68,7 @@ def appInit(feedback_listen_ip = -1,
     try:
         control_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         control_socket.connect((machine.ip_address, control_client_port))
+        machine.rsh_socket = control_socket
     except socket.error:
         print ('Failed to connect to client IP. Is machine ON?')
         sys.exit()      
@@ -79,17 +80,19 @@ def appInit(feedback_listen_ip = -1,
     machine.data_store_manager_thread_handle = data_store_manager
     data_store_manager.start()
 
-    encoder_interface = SerialInterface(machine, data_store)
+    encoder_interface = SerialInterface(machine)
     machine.encoder_thread_handle = encoder_interface
-    # encoder_interface.start()
+    encoder_interface.start()
 
-    machine_controller = MachineController(control_socket, machine, data_store, encoder_interface)
+    machine_controller = MachineController(machine, data_store)
     machine.machine_controller_thread_handle = machine_controller
     machine_controller.start()
 
-    feedback_listener = MachineFeedbackListener(machine, machine_controller, data_store)
+    feedback_listener = MachineFeedbackListener(machine)
     machine.feedback_listener_thread_handle = feedback_listener
     feedback_listener.start()
+
+    print('pncApp Started Successfully')
 
     return machine, feedback_listener, machine_controller, encoder_interface, data_store
 
@@ -104,25 +107,6 @@ def appClose():
             #print('pncApp: waiting for machine controller shutdown')
             pass
         print('pncApp: machine controller shutdown')
-    #     machine_controller.deactivate()
-    #     machine_controller.close()
-    # if feedback_listener != []:
-    #     #feedback_listener.shutdown()
-    #     while not feedback_listener._shutdown:
-    #         #Wait for shutdown flag
-    #         print('pncApp: waiting for feedback listener shutdown')
-    #         pass
-    #     feedback_listener.deactivate()
-    #     feedback_listener.close()
-    # if encoder_interface != []:
-    #     print('encoder interface exists')
-    #     while not encoder_interface._shutdown:
-    #         #Wait for shutdown flag
-    #         print('pncApp: waiting for serial interface shutdown')
-    #         pass
-    #     encoder_interface.deactivate()
-    #     encoder_interface.close()
-    #bokehIntf.close()
     print('active threads are ' + str(threading.enumerate()))
 	
 # Global variables

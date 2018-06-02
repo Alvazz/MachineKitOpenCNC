@@ -279,7 +279,7 @@ serialLock = threading.Lock()
 class serialInterface(threading.Thread):
     def __init__(self):
         super(serialInterface, self).__init__()
-        #self.serialPort = serial.Serial('COM9', 115200)
+        #self.serial_port = serial.Serial('COM9', 115200)
         self.serialPort = serial.Serial('COM9', 250000)
         print('serialInterface started')
     
@@ -288,7 +288,7 @@ class serialInterface(threading.Thread):
         return line
 
 ##    def write(self, data):
-##        line = self.serialPort.readline()
+##        line = self.serial_port.readline()
 ##        return line
 
     def reset(self):
@@ -301,7 +301,7 @@ class serialInterface(threading.Thread):
         serialLock.release()
 
     def setEncoderCount(self,count):
-        #self.serialPort.write('R'.encode('utf-8'))
+        #self.serial_port.write('R'.encode('utf-8'))
         #Calculate number of characters in set command
         numBytes = math.floor(math.log(count,10))+1
         commandStr = 'S' + str(numBytes) + str(count)

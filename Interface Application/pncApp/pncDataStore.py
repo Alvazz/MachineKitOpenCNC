@@ -42,8 +42,9 @@ class DataStoreManager(threading.Thread):
             buffer_level_update = self.pull(['HIGHRES_TC_QUEUE_LENGTH'], [-1], [None])
             if position_update[0]:
                 self.machine.current_position = position_update[1][0][0].tolist()
+                self.machine.initial_position_set_event.set()
             if buffer_level_update[0]:
-                self.machine.rsh_buffer_level = buffer_level_update[1][0][0].item()
+                self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
 
     def push(self, records):
@@ -211,7 +212,8 @@ class DataStore():
 
         #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
         self.RTAPI_FEEDBACK_INDICES = np.empty((0, 1), float)
-        self.STEPGEN_FEEDBACK_POSITIONS = np.zeros([1, 5], dtype=float)
+        #self.STEPGEN_FEEDBACK_POSITIONS = np.zeros([1, 5], dtype=float)
+        self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0,5), float)
         #self.encoder_feedback_positions = np.zeros([1,5],dtype=float)
         #self.stepgen_feedback_positions = np.empty((0,5), float)
         self.encoder_feedback_positions = np.empty((0,5), float)

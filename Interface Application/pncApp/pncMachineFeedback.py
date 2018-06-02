@@ -8,21 +8,21 @@ global machine
 
 class MachineFeedbackListener(threading.Thread):
     global machine
-    def __init__(self, machine, machine_controller, data_store):
+    def __init__(self, machine):
         super(MachineFeedbackListener, self).__init__()
         self.rsyslog_socket = socket
         self._running_thread = True
         self._shutdown = False
 
         self.machine = machine
-        self.machine_controller = machine_controller
-        self.rsh_socket = machine_controller.rsh_socket
-        self.data_store = data_store
+        #self.machine_controller = machine_controller
+        self.rsh_socket = self.machine.machine_controller_thread_handle.rsh_socket
+        #self.data_store = data_store
 
 
         print('Feedback thread started')
         #self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
-        self.log_file_handle = open('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
+        self.log_file_handle = open('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
 
         self.rx_received_time = 0
 
@@ -50,74 +50,43 @@ class MachineFeedbackListener(threading.Thread):
         print('feedback socket is ' + str(self.rsh_socket))
         while self._running_thread:
             # Process feedback from EMCRSH
-            data_available = select.select([self.rsh_socket], [], [], 0.5)
+            data_available = select.select([self.rsh_socket], [], [], 0)
             if data_available[0]:
                 #Clock when these data were received
                 rx_received_time = time.clock()
                 #First parse the header
-
-                # if not self.machine.binary_mode and False:
-                #     string_received = self.rsh_socket.recv(self.machine.bytes_to_receive).decode("utf-8")
-                #     complete_data_string = ''
-                #     if '\n' in string_received or '\r' in string_received:
-                #         #split_received_strings = string_received.split('\n')
-                #         split_received_strings = re.split(r'\r|\n', string_received)
-                #         #print('split received string is: ')
-                #         #print(split_received_strings)
-                #         #Complete the first entry of the split string list from incomplete data, probably doesn't actually happen?
-                #         split_received_strings[0] = self.received_data_string + split_received_strings[0]
-                #         for string in split_received_strings:
-                #             #Drop null strings
-                #             #print('going through the split received strings.')
-                #             #print(string)
-                #             if string:
-                #                 self.log_file_handle.write(string + '\n')
-                #                 self.log_file_handle.flush()
-                #                 self.processRSHString(string.strip(),rx_received_time)
-                #
-                #         self.received_data_string = ''
-                #     elif string_received:
-                #         #Incomplete data received
-                #         #print('got incomplete data with received = ' + self.received_data_string + ' and string_received = ' + string_received)
-                #         self.received_data_string += string_received
-                #     else:
-                #         #Null string received. RSH disconnected?
-                #         print('received null string: ' + string_received)
-                #         print('RSH disconnected...')
-                #     # print(self.received_data_string)
-                #else:
                 #FIXME can never catch up to rate of data transmission due to select.wait
                 bytes_received = self.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
 
+                #FIXME handle this with database manager
                 self.log_file_handle.write(str(rx_received_time) + str(bytes_received) + '\n')
                 self.log_file_handle.flush()
 
-                if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
-                    self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index = self.assembleFeedbackHeader(self.byte_string)
-                    self.rx_received_time = rx_received_time
+            if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
+                self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index = self.assembleFeedbackHeader(self.byte_string)
+                self.rx_received_time = rx_received_time
 
-                #FIXME should this handle multiple transmissions in one loop?
-                if self.header_processed and not self.header_processing_error:
-                    #Drop header data, it's already good
-                    old_byte_string_before_header = self.byte_string
-                    self.byte_string = self.byte_string[self.header_delimiter_index:]
-                    self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
-                        self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
+            #FIXME should this handle multiple transmissions in one loop?
+            if self.header_processed and not self.header_processing_error:
+                #Drop header data, it's already good
+                old_byte_string_before_header = self.byte_string
+                self.byte_string = self.byte_string[self.header_delimiter_index:]
+                self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
+                    self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
 
-                    #FIXME implement logging to file
-                    if self.feedback_data_processed and not self.feedback_data_processing_error:
-                        #Now drop the complete command from the buffer and reset flags
-                        old_byte_string = self.byte_string
-                        self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
-                        # if len(self.byte_string) >= 1:
-                        #     if self.byte_string[0] == 67:
-                        #         print('break')
-                        self.header_processed = False
-                        self.header_processing_error = False
-                        self.feedback_data_processed = False
-                        self.feedback_data_processing_error = False
-                        self.last_processed_byte_string = self.byte_string
+                if self.feedback_data_processed and not self.feedback_data_processing_error:
+                    #Now drop the complete command from the buffer and reset flags
+                    old_byte_string = self.byte_string
+                    self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
+                    # if len(self.byte_string) >= 1:
+                    #     if self.byte_string[0] == 67:
+                    #         print('break')
+                    self.header_processed = False
+                    self.header_processing_error = False
+                    self.feedback_data_processed = False
+                    self.feedback_data_processing_error = False
+                    self.last_processed_byte_string = self.byte_string
 
 
 
@@ -198,7 +167,7 @@ class MachineFeedbackListener(threading.Thread):
 
         header_bytes = byte_string[:header_delimiter_index]
         try:
-            header_string = header_bytes.decode('utf-8')
+            header_string = header_bytes.decode('utf-8').upper()
         except Exception as error:
             print('MACHINE FEEDBACK LISTENER: Had error processing feedback header: ' + str(error))
             return False, True, None, None, header_delimiter_index
@@ -211,19 +180,22 @@ class MachineFeedbackListener(threading.Thread):
             print('potential RSH error detected')
             self.rsh_error_check = True
 
+        #FIXME don't make feedback_type an index
         #Check for binary/ascii/ascii echo
         if any(s in header_string for s in self.machine.ascii_rsh_feedback_strings):
             feedback_encoding = 'ascii'
             if header_string != '*':
                 print(header_string)
-            feedback_type = self.machine.ascii_rsh_feedback_strings.index([s for s in self.machine.ascii_rsh_feedback_strings if header_string in s][0])
+            #feedback_type = self.machine.ascii_rsh_feedback_strings.index([s for s in self.machine.ascii_rsh_feedback_strings if header_string in s][0])
+            feedback_type = header_string.upper()
         elif any(s in header_string for s in self.machine.binary_rsh_feedback_strings):
             feedback_encoding = 'binary'
-            feedback_type = self.machine.binary_rsh_feedback_strings.index([s for s in self.machine.binary_rsh_feedback_strings if header_string in s][0])
+            #feedback_type = self.machine.binary_rsh_feedback_strings.index([s for s in self.machine.binary_rsh_feedback_strings if header_string in s][0])
+            feedback_type = header_string.upper()
             header_delimiter_index += self.countTerminatorsToGobble(byte_string[header_delimiter_index:],self.machine.binary_header_delimiter)*len(self.machine.binary_header_delimiter)
         elif any(s in header_string for s in self.machine.rsh_echo_strings):
             feedback_encoding = 'ascii'
-            feedback_type = 'echo'
+            feedback_type = 'command echo'
         else:
             print('can\'t find header string')
             return False, False, None, None, None
@@ -237,6 +209,7 @@ class MachineFeedbackListener(threading.Thread):
 
     def assembleAndProcessFeedbackData(self, feedback_encoding, feedback_type, byte_string, rx_received_time):
         # Now split the command at the delimiter depending on the type
+        #if feedback_type.upper() == 'ECHO':
         if feedback_encoding == 'ascii':
             line_terminator = self.machine.ascii_line_terminator.encode('utf-8')
             # Check length of transmission for a complete command
@@ -294,18 +267,22 @@ class MachineFeedbackListener(threading.Thread):
             #if self.machine.ascii_line_terminator.encode('utf-8') in byte_string:
 
     def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
-        if feedback_encoding == 'ascii':
-            if type(feedback_type) is str:
-                print('break)')
-            feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
-            feedback_data = [s.upper() for s in feedback_data]
-            #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
-            ## ['PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
-
-            if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data and feedback_type == 'echo':
+        if feedback_type.upper() == 'COMMAND ECHO':
+            if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data:
                 print('RSH error')
                 self.handleRSHError()
-            elif self.machine.ascii_rsh_feedback_strings[0] == feedback_type:
+            else:
+                print('got echo data')
+            return
+
+        if feedback_encoding == 'ascii':
+            # if type(feedback_type) is str:
+            #     print('break')
+            #feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
+            #feedback_data = [s.upper() for s in feedback_data]
+            feedback_data = list(map(str.upper,feedback_data))
+            #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
+            if self.machine.ascii_rsh_feedback_strings[0] == feedback_type:
                 #Position feedback
                 if self.machine.logging_mode != 1:
                     print('state machine sync error')
@@ -386,7 +363,7 @@ class MachineFeedbackListener(threading.Thread):
             else:
                 print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
         elif feedback_encoding == 'binary':
-            feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
+            #feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
             #print('the feedback type is: ' + feedback_type)
             if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
                 if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
@@ -402,219 +379,6 @@ class MachineFeedbackListener(threading.Thread):
                     self.processBufferLevelFeedback('binary', rx_received_time, feedback_data)
                     self.machine.buffer_level_reception_event.set()
 
-                #
-                #
-                #
-                # print('received: ' + data_string)
-                #
-                # elif self.machine.rsh_feedback_strings[-1] in data_string:
-                #     # Error in RSH command
-                #     print('RSH error')
-                #     self.handleRSHError()
-                # elif self.machine.rsh_feedback_strings[0] in data_string:
-                #     # FIXME raise error if feedback state active but we aren't getting data for 500ms, also measure receiption time of all data
-                #     # Position Feedback
-                #     # print('processing position feedback with data string: ' + data_string)
-                #     # print('processing position feedback')
-                #     # Force logging flag
-                #
-                #     # self.machine.logging_mode = 1
-                #     if data_string[0] == self.machine.rsh_feedback_strings[0]:
-                #         # Beginning of transmission is good
-                #         self.processPositionFeedback('ascii', rx_received_time, data_string)
-                #     else:
-                #         # Incomplete transmission, discard for now FIXME find root cause
-                #         print('got incomplete beginning of transmission')
-                #         pass
-                # elif self.machine.rsh_feedback_strings[1] in data_string:
-                #     # Buffer Length
-                #     self.processBLFeedback(data_string, rx_received_time)
-                # elif self.machine.rsh_feedback_strings[3] in data_string:
-                #     # Program Status
-                #     # print('program status')
-                #     self.machine.status = data_string.split(' ')[1].strip()
-                #     # print('set program status to ' + self.machine.status)
-                #     self.machine.status_change_event.set()
-                # elif self.machine.rsh_feedback_strings[4] in data_string:
-                #     # Machine Mode
-                #     # print('mode set')
-                #     print('got mode ' + data_string.split(' ')[1].strip())
-                #     self.machine.mode = data_string.split(' ')[1].strip()
-                #     self.machine.mode_change_event.set()
-                #     # print('set machine mode to ' + self.machine.mode)
-                # elif self.machine.rsh_feedback_strings[6] in data_string:
-                #     # Servo Log Params
-                #     # print('got logging ' + data_string.split(' ')[1].strip())
-                #     self.machine.logging_mode = int(data_string.split()[1].strip())
-                #     self.machine.logging_mode_change_event.set()
-                # elif self.machine.rsh_feedback_strings[7] in data_string:
-                #     # Drive Power
-                #     self.machine.drive_power = self.machine.rsh_feedback_flags.index(
-                #         data_string.split()[1].strip().upper())
-                #     self.machine.drive_power_change_event.set()
-                # elif self.machine.rsh_feedback_strings[8] in data_string:
-                #     # Echo
-                #     # print('got set echo: ' + data_string)
-                #     self.machine.echo = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-                #     self.machine.echo_change_event.set()
-                # elif self.machine.rsh_feedback_strings[9] in data_string:
-                #     # Hello
-                #     # print('got hello')
-                #     self.machine.connected = 1
-                #     self.machine.connection_change_event.set()
-                # elif self.machine.rsh_feedback_strings[10] in data_string:
-                #     # Enable
-                #     # print('got enable')
-                #     self.machine.linked = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-                #     self.machine.link_change_event.set()
-                # elif self.machine.rsh_feedback_strings[11] in data_string:
-                #     # EStop
-                #     # print('got estop: ' + data_string)
-                #     self.machine.estop = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-                #     self.machine.estop_change_event.set()
-                # elif self.machine.rsh_feedback_strings[12] in data_string:
-                #     # Joint homed
-                #     # print('got joint home: ' + data_string)
-                #     for axis in range(0, self.machine.num_joints):
-                #         # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
-                #         self.machine.axis_home_state[axis] = self.machine.checkOnOff(data_string.split()[axis + 1]) % 2
-                #         # print('joint home state is ' + str(self.machine.axis_home_state))
-                #
-                #     if all(self.machine.axis_home_state):
-                #         print('all joints homed')
-                #         self.machine.all_homed_event.set()
-                #         # self.machine.home_change_event.set()
-                #
-                #     self.machine.home_change_event.set()
-                # if self.machine.rsh_feedback_strings[13] in data_string:
-                #     self.machine.ping_rx_time = rx_received_time
-                #     self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
-                #     self.machine.ping_event.set()
-                # elif self.machine.rsh_feedback_strings[14] in data_string:
-                #     # Time
-                #     self.machine.last_unix_time = float(data_string.split()[1])
-                #     self.machine.clock_event.set()
-                # else:
-                #     print('received unrecognized string ' + data_string)
-
-    # def processBinaryHeader(self, bytes):
-    #     header_data = struct.unpack('!ccxI',bytes)
-    #     #print('got header data ' + str(header_data))
-    #     feedback_type = ''.join((c.decode('utf-8') for c in header_data[0:len(header_data)-1]))
-    #     return (feedback_type, header_data[-1])
-    #
-    # def processBinaryFeedback(self, rx_received_time, bytes):
-    #     #print('length of transmission is ' + str(self.feedback_type[1]))
-    #     unpacked_feedback_data = struct.unpack('!' + 'd' * int((self.feedback_type[1]-1)/self.machine.size_of_feedback_double) + 'c', bytes)
-    #     #Transmission error check
-    #     if unpacked_feedback_data[-1] != b'\x7f':
-    #         print('Binary transmission error')
-    #         return False
-    #     if self.feedback_type[0] == 'SF':
-    #         #This is servo feedback data
-    #         self.processPositionFeedback('binary', rx_received_time, unpacked_feedback_data[:-1])
-    #     elif self.feedback_type[0] == 'BL':
-    #         #This is buffer level and time feedback data
-    #         self.processBufferLevelFeedback('binary', rx_received_time, unpacked_feedback_data[:-1])
-    #     #elif self.feedback_type[0] == 'AF':
-    #         #ASCII feedback
-
-
-    # def processRSHString(self, data_string, rx_received_time):
-    #     ##FIXME detect if RSH crashed
-    #     if any(s in data_string for s in self.machine.rsh_feedback_strings):
-    #         # #Check ping first
-    #         print('received: ' + data_string)
-    #         if self.machine.rsh_feedback_strings[13] in data_string:
-    #             self.machine.ping_rx_time = rx_received_time
-    #             self.machine.estimated_network_latency = (self.machine.ping_rx_time-self.machine.ping_tx_time)/2
-    #             self.machine.ping_event.set()
-    #         elif self.machine.rsh_feedback_strings[-1] in data_string:
-    #             # Error in RSH command
-    #             print('RSH error')
-    #             self.handleRSHError()
-    #         elif self.machine.rsh_feedback_strings[0] in data_string:
-    #             #FIXME raise error if feedback state active but we aren't getting data for 500ms, also measure receiption time of all data
-    #             # Position Feedback
-    #             #print('processing position feedback with data string: ' + data_string)
-    #             #print('processing position feedback')
-    #             #Force logging flag
-    #             if self.machine.logging_mode != 1:
-    #                 print('state machine sync error')
-    #             #self.machine.logging_mode = 1
-    #             if data_string[0] == self.machine.rsh_feedback_strings[0]:
-    #                 #Beginning of transmission is good
-    #                 self.processPositionFeedback('ascii',rx_received_time,data_string)
-    #             else:
-    #                 #Incomplete transmission, discard for now FIXME find root cause
-    #                 print('got incomplete beginning of transmission')
-    #                 pass
-    #         elif self.machine.rsh_feedback_strings[1] in data_string:
-    #             # Buffer Length
-    #             self.processBLFeedback(data_string,rx_received_time)
-    #         elif self.machine.rsh_feedback_strings[3] in data_string:
-    #             # Program Status
-    #             #print('program status')
-    #             self.machine.status = data_string.split(' ')[1].strip()
-    #             #print('set program status to ' + self.machine.status)
-    #             self.machine.status_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[4] in data_string:
-    #             # Machine Mode
-    #             #print('mode set')
-    #             print('got mode ' + data_string.split(' ')[1].strip())
-    #             self.machine.mode = data_string.split(' ')[1].strip()
-    #             self.machine.mode_change_event.set()
-    #             #print('set machine mode to ' + self.machine.mode)
-    #         elif self.machine.rsh_feedback_strings[6] in data_string:
-    #             # Servo Log Params
-    #             #print('got logging ' + data_string.split(' ')[1].strip())
-    #             self.machine.logging_mode = int(data_string.split()[1].strip())
-    #             self.machine.logging_mode_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[7] in data_string:
-    #             # Drive Power
-    #             self.machine.drive_power = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-    #             self.machine.drive_power_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[8] in data_string:
-    #             # Echo
-    #             #print('got set echo: ' + data_string)
-    #             self.machine.echo = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-    #             self.machine.echo_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[9] in data_string:
-    #             # Hello
-    #             #print('got hello')
-    #             self.machine.connected = 1
-    #             self.machine.connection_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[10] in data_string:
-    #             # Enable
-    #             #print('got enable')
-    #             self.machine.linked = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-    #             self.machine.link_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[11] in data_string:
-    #             # EStop
-    #             #print('got estop: ' + data_string)
-    #             self.machine.estop = self.machine.rsh_feedback_flags.index(data_string.split()[1].strip().upper())
-    #             self.machine.estop_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[12] in data_string:
-    #             #Joint homed
-    #             #print('got joint home: ' + data_string)
-    #             for axis in range(0,self.machine.num_joints):
-    #                 #self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
-    #                 self.machine.axis_home_state[axis] = self.machine.checkOnOff(data_string.split()[axis + 1]) % 2
-    #                 #print('joint home state is ' + str(self.machine.axis_home_state))
-    #
-    #             if all(self.machine.axis_home_state):
-    #                 print('all joints homed')
-    #                 self.machine.all_homed_event.set()
-    #                 #self.machine.home_change_event.set()
-    #
-    #             self.machine.home_change_event.set()
-    #         elif self.machine.rsh_feedback_strings[14] in data_string:
-    #             #Time
-    #             self.machine.last_unix_time = float(data_string.split()[1])
-    #             self.machine.clock_event.set()
-    #         else:
-    #             print('received unrecognized string ' + data_string)
-
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         if feedback_encoding == 'ascii':
@@ -623,26 +387,26 @@ class MachineFeedbackListener(threading.Thread):
             #m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)'+self.machine.rsh_feedback_strings[2]+'([+-]?([0-9]*[.])?[0-9]+)', data_string)
             #BL_data = feedback_data.split()
             rsh_clock_time = float(feedback_data[0])
-            rsh_buffer_length = int(feedback_data[1])
+            rsh_buffer_level = int(feedback_data[1])
 
 
-            # self.rsh_buffer_length = int(m.group(1))
+            # self.rsh_buffer_level = int(m.group(1))
             # rsh_clock_time = float(m.group(2))
-            #self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_length)])])
+            #self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_level)])])
             # record = dict()
-            # record['HIGHRES_TC_QUEUE_LENGTH'] = self.rsh_buffer_length
+            # record['HIGHRES_TC_QUEUE_LENGTH'] = self.rsh_buffer_level
             # record['highfreq_ethernet_received_times'] = rx_received_time
             # record['rsh_clock_times'] = rsh_clock_time
         elif feedback_encoding == 'binary':
             feedback_data = struct.unpack('!dI', feedback_data)
             rsh_clock_time = feedback_data[0]
-            rsh_buffer_length = feedback_data[1]
+            rsh_buffer_level = feedback_data[1]
 
         record = dict()
-        record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_length
+        record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_level
 
         #FIXME this is shit
-        #self.machine.rsh_buffer_length = rsh_buffer_length
+        #self.machine.rsh_buffer_level = rsh_buffer_level
 
         record['highfreq_ethernet_received_times'] = rx_received_time
         record['rsh_clock_times'] = rsh_clock_time
@@ -662,20 +426,13 @@ class MachineFeedbackListener(threading.Thread):
                     print('problem with ascii line terminator in servo feedback, dropping last entry')
                     feedback_data = feedback_data[:-1]
 
-                # if len(samples[-1].split('|')) < self.machine.servo_log_num_axes + 1:
-                #     print('received incomplete last entry, discarding')
-                #     samples = samples[:-1]
-                #samples = data_string.split('*')[1:-1]
-
                 feedback_data = [s.strip(self.machine.ascii_servo_feedback_terminator) for s in feedback_data]
-                #print('the samples are:: ')
-                #print(samples)
-                #print('the number of points is ' + str(feedback_num_points))
 
                 stepgen_feedback_positions = np.zeros([number_of_feedback_points,self.machine.servo_log_num_axes])
                 RTAPI_clock_times = np.zeros([number_of_feedback_points,1])
                 received_times_interpolated = np.zeros([number_of_feedback_points, 1])
                 RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
 
                 # #FIXME move this to DataStoreManager
                 # if len(self.data_store.RTAPI_feedback_indices) != 0:
@@ -691,16 +448,10 @@ class MachineFeedbackListener(threading.Thread):
                     sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
                     RTAPI_feedback_indices[sample_number, :] += float(sample_number)
                     RTAPI_clock_times[sample_number,:] = float(sample_point[0])
-                    #print('the sample is: ')
-                    #print(sample)
-                    #print(stepgen_feedback_positions)
                     stepgen_feedback_positions[sample_number,:] = np.asarray([float(s) for s in sample_point[1:]])+np.asarray(self.machine.axis_offsets)
                     ## FIXME use clock delta between samples instead of straight interpolation
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
-                    self.machine.current_position = stepgen_feedback_positions[sample_number,:]
-                    #np.vstack((stepgen_feedback_positions, sample.split('|')[1:-1]))
-
-                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
+                    #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
 
                 record = dict()
                 record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
@@ -740,10 +491,7 @@ class MachineFeedbackListener(threading.Thread):
             print('the error is ' + str(error))
             return
 
-        #machine_feedback_records.append(record)
-        #self.data_store.appendMachineFeedbackRecords([record])
         self.machine.data_store_manager_thread_handle.push(record)
-        #return machine_feedback_records
 
     def handleRSHError(self):
         self.machine.rsh_error = 1
@@ -755,120 +503,189 @@ class MachineFeedbackListener(threading.Thread):
 
 #serialLock = threading.Lock()
 class SerialInterface(threading.Thread):
-    def __init__(self, machine, data_store):
+    def __init__(self, machine):
         super(SerialInterface, self).__init__()
-        self._running = True
-        self._shutdown = False
-        #FIXME handle if serial is not connected
-        try:
-            self.serialPort = serial.Serial(  # set parameters, in fact use your own :-)
-                port="COM12",
-                baudrate=115200,
-                #bytesize=serial.SEVENBITS,
-                #parity=serial.PARITY_EVEN,
-                #stopbits=serial.STOPBITS_ONE
-            )
-            self.serialPort.isOpen()  # try to open port, if possible print message and proceed with 'while True:'
-            print("Successful open of serial port")
-
-        except IOError:  # if port is already opened, close it and open it again and print message
-            print('excepting')
-            #self.serialPort.close()
-            #self.serialPort.open()
-            #print("port was already open, was closed and opened again!")
-            print('port does not exist')
-#        try:
-#            self.serialPort = serial.Serial('COM12', 115200)
-        #except:
-            #serial.Serial.close('COM12')
-        #self.serialPort = serial.Serial('COM12', 250000)
-        self.data_store = data_store
         self.machine = machine
+
+        #self._running = True
+        self._shutdown = False
+
+        self.serial_port = serial.Serial()
+        self.serial_port.port = self.machine.comm_port
+        self.serial_port.baudrate = self.machine.baudrate
+        #FIXME handle if serial is not connected
+
+        try:
+            if self.serial_port.isOpen():
+                print('serial port already open')
+            self.serial_port.open()
+            self._running_thread = True
+
+            # if self.machine.initial_position_set_event.wait():
+            #     self.setAllEncoderCounts(self.machine.axes,self.machine.current_position)
+            #     self.machine.encoder_init_event.set()
+            #while not self.machine.data_store_manager_thread_handle.pull(['stepgen_feedback_positions'],[-1],[None])[0]:
+
+        except Exception as error:
+            print('Could not open serial port, error: ' + str(error))
+
+
         print('serialInterface started')
-        time.sleep(0.5)
-
-    def read(self):
-        line = self.serialPort.readline()
-        return line
-
-    ##    def write(self, data):
-    ##        line = self.serialPort.readline()
-    ##        return line
-
-    def reset(self):
-        global encoderData, serialLock
-        #serialLock.acquire()
-        self.serialPort.close()
-        self.serialPort.open()
-        encoderData = np.array([0])
-        queueData = np.array([0])
-        #serialLock.release()
-
-    def setEncoderCount(self, count):
-        # self.serialPort.write('R'.encode('utf-8'))
-        # Calculate number of characters in set command
-        numBytes = math.floor(round(math.log(count, 10),6)) + 1
-        commandStr = 'S' + str(numBytes) + str(count) + '\n'
-        print('setting' + commandStr)
-        self.serialPort.write(commandStr.encode('utf-8'))
-        readData = ''
-        while 'S&' not in readData:
-            #print("waiting to read")
-            readData += self.serialPort.read(1).decode("utf-8").strip()
-        print('Successful set of encoder count to ' + str(count))
-
-    def requestEncoderCount(self):
-        #print('requesting encoder count')
-        self.serialPort.write('G'.encode('utf-8'))
-        #time.sleep(0.1)
-        readData = ''
-        while 'C&' not in readData:
-            #print("waiting to read")
-            readData += self.serialPort.read(1).decode("utf-8")
-        #print('Successful get of encoder count')
-        #print(readData.strip())
-        return readData.strip()
+        #time.sleep(0.5)
 
     def run(self):
         #global encoderData, serialLock
-        self.setEncoderCount(self.machine.encoder_init)
-        #print('setting encoder count in run')
-        #time.sleep(0.1)
+        #self.setEncoderCount(self.machine.encoder_init)
+        if self.machine.initial_position_set_event.wait():
+            self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
+            self.machine.encoder_init_event.set()
+
         while self._running_thread:
-            #serialLock.acquire()
-            counts = self.requestEncoderCount()
-
-            #if line and str.isnumeric(axisCounts[0]):
-            if 'C&' in counts:
-                rx_received_time = time.clock()
-                record = dict()
-                counts = counts.split(' ')[0:-1]
-                #print(axisCounts[0], axisCounts[1])
-                # print('got numeric');
-                # encoderData = np.vstack((encoderData,int(line)))
-                #encoderData = np.vstack((encoderData, axisCounts[0]))
-                encoder_counts = np.asarray(list(map(int, counts)))
-                print(encoder_counts)
-
-                # Create feedback record that respects encoder calibration
-                #record['encoder_feedback_positions'] = np.multiply(encoder_counts-self.machine.encoder_init,self.machine.encoder_scale) + self.machine.encoder_offset
-                ## FIXME add encoder scaling function
-                record['encoder_feedback_positions'] = np.multiply(encoder_counts - self.machine.encoder_init,
-                                                                   self.machine.encoder_scale) + self.machine.machine_zero
-                record['serial_received_times'] = rx_received_time
-                #machine_feedback_records.append(record)
-                self.data_store.appendMachineFeedbackRecords([record])
-                print(record['encoder_feedback_positions'])
-                #time.sleep(0.1)
-            #serialLock.release()
-            #time.sleep(0.2)
-            #print('running serial')
+            counts = self.getEncoderCounts('current')
+            rx_received_time = time.clock()
+            print(counts)
 
         #Flag set, shutdown
         print('Closing serial port')
         print('ENCODER INTERFACE: thread shut down')
-        self.serialPort.close()
-        self._shutdown = True
+        self.serial_port.close()
+        #self._shutdown = True
+
+    def read(self):
+        line = self.serial_port.readline()
+        return line
+
+    def writeUnicode(self, string):
+        self.serial_port.write(string.encode('utf-8'))
+        #time.sleep(0.01)
+        #self.serial_port.flush()
+
+    ##    def write(self, data):
+    ##        line = self.serial_port.readline()
+    ##        return line
+
+    # def reset(self):
+    #     global encoderData, serialLock
+    #     #serialLock.acquire()
+    #     self.serial_port.close()
+    #     self.serial_port.open()
+    #     encoderData = np.array([0])
+    #     queueData = np.array([0])
+    #     #serialLock.release()
+
+    def positionToCounts(self, axis, position):
+        axis_index = self.machine.axes.index(axis.upper())
+        return round(position / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]
+
+    def positionsToCounts(self, axes, positions):
+        counts = []
+        for axis in range(0,len(axes)):
+            axis_index = self.machine.axes.index(axes[axis].upper())
+            counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
+        return counts
+
+    def countsToPosition(self, axis, counts):
+        axis_index = self.machine.axes.index(axis.upper())
+        return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
+
+    def waitForBytes(self, number_of_bytes, timeout = 0.5):
+        read_byte_count = 0
+        read_data = ''
+        start_time = time.clock()
+        while read_byte_count < number_of_bytes and (time.clock() - start_time) < timeout:
+            read_data += self.serial_port.read(1).decode('utf-8')
+            read_byte_count += 1
+
+        if read_byte_count == number_of_bytes:
+            return (True, read_data)
+        else:
+            return (False, None)
+
+    def waitForString(self, string, timeout = 0.5):
+        # #read_byte_count = 0
+        # read_data = ''
+        # start_time = time.clock()
+        # while string not in read_data and (time.clock() - start_time) < timeout:
+        #     read_data += self.serial_port.readline().decode('utf-8')
+        #     #read_byte_count += 1
+
+        start = time.clock()
+        read_data = self.serial_port.readline().decode('utf-8')
+        print('read took ' + str(time.clock()-start))
+        if string in read_data:
+            return (True, read_data)
+        else:
+            return (False, None)
+
+    def setAxisEncoderCount(self, axis, count):
+        number_of_bytes = math.floor(round(math.log(count, 10),6)) + 1
+        command_string = 'S' + str(axis) + str(number_of_bytes) + str(count)
+        self.writeUnicode(command_string)
+        if self.waitForString(self.machine.encoder_ack_strings[0]):
+        #if self.waitForBytes(len(self.machine.encoder_ack_strings[0]))[1] == self.machine.encoder_ack_strings[0]:
+            return True
+        else:
+            return False
+
+    def setAllEncoderCounts(self, axes, counts):
+        for axis in axes:
+            axis_index = self.machine.axes.index(axis)
+            self.setAxisEncoderCount(axis_index+1,counts[axis_index])
+
+    # def setEncoderCount(self, count):
+    #     # self.serial_port.write('R'.encode('utf-8'))
+    #     # Calculate number of characters in set command
+    #     numBytes = math.floor(round(math.log(count, 10),6)) + 1
+    #     commandStr = 'S' + str(numBytes) + str(count) + '\n'
+    #     print('setting' + commandStr)
+    #     self.serial_port.write(commandStr.encode('utf-8'))
+    #
+    #     ack = self.waitForBytes(2)[1]
+    #     if ack == 'S&':
+    #         return True
+    #     else:
+    #         return False
+    #     # readData = ''
+    #     # while 'S&' not in readData:
+    #     #     #print("waiting to read")
+    #     #     readData += self.serial_port.read(1).decode("utf-8").strip()
+    #     # print('Successful set of encoder count to ' + str(count))
+
+    def getEncoderCounts(self, request_type):
+        #print('requesting encoder count')
+        #self.serial_port.write('G'.encode('utf-8'))
+        if request_type.upper() == 'STORED':
+            request_string = self.machine.encoder_command_strings[1]
+            ack_string = self.machine.encoder_ack_strings[1]
+        elif request_type.upper() == 'CURRENT':
+            request_string = self.machine.encoder_command_strings[2]
+            ack_string = self.machine.encoder_ack_strings[2]
+        else:
+            return (False, None)
+
+        self.writeUnicode(request_string)
+        received_counts = self.waitForString(ack_string)
+
+        if received_counts[0]:
+            #First character should be G
+            counts = received_counts[1].split(' ')
+            if counts[0] == request_string and counts[-1] == ack_string:
+                if len(counts[1]) < 9:
+                    print('break')
+                return (True, list(map(int,counts[1:-1])))
+        #else:
+        return (False, None)
+
+        # if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
+        #
+        # #time.sleep(0.1)
+        # readData = ''
+        # while 'C&' not in readData:
+        #     #print("waiting to read")
+        #     readData += self.serial_port.read(1).decode("utf-8")
+        # #print('Successful get of encoder count')
+        # #print(readData.strip())
+        # return readData.strip()
 
     def close(self):
         print('setting serial port close flag')

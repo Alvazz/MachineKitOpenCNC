@@ -19,8 +19,9 @@ class MachineModel():
         self.statuses = ['IDLE', 'RUNNING', 'PAUSED']
 
         #RSH Comm
+        self.hello_string = 'hello EMC robby 1'
         self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
-        self.rsh_error_string = 'NAK\r\n'
+        self.rsh_error_string = 'NAK'
         self.rsh_echo_strings = ['SET', 'GET', 'DM']
         self.ascii_rsh_feedback_strings = ['*', 'bTbL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'NAK']
         self.binary_rsh_feedback_strings = ['SF', 'BL']
@@ -50,8 +51,12 @@ class MachineModel():
         self.machine_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
         self.encoder_init = 1000000
         self.encoder_offset = [155836, 180838, 2283, 9121, 0]
+        self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
         self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, -1.0 / 172, -1.0 / 167]
+        self.encoder_command_strings = ['S', 'G', 'R']
+        self.encoder_ack_strings = ['S&\r\n', 'G&\r\n', 'R&\r\n']
+        self.encoder_nak_strings = ['F &']
 
         #Machine kinematics
         self.num_joints = 5
@@ -102,6 +107,8 @@ class MachineModel():
         self.servo_feedback_reception_event = threading.Event()
         #FIXME implement this
         self.position_change_event = threading.Event()
+        self.initial_position_set_event = threading.Event()
+        self.encoder_init_event = threading.Event()
 
         #Timing parameters
         self.clock_resolution = 1e6
@@ -117,8 +124,8 @@ class MachineModel():
         self.servo_log_sub_sample_rate = 10
         self.servo_log_buffer_size = 50
 
-
         #Comm parameters
+        self.rsh_socket = None
         self.endianness = 'little'
         self.size_of_feedback_double = 8
         self.size_of_feedback_int = 4
@@ -128,36 +135,34 @@ class MachineModel():
         self.tcp_port = 5007
         self.ip_address = '129.1.15.5'
         #self.ip_address = '129.1.15.69'
-        self.udp_port = 515
-        self.listen_ip = '0.0.0.0'
-        self.comm_port = 'COM12'
+        #self.udp_port = 515
+        #self.listen_ip = '0.0.0.0'
+        self.comm_port = 'COM3'
+        self.baudrate = 115200
         self.ssh_opts = '-X'
         self.ssh_credentials = 'pocketnc@' + self.ip_address
         self.ssh_hosts_path = 'E:\SculptPrint\PocketNC\OpenCNC\Interface Application\pncApp\Support Files\known_hosts'
 
         #TCP Control Parameters
-        self.polylines_per_tx = 1
+        self.polylines_per_tx = 2
         self.points_per_polyline = 25
         self.buffer_level_setpoint = 1000
         self.max_buffer_level = 2000
 
         #Motion State Machine
         self.current_position = [0.0]*self.num_joints
+        self.current_encoder_position = [0.0]*self.num_joints
         self.current_velocity = [0.0]*self.num_joints
         self.current_acceleration = [0.0]*self.num_joints
         self.current_jerk = [0.0]*self.num_joints
-        self.rsh_buffer_length = 0
+        self.rsh_buffer_level = 0
 
         #File Handling
-        self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
+        #self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
+        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\'
         self.point_file_prefix = 'opt_code'
         #self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
 
-        #State stack
-        #self.prev_mode = self.modes[0]
-
-        #SculptPrint Data Format
-        #self.SP_data_format = ['X','Z','S','Y','A','B','V','W']
 
     ######################## State Machine ########################
     def pushState(self):

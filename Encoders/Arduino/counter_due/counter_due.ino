@@ -129,9 +129,6 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
         command_string_index++;
         
         if (bytesToRead == waitForBytes(inBufPosition, bytesToRead)) {
-//          Serial.print("Successful read of ");
-//          Serial.print(bytesToRead, DEC);
-//          Serial.println(" bytes");
           memcpy(&commandData->commandString[command_string_index],&inBuf,bytesToRead*sizeof(char));
           commandData->commandString[command_string_index+bytesToRead] = '&';
           commandData->bytesRead = bytesToRead;
@@ -242,7 +239,7 @@ void setup() {
   delay(100);
 
   // initialize counter by setting control registers and clearing flag & counter registers
-  initCounters(axes);
+  initializeCounters(axes);
   initializeStateData(&encoderStateData);
   initializeCommandData(&commandData);
   
@@ -258,47 +255,52 @@ void setup() {
 }
 
 void loop() {
-  readCommand(&encoderStateData, &commandData);
-  //Success on read/process command
-  switch (commandData.cmd) {
-    case 'G':
-    case 'R':
-      //Count request from master
-      if (commandData.cmdResult) {
-        Serial.print(commandData.cmd);
-        for (int axis = 0; axis < numAxes; axis++) {
+  
+  while (true) {
+    readCommand(&encoderStateData, &commandData);
+    //Success on read/process command
+    switch (commandData.cmd) {
+      case 'G':
+      case 'R':
+        //Count request from master
+        if (commandData.cmdResult) {
+          Serial.print(commandData.cmd);
+          for (int axis = 0; axis < numAxes; axis++) {
+            Serial.print(' ');
+            Serial.print(encoderStateData.encoderCounts[axis], DEC);
+          }
           Serial.print(' ');
-          Serial.print(encoderStateData.encoderCounts[axis], DEC);
+          Serial.print(commandData.cmd);
+          Serial.println("&");
+        } else {
+          Serial.println("F &");
         }
-        Serial.println(" &");
-      } else {
-        Serial.println("F&");
-      }
-      //Serial.print(stateData.encoderCounts[numAxes-1]);
-      //Serial.println("done");
-      //Serial.println("C&");
-      
+        //Serial.print(stateData.encoderCounts[numAxes-1]);
+        //Serial.println("done");
+        //Serial.println("C&");
+        
+        break;
+      case 'S':
+        if (commandData.cmdResult) {
+          Serial.println("S&");
+        } else {
+          Serial.println("F &");
+        }
+        break;
+      case 'B':
+        if (commandData.cmdResult) {
+          Serial.print("B ");
+          Serial.print(commandData.newBandwidth,DEC);
+          Serial.println(" &");
+          delay(100);
+          Serial.begin(commandData.newBandwidth);
+        }
+      default:
+      //NULL command
       break;
-    case 'S':
-      if (commandData.cmdResult) {
-        Serial.println("S &");
-      } else {
-        Serial.println("F&");
-      }
-      break;
-    case 'B':
-      if (commandData.cmdResult) {
-        Serial.print("B ");
-        Serial.print(commandData.newBandwidth,DEC);
-        Serial.println(" &");
-        delay(100);
-        Serial.begin(commandData.newBandwidth);
-      }
-    default:
-    //NULL command
-    break;
+    }
+  
+    resetCommandData(&commandData);
+    resetEncoderError(&encoderStateData);
   }
-
-  resetCommandData(&commandData);
-  resetEncoderError(&encoderStateData);
 }

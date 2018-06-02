@@ -83,7 +83,7 @@ const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5, SS6};
 #define SETCMD_TIMEOUT   1
 #define BUFFER_SIZE     64
 #define INI_CNTR         0
-#define DEFAULT_BAUD  250000
+#define DEFAULT_BAUD  115200
 
 // 4 byte counter
 union byte4{
@@ -152,7 +152,7 @@ uint32_t readFourBytes(const uint8_t ss_pin, const uint8_t op_code) {
   return res.comb;
 }
 
-void initCounters(const uint8_t ss[]) {
+void initializeCounters(const uint8_t ss[]) {
   // set PWM for CLK
   /*  setup PWM on pin: DAC1
   *  freq = 500K

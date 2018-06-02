@@ -323,8 +323,8 @@ def testMonitoring():
 
 start()
 
-machine.sculptprint_interface.enqueue_moves_event.set()
-machine.sculptprint_interface.run_motion_event.set()
+#machine.sculptprint_interface.enqueue_moves_event.set()
+#machine.sculptprint_interface.run_motion_event.set()
 
 #time.sleep(1)
 #readMachine(0)

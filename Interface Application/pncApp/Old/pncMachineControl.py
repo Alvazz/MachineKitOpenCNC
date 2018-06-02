@@ -340,7 +340,7 @@ class MachineController(threading.Thread):
             self.conn.send(frame)
 
             sleep_time = self.runNetworkPID(self.rsh_buffer_length,blocklength,polylines,1000)
-            #print(sleep_time, self.rsh_buffer_length)
+            #print(sleep_time, self.rsh_buffer_level)
             time.sleep(sleep_time)
 
         self.setBinaryMode(0)
