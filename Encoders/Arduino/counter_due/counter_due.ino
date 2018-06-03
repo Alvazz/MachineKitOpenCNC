@@ -31,7 +31,8 @@ typedef struct {
 } commandData_t;
 
 typedef struct {
-  uint32_t encoderCounts[numAxes];
+  //uint32_t encoderCounts[numAxes];
+  byte4 encoderCounts[numAxes];
   bool encoderError[numAxes];
 } stateData_t;
 
@@ -41,7 +42,7 @@ static char inBuf[64];
 
 void initializeStateData(stateData_t *stateData) {
   for (int axis = 0; axis < numAxes; axis++) {
-    stateData->encoderCounts[axis] = 0;
+    stateData->encoderCounts[axis].comb = 0;
     stateData->encoderError[axis] = false;
   }
 }
@@ -85,6 +86,7 @@ void resetCommandData(commandData_t *commandData) {
   commandData->cmdResult = false;
   commandData->cmdError = false;
   commandData->bytesRead = 0;
+  commandData->newBandwidth = 0;
 }
 
 void resetEncoderError(stateData_t *stateData) {
@@ -95,7 +97,7 @@ void resetEncoderError(stateData_t *stateData) {
 
 void updateEncoderCounts(stateData_t *stateData) {
   for (int axis = 0; axis < numAxes; axis++) {
-    stateData->encoderCounts[axis] = readFourBytes(axes[axis], READ_CNTR);
+    stateData->encoderCounts[axis].comb = readFourBytes(axes[axis], READ_CNTR);
   }
 }
 
@@ -153,7 +155,7 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
                 if (setCounter(axes[axis], setCount)) {
                   //Successful set for IC axes[axis]
                   commandData->cmdResult &= true;
-                  stateData->encoderCounts[axis] = (uint32_t) setCount;
+                  stateData->encoderCounts[axis].comb = setCount;
                   stateData->encoderError[axis] = false;
                 } else {
                   //Write failure
@@ -168,7 +170,7 @@ void readCommand(stateData_t *stateData, commandData_t *commandData) {
               int targetICAddress = targetIC-1;
               if (setCounter(axes[targetICAddress], setCount)) {
                 commandData->cmdResult = 1;
-                stateData->encoderCounts[targetICAddress] = (uint32_t) setCount;
+                stateData->encoderCounts[targetICAddress].comb = setCount;
                 stateData->encoderError[targetICAddress] = false;
               } else {
                 commandData->cmdResult = 0;
@@ -245,7 +247,7 @@ void setup() {
   
   for (int axis = 0; axis < numAxes; axis++) {
     setCounter(axes[axis], INI_CNTR);
-    encoderStateData.encoderCounts[axis] = (uint32_t) INI_CNTR;
+    encoderStateData.encoderCounts[axis].comb = (uint32_t) INI_CNTR;
   }
   
   // initialize timer
@@ -254,8 +256,12 @@ void setup() {
   //interrupts();
 }
 
+uint32_t htonl(uint32_t num) {
+  return ((num>>24)&0xff) | ((num<<8)&0xff0000) | ((num>>8)&0xff00) | ((num<<24)&0xff000000);
+}
+
 void loop() {
-  
+  Serial.println("INIT");
   while (true) {
     readCommand(&encoderStateData, &commandData);
     //Success on read/process command
@@ -266,14 +272,19 @@ void loop() {
         if (commandData.cmdResult) {
           Serial.print(commandData.cmd);
           for (int axis = 0; axis < numAxes; axis++) {
-            Serial.print(' ');
-            Serial.print(encoderStateData.encoderCounts[axis], DEC);
+            //Serial.print(' ');
+            //Serial.println(encoderStateData.encoderCounts[axis].comb, DEC);
+            //const uint8_t* encoder_count = &encoderStateData.encoderCounts[axis];
+            byte4 encoder_count;
+            encoder_count.comb = htonl(encoderStateData.encoderCounts[axis].comb);
+            Serial.write(encoder_count.bytes,sizeof(uint32_t));
           }
-          Serial.print(' ');
-          Serial.print(commandData.cmd);
-          Serial.println("&");
+          //Serial.print(' ');
+          //Serial.print(commandData.cmd);
+          //Serial.println("&");
+          Serial.print('&');
         } else {
-          Serial.println("F &");
+          Serial.println("F&");
         }
         //Serial.print(stateData.encoderCounts[numAxes-1]);
         //Serial.println("done");
@@ -284,14 +295,14 @@ void loop() {
         if (commandData.cmdResult) {
           Serial.println("S&");
         } else {
-          Serial.println("F &");
+          Serial.println("F&");
         }
         break;
       case 'B':
         if (commandData.cmdResult) {
           Serial.print("B ");
           Serial.print(commandData.newBandwidth,DEC);
-          Serial.println(" &");
+          Serial.println(" B&");
           delay(100);
           Serial.begin(commandData.newBandwidth);
         }

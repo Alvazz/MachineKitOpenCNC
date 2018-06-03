@@ -1,10 +1,7 @@
-#from pncMachineControl import MachineController
-import threading, datetime, time
-import queue
+import multiprocessing
+import threading, time
 
-class MachineModel():
-    global machine_controller
-
+class MachineModel(multiprocessing.Manager):
     def __init__(self):
         #Threads and Objects
         self.feedback_listener_thread_handle = None
@@ -48,16 +45,15 @@ class MachineModel():
         self.table_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
 
         #Encoder calibration
-        self.number_of_encoders = 6
         self.machine_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
         self.encoder_init = 1000000
         self.encoder_offset = [155836, 180838, 2283, 9121, 0]
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
         self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, -1.0 / 172, -1.0 / 167]
-        self.max_encoder_transmission_length = 1+4*6+1
+        self.max_encoder_transmission_length = 64
         self.encoder_command_strings = ['S', 'G', 'R', 'B']
-        self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n', '&']
+        self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n']
         self.encoder_nak_strings = ['F&\r\n']
 
         #Machine kinematics

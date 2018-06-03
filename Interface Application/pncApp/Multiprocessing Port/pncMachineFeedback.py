@@ -408,8 +408,8 @@ class MachineFeedbackListener(threading.Thread):
         #FIXME this is shit
         #self.machine.rsh_buffer_level = rsh_buffer_level
 
-        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = rx_received_time
-        record['RSH_CLOCK_TIMES'] = rsh_clock_time
+        record['highfreq_ethernet_received_times'] = rx_received_time
+        record['rsh_clock_times'] = rsh_clock_time
 
         #self.data_store.appendMachineFeedbackRecords([record])
         self.machine.data_store_manager_thread_handle.push(record)
@@ -549,28 +549,14 @@ class SerialInterface(threading.Thread):
             self.machine.encoder_init_event.set()
 
         self.setBaudrate(250000)
-        self.serial_port.flushInput()
 
         while self._running_thread:
-            rx_received_time = time.clock()
-            encoder_counts = self.getEncoderCounts('current')
-
-            # self.writeUnicode('G')
-            # encoder_data = self.serial_port.read_all()
-            # encoder_data = self.serial_port.read(self.machine.max_encoder_transmission_length)
-            # struct.unpack('!'+'c'+6*'I'+'c',encoder_data)
-            #print(time.clock() - rx_received_time)
-
-            if encoder_counts[0]:
-                #Got good data, push to DB
-                self.machine.data_store_manager_thread_handle.push(
-                    {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': rx_received_time})
-
-            # start = time.clock()
-
-            # if self.serial_port.in_waiting > self.machine.max_encoder_transmission_length:
-            #     self.serial_port.readline()
-            #     #print(self.serial_port.readline())
+            #counts = self.getEncoderCounts('current')
+            start = time.clock()
+            self.writeUnicode('G')
+            if self.serial_port.in_waiting > self.machine.max_encoder_transmission_length:
+                self.serial_port.readline()
+                #print(self.serial_port.readline())
                 #print(time.clock() - start)
             #else:
                 #print('looping')
@@ -630,13 +616,6 @@ class SerialInterface(threading.Thread):
     def countsToPosition(self, axis, counts):
         axis_index = self.machine.axes.index(axis.upper())
         return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
-
-    def countsToPositions(self, axes, counts):
-        positions = []
-        for axis in range(0, len(axes)):
-            axis_index = self.machine.axes.index(axes[axis].upper())
-            positions.append((counts[axis] - self.machine.encoder_offset[axis_index]) * self.machine.encoder_scale[axis_index] + self.machine.machine_zero[axis_index])
-        return positions
 
     def waitForBytes(self, number_of_bytes, timeout = 0.5):
         read_byte_count = 0
@@ -715,31 +694,25 @@ class SerialInterface(threading.Thread):
         #self.serial_port.write('G'.encode('utf-8'))
         if request_type.upper() == 'STORED':
             request_string = self.machine.encoder_command_strings[1]
-            ack_string = self.machine.encoder_ack_strings[-1]
+            ack_string = self.machine.encoder_ack_strings[2]
         elif request_type.upper() == 'CURRENT':
             request_string = self.machine.encoder_command_strings[2]
-            ack_string = self.machine.encoder_ack_strings[-1]
+            ack_string = self.machine.encoder_ack_strings[3]
         else:
             return (False, None)
 
         self.writeUnicode(request_string)
-        encoder_bytes = self.serial_port.read(self.machine.max_encoder_transmission_length)
-        encoder_data = struct.unpack('!' + 'c' + self.machine.number_of_encoders * 'I' + 'c', encoder_bytes)
-        if encoder_data[0].decode() == request_string and encoder_data[-1].decode() == ack_string:
-            return (True, encoder_data[1:-1])
-        return(False, None)
+        received_counts = self.waitForString(ack_string)
 
-        # received_counts = self.waitForString(ack_string)
-        #
-        # if received_counts[0]:
-        #     #First character should be G
-        #     counts = received_counts[1].split(' ')
-        #     if counts[0] == request_string and counts[-1] == ack_string:
-        #         if len(counts[1]) < 9:
-        #             print('break')
-        #         return (True, list(map(int,counts[1:-1])))
-        # #else:
-        # return (False, None)
+        if received_counts[0]:
+            #First character should be G
+            counts = received_counts[1].split(' ')
+            if counts[0] == request_string and counts[-1] == ack_string:
+                if len(counts[1]) < 9:
+                    print('break')
+                return (True, list(map(int,counts[1:-1])))
+        #else:
+        return (False, None)
 
         # if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
         #

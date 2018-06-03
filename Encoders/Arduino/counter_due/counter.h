@@ -82,7 +82,7 @@ const uint8_t axes[numAxes] = {SS1, SS2, SS3, SS4, SS5, SS6};
 /*** Code Parameters ***/
 #define SETCMD_TIMEOUT   1
 #define BUFFER_SIZE     64
-#define INI_CNTR         0
+#define INI_CNTR         1000
 #define DEFAULT_BAUD  115200
 
 // 4 byte counter

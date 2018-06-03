@@ -292,7 +292,7 @@ class MachineController(threading.Thread):
             start_file_number = 5
             end_file_number = 7
             #hold_points = self.generateHoldPositionPoints(1)
-            hold_move = Move(self.generateHoldPositionPoints(5),'hold')
+            hold_move = Move(self.generateHoldPositionPoints(0.5),'hold')
             #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
             first_move = Move(self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
             rapid_to_start = Move(self.generateMovePoints(first_move.start_points.tolist()),'trap')

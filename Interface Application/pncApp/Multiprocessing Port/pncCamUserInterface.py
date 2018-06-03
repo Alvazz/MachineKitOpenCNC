@@ -19,9 +19,3 @@ class SculptPrintInterface():
         self.enqueue_moves_event = threading.Event()
         self.moves_queued_event = threading.Event()
         self.run_motion_event = threading.Event()
-
-        #Data Handling
-        self.LF_start_time_index = 0
-        self.HF_start_time_index = 0
-        self.last_buffer_level_reading = 0
-        self.last_position_reading = 0

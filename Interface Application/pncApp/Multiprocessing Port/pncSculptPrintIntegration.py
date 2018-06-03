@@ -227,7 +227,6 @@ def mergeSortByIndex(times_LF, times_HF, data_LF, data_HF):
             data_positions = data_LF[LF_index - 1]
         data_aux = data_HF[HF_index]
         HF_index += 1
-        #FIXME do this in readMachine instead
         data_point = formatFeedbackDataForSP(data_time, data_positions, data_aux)
         output_data.append(data_point)
 
@@ -248,41 +247,25 @@ def readMachine(axis_sensor_id):
         ## FIXME check that logging is enabled and that threads are set up right
         #Snapshot data store
 
-        DB_query_data = machine.data_store_manager_thread_handle.pull(
-            ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
-            [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
-            [None,None,None,None])
-
-        if DB_query_data[0]:
-            HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = DB_query_data[1]
-        else:
-            return []
-
-        # HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = machine.data_store_manager_thread_handle.pull(
-        #     ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
-        #     [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
-        #     [None,None,None,None])
-
-        # machine_controller.data_store.data_store_lock.acquire()
-        # data_store_snapshot = DataStore()
-        # data_store_snapshot.RSH_CLOCK_TIMES = np.copy(data_store.rsh_clock_times)
-        # data_store_snapshot.RTAPI_CLOCK_TIMES = np.copy(data_store.RTAPI_clock_times)
-        # data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH = np.copy(data_store.highres_tc_queue_length)
-        # data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS = np.copy(data_store.stepgen_feedback_positions)
-        # data_store_snapshot.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.lowfreq_ethernet_received_times)
-        # data_store_snapshot.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.highfreq_ethernet_received_times)
-        # machine_controller.data_store.data_store_lock.release()
+        machine_controller.data_store.data_store_lock.acquire()
+        data_store_snapshot = DataStore()
+        data_store_snapshot.RSH_CLOCK_TIMES = np.copy(data_store.rsh_clock_times)
+        data_store_snapshot.RTAPI_CLOCK_TIMES = np.copy(data_store.RTAPI_clock_times)
+        data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH = np.copy(data_store.highres_tc_queue_length)
+        data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS = np.copy(data_store.stepgen_feedback_positions)
+        data_store_snapshot.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.lowfreq_ethernet_received_times)
+        data_store_snapshot.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.highfreq_ethernet_received_times)
+        machine_controller.data_store.data_store_lock.release()
         #data_store_snapshot = copy.deepcopy(machine_controller.data_store)
 
         #Pull relevant section of data from data_store_snapshot
         #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.SERIAL_RECEIVED_TIMES)
         #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
-
-        # LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
-        # LF_ethernet_data_slice = data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS[LF_start_time_index:]
-        # #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
-        # HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
-        # HF_ethernet_data_slice = data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH[HF_start_time_index:]
+        LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        LF_ethernet_data_slice = data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS[LF_start_time_index:]
+        #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
+        HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        HF_ethernet_data_slice = data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH[HF_start_time_index:]
 
 
         BBB_feedback, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(LF_ethernet_time_slice,HF_ethernet_time_slice,LF_ethernet_data_slice,HF_ethernet_data_slice)
@@ -339,12 +322,9 @@ def testMonitoring():
         print('read machine')
 
 start()
-machine.sculptprint_interface.enqueue_moves_event.set()
-machine.sculptprint_interface.run_motion_event.set()
-while True:
-    print(readMachine(0))
 
-
+#machine.sculptprint_interface.enqueue_moves_event.set()
+#machine.sculptprint_interface.run_motion_event.set()
 
 #time.sleep(1)
 #readMachine(0)

@@ -115,10 +115,10 @@ class DataStoreManager(threading.Thread):
                     (self.data_store.STEPGEN_FEEDBACK_POSITIONS, record['STEPGEN_FEEDBACK_POSITIONS']))
 
             if 'ENCODER_FEEDBACK_POSITIONS' in record:
-                self.data_store.ENCODER_FEEDBACK_POSITIONS = np.vstack(
-                    (self.data_store.ENCODER_FEEDBACK_POSITIONS, record['ENCODER_FEEDBACK_POSITIONS']))
-                #print('current encoder record is ' + str(self.data_store.encoder_feedback_num_records))
-                #self.data_store.encoder_feedback_num_records += 1
+                self.data_store.encoder_feedback_positions = np.vstack(
+                    (self.data_store.encoder_feedback_positions, record['ENCODER_FEEDBACK_POSITIONS']))
+                print('current encoder record is ' + str(self.data_store.encoder_feedback_num_records))
+                self.data_store.encoder_feedback_num_records += 1
 
             if 'HIGHRES_TC_QUEUE_LENGTH' in record:
                 self.data_store.HIGHRES_TC_QUEUE_LENGTH = np.vstack(
@@ -160,8 +160,8 @@ class DataStoreManager(threading.Thread):
                 self.data_store.RSH_CLOCK_TIMES = np.vstack((self.data_store.RSH_CLOCK_TIMES, record['RSH_CLOCK_TIMES']))
 
             if 'SERIAL_RECEIVED_TIMES' in record:
-                self.data_store.SERIAL_RECEIVED_TIMES = np.vstack(
-                    (self.data_store.SERIAL_RECEIVED_TIMES, record['SERIAL_RECEIVED_TIMES']))
+                self.data_store.serial_received_times = np.vstack(
+                    (self.data_store.serial_received_times, record['SERIAL_RECEIVED_TIMES']))
 
             if 'NETW0RK_PID_DELAY' in record:
                 self.data_store.network_PID_delays = np.vstack((self.data_store.network_PID_delays, record['NETWORK_PID_DELAY']))
@@ -199,7 +199,7 @@ class DataStore():
         self.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RSH_CLOCK_TIMES = np.empty((0, 1), float)
         #self.SERIAL_RECEIVED_TIMES = np.zeros(1, dtype=float)
-        self.SERIAL_RECEIVED_TIMES = np.empty((0, 1), float)
+        self.serial_received_times = np.empty((0,1), float)
 
         #Buffer fill level
         self.machine_tc_queue_length = np.empty((0,1), float)
@@ -216,7 +216,7 @@ class DataStore():
         self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0,5), float)
         #self.ENCODER_FEEDBACK_POSITIONS = np.zeros([1,5],dtype=float)
         #self.stepgen_feedback_positions = np.empty((0,5), float)
-        self.ENCODER_FEEDBACK_POSITIONS = np.empty((0, 5), float)
+        self.encoder_feedback_positions = np.empty((0,5), float)
 
         #Thread counter
         #self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
@@ -235,10 +235,10 @@ class DataStore():
 
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
-                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES']
+                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES']
 
         self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
-                             self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,
+                             self.STEPGEN_FEEDBACK_POSITIONS, self.encoder_feedback_positions,
                              self.HIGHRES_TC_QUEUE_LENGTH, self.RTAPI_CLOCK_TIMES, self.LOWFREQ_ETHERNET_RECEIVED_TIMES,
                              self.HIGHFREQ_ETHERNET_RECEIVED_TIMES]
 
