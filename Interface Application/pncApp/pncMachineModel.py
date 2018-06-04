@@ -61,7 +61,7 @@ class MachineModel():
         self.encoder_nak_strings = ['F&\r\n']
 
         #Machine kinematics
-        self.num_joints = 5
+        self.number_of_joints = 5
         self.servo_dt = 0.001
         self.limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
@@ -86,7 +86,7 @@ class MachineModel():
         self.rsh_error = 0
         self.linked = 0
         self.connected = 0
-        self.axis_home_state = [0]*self.num_joints
+        self.axis_home_state = [0]*self.number_of_joints
         self.current_move_serial_number = -1
 
         #State Switch Events
@@ -117,9 +117,11 @@ class MachineModel():
         self.ping_tx_time = 0
         self.ping_rx_time = 0
         self.estimated_network_latency = 0
+        self.OS_clock_offset = 0
         self.RT_clock_offset = 0
         self.pncApp_clock_offset = 0
         self.last_unix_time = 0
+        self.clock_sync_received_time = 0
 
         # Servo log parameters
         self.servo_log_num_axes = 5
@@ -152,11 +154,11 @@ class MachineModel():
         self.max_buffer_level = 2000
 
         #Motion State Machine
-        self.current_position = [0.0]*self.num_joints
-        self.current_encoder_position = [0.0]*self.num_joints
-        self.current_velocity = [0.0]*self.num_joints
-        self.current_acceleration = [0.0]*self.num_joints
-        self.current_jerk = [0.0]*self.num_joints
+        self.current_position = [0.0]*self.number_of_joints
+        self.current_encoder_position = [0.0]*self.number_of_joints
+        self.current_velocity = [0.0]*self.number_of_joints
+        self.current_acceleration = [0.0]*self.number_of_joints
+        self.current_jerk = [0.0]*self.number_of_joints
         self.rsh_buffer_level = 0
 
         #File Handling
@@ -227,11 +229,14 @@ class MachineModel():
             return False
 
     ######################## Clocking ########################
-    def estimateMachineClock(self):
+    def estimateMachineClock(self, time_to_estimate = -1):
         if not self.clock_event.isSet():
             print('WARNING: missing clock synchronization flag')
 
-        return self.last_unix_time+(time.clock()-self.estimated_network_latency)*self.clock_resolution
+        if time_to_estimate == -1:
+            time_to_estimate = time.clock()
+
+        return self.RT_clock_offset + (time_to_estimate - self.estimated_network_latency) * self.clock_resolution
 
     ######################## Comms ########################
     def calculateBinaryTransmissionLength(self):

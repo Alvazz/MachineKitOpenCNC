@@ -167,7 +167,7 @@ def formatFeedbackDataForSP(time, positions, aux):
         elif label_text == 'B':
             SP_formatted_data[label] = float(positions[4])
         elif label_text == 'T':
-            SP_formatted_data[label] = float((time-machine_controller.machine.RT_clock_offset)/machine.clock_resolution)
+            SP_formatted_data[label] = float((time-machine_controller.machine.OS_clock_offset)/machine.clock_resolution)
         elif label_text == 'BL':
             SP_formatted_data[label] = float(aux)
         elif label_text == 'S':
@@ -261,10 +261,10 @@ def readMachine(axis_sensor_id):
         #Pull relevant section of data from data_store_snapshot
         #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.SERIAL_RECEIVED_TIMES)
         #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
-        LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.OS_clock_offset
         LF_ethernet_data_slice = data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS[LF_start_time_index:]
-        #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.RT_clock_offset
-        HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.RT_clock_offset
+        #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.OS_clock_offset
+        HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.OS_clock_offset
         HF_ethernet_data_slice = data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH[HF_start_time_index:]
 
 

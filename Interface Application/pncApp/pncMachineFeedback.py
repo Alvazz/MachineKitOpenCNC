@@ -58,7 +58,7 @@ class MachineFeedbackListener(threading.Thread):
                 #FIXME can never catch up to rate of data transmission due to select.wait
                 bytes_received = self.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
-
+                print('byte_string length is now ' + str(len(self.byte_string)))
                 #FIXME handle this with database manager
                 self.log_file_handle.write(str(rx_received_time) + str(bytes_received) + '\n')
                 self.log_file_handle.flush()
@@ -338,7 +338,7 @@ class MachineFeedbackListener(threading.Thread):
             elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
                 # Joint homed
                 # print('got joint home: ' + data_string)
-                for axis in range(0, self.machine.num_joints):
+                for axis in range(0, self.machine.number_of_joints):
                     # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
                     self.machine.axis_home_state[axis] = self.machine.checkOnOff(feedback_data[axis])
                     # print('joint home state is ' + str(self.machine.axis_home_state))
@@ -348,12 +348,14 @@ class MachineFeedbackListener(threading.Thread):
                     # self.machine.home_change_event.set()
                 self.machine.home_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
+                # PING
                 self.machine.ping_rx_time = rx_received_time
                 self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
                 self.machine.ping_event.set()
             elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
                 # Time
-                self.machine.last_unix_time = float(feedback_data[0])
+                self.machine.last_unix_time = float(feedback_data[0])*self.machine.clock_resolution
+                self.machine.clock_sync_received_time = rx_received_time
                 self.machine.clock_event.set()
             elif self.machine.ascii_rsh_feedback_strings[13] == feedback_type:
                 # Comm mode
@@ -368,8 +370,8 @@ class MachineFeedbackListener(threading.Thread):
             if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
                 if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
                     #Servo position feedback
-                    if len(feedback_data) < 2400:
-                        print('break')
+                    # if len(feedback_data) < 2400:
+                    #     print('break')
                     feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
                         self.machine.binary_line_terminator)) / self.machine.size_of_feedback_double), feedback_data)
                     self.processPositionFeedback('binary',rx_received_time,feedback_data)
@@ -381,6 +383,7 @@ class MachineFeedbackListener(threading.Thread):
 
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        print('got buffer_level feedback')
         if feedback_encoding == 'ascii':
             #print('trying to parse buffer level feedback string: ' + data_string)
             #rx_received_time = time.clock()
@@ -404,17 +407,16 @@ class MachineFeedbackListener(threading.Thread):
 
         record = dict()
         record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_level
-
-        #FIXME this is shit
-        #self.machine.rsh_buffer_level = rsh_buffer_level
-
         record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = rx_received_time
-        record['RSH_CLOCK_TIMES'] = rsh_clock_time
+
+        #FIXME major band-aid
+        record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
 
         #self.data_store.appendMachineFeedbackRecords([record])
         self.machine.data_store_manager_thread_handle.push(record)
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        print('got position feedback')
         try:
             #machine_feedback_records = []
             if feedback_encoding == 'ascii':
@@ -453,12 +455,12 @@ class MachineFeedbackListener(threading.Thread):
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
                     #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
 
-                record = dict()
-                record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-                record['RTAPI_clock_times'] = RTAPI_clock_times
-                record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
-                # record['lowfreq_ethernet_received_times'] = received_times_interpolated
+                # record = dict()
+                # record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+                # record['RTAPI_clock_times'] = RTAPI_clock_times
+                # record['stepgen_feedback_positions'] = stepgen_feedback_positions
+                # record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+                # # record['lowfreq_ethernet_received_times'] = received_times_interpolated
 
             elif feedback_encoding == 'binary':
                 number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
@@ -479,11 +481,18 @@ class MachineFeedbackListener(threading.Thread):
                     stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
 
-                record = dict()
-                record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-                record['RTAPI_clock_times'] = RTAPI_clock_times
-                record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+            else:
+                return
+
+            record = dict()
+            record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+            record['RTAPI_clock_times'] = RTAPI_clock_times
+            record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+
+            ## FIXME major band-aid
+            if len(self.machine.data_store_manager_thread_handle.data_store.RTAPI_CLOCK_TIMES) == 0:
+                self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
 
 
         except Exception as error:
@@ -519,8 +528,9 @@ class SerialInterface(threading.Thread):
             if self.serial_port.isOpen():
                 print('serial port already open')
             self.serial_port.open()
-
             time.sleep(0.5)
+            #self.rebootDevice()
+
             self._running_thread = True
 
             # if self.machine.initial_position_set_event.wait():
@@ -542,7 +552,7 @@ class SerialInterface(threading.Thread):
             print('Decoder board not responsive')
             return
         else:
-            print('Successful boot of decoder board')
+            print('SUCCESS: Decoder board boot')
 
         if self.machine.initial_position_set_event.wait():
             self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
@@ -553,18 +563,13 @@ class SerialInterface(threading.Thread):
 
         while self._running_thread:
             rx_received_time = time.clock()
-            encoder_counts = self.getEncoderCounts('current')
 
-            # self.writeUnicode('G')
-            # encoder_data = self.serial_port.read_all()
-            # encoder_data = self.serial_port.read(self.machine.max_encoder_transmission_length)
-            # struct.unpack('!'+'c'+6*'I'+'c',encoder_data)
-            #print(time.clock() - rx_received_time)
+            encoder_counts = self.getEncoderCounts('current')
 
             if encoder_counts[0]:
                 #Got good data, push to DB
                 self.machine.data_store_manager_thread_handle.push(
-                    {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': rx_received_time})
+                    {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
 
             # start = time.clock()
 
@@ -670,6 +675,7 @@ class SerialInterface(threading.Thread):
     def rebootDevice(self):
         self.serial_port.setDTR(0)
         self.serial_port.setDTR(1)
+        time.sleep(0.5)
 
     ########################### COMMS ###########################
 

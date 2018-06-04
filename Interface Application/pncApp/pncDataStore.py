@@ -56,7 +56,9 @@ class DataStoreManager(threading.Thread):
         for key, value in records.items():
             records_upper[key.upper()] = value
         #records_upper.append(record_upper)
-        self.record_queue.put(Record(records_upper, time.clock()))
+        if self.machine.clock_event.isSet():
+            #Only push data to DB after clocks have been synced
+            self.record_queue.put(Record(records_upper, time.clock()))
 
     def pull(self, data_types, start_indices, end_indices):
         if type(data_types) is list:
@@ -71,17 +73,31 @@ class DataStoreManager(threading.Thread):
                 if np.shape(data_array)[0] == 0:
                     #print('the shape is ' + str(np.shape(data_array)))
                     #print('data array for type ' + str(data_type) + ' is empty')
-                    return_data.append(None)
+                    if self.machine.rsh_buffer_level > 0:
+                        print('break')
+                    #return_data.append(None)
+                    return_data.append(np.empty((0,data_array.shape[1])))
+
                     success_flag = success_flag and False
-                elif (start_index or 0) > np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
-                    print('data index for type ' + str(data_type) + ' out of range')
-                    return_data.append(None)
+                elif (start_index or 0) >= np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
+                    #print('data index for type ' + str(data_type) + ' out of range')
+                    #return_data.append(None)
+                    return_data.append(np.empty((0, data_array.shape[1])))
                     success_flag = success_flag and False
                 else:
                     return_data.append(data_array[start_index:end_index,:])
+                    if len(data_array[start_index:end_index,:]) == 0:
+                        print('break')
                     success_flag = success_flag and True
 
             self.data_store_lock.release()
+            #if None in return_data:
+            try:
+                if any([d is None for d in return_data]):
+                    if success_flag is True:
+                        print('break')
+            except:
+                print('break')
             return (success_flag, return_data)
 
         # elif type(data_types) is str:
@@ -235,7 +251,8 @@ class DataStore():
 
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
-                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES']
+                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
+                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS']
 
         self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
                              self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,

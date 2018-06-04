@@ -338,7 +338,7 @@ class MachineFeedbackListener(threading.Thread):
             elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
                 # Joint homed
                 # print('got joint home: ' + data_string)
-                for axis in range(0, self.machine.num_joints):
+                for axis in range(0, self.machine.number_of_joints):
                     # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
                     self.machine.axis_home_state[axis] = self.machine.checkOnOff(feedback_data[axis])
                     # print('joint home state is ' + str(self.machine.axis_home_state))

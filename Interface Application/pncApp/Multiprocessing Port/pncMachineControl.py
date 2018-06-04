@@ -194,7 +194,7 @@ class MotionController(threading.Thread):
             #FIXME check buffer was flushed
 
             ## FIXME store current position from feedback thread
-            #self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.num_joints])[0]
+            #self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.number_of_joints])[0]
 
             sleep_time = self.runNetworkPID(self.machine.rsh_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
             # print(sleep_time, self.rsh_buffer_level)
@@ -384,7 +384,7 @@ class MachineController(threading.Thread):
 
     def importAxesPoints(self, file):
         ##FIXME check for overtravel
-        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:self.machine.num_joints]
+        points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:self.machine.number_of_joints]
         return points
 
     def formatPoints(self, points, polylines, block_length):
@@ -656,7 +656,7 @@ class MachineController(threading.Thread):
             self.machine.pushState()
             self.waitForSet(self.setMachineMode,'manual',self.getMachineMode)
 
-        for axis in range(0,self.machine.num_joints):
+        for axis in range(0,self.machine.number_of_joints):
             self.writeLineUTF('set home ' + str(axis))
 
         self.machine.restore_mode_event.clear()
@@ -696,9 +696,9 @@ class MachineController(threading.Thread):
         if self.getClock()[0]:
             print('Successful clock synchronization')
 
-        self.machine.RT_clock_offset = clock_data[1][0].item()
-        #self.machine.RT_clock_offset = self.machine.last_unix_time
-        #self.machine.RT_clock_offset = self.data_store.RTAPI_clock_times[self.machine.servo_log_buffer_size-1].item()
+        self.machine.OS_clock_offset = clock_data[1][0].item()
+        #self.machine.OS_clock_offset = self.machine.last_unix_time
+        #self.machine.OS_clock_offset = self.data_store.RTAPI_clock_times[self.machine.servo_log_buffer_size-1].item()
         #FIXME syncing to 0th is not good... subtract servo_period*num_samples
         #self.machine.pncApp_clock_offset = self.data_store.lowfreq_ethernet_received_times[0].item()
         self.machine.pncApp_clock_offset = clock_data[1][1].item()
@@ -758,7 +758,7 @@ class MachineController(threading.Thread):
         else:
             position_to_hold = np.array(position)
 
-        joint_position_samples = np.zeros([int(np.clip(np.round(hold_time/self.machine.servo_dt),1,np.inf)), int(self.machine.num_joints)]) + position_to_hold
+        joint_position_samples = np.zeros([int(np.clip(np.round(hold_time/self.machine.servo_dt),1,np.inf)), int(self.machine.number_of_joints)]) + position_to_hold
         return joint_position_samples
 
     def generateMovePoints(self, end_points, start_points = [np.nan], move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
@@ -797,8 +797,8 @@ class MachineController(threading.Thread):
 
             move_direction = np.sign(move_vector)
             #Check if we can reach cruise for each joint
-            max_move_velocity = np.zeros([1,self.machine.num_joints])[0]
-            for joint in range(0,self.machine.num_joints):
+            max_move_velocity = np.zeros([1,self.machine.number_of_joints])[0]
+            for joint in range(0,self.machine.number_of_joints):
                 no_cruise_time_to_center = math.sqrt(
                     math.fabs(move_vector[joint]) / max_joint_accelerations[joint])
                 if move_vector[joint] == 0:
@@ -815,8 +815,8 @@ class MachineController(threading.Thread):
             #print(move_direction)
 
             #Calculate move profile for each joint
-            time_points = np.zeros([3, self.machine.num_joints])
-            for joint in range(0, self.machine.num_joints):
+            time_points = np.zeros([3, self.machine.number_of_joints])
+            for joint in range(0, self.machine.number_of_joints):
                 if max_move_velocity[joint] < max_joint_velocities[joint]:
                     #Move too short for cruise phase, acceleration and deceleration intersect at t1=t2
                     time_points[0][joint] = max_move_velocity[joint] / max_joint_accelerations[joint]
@@ -845,20 +845,20 @@ class MachineController(threading.Thread):
 
             #Sample time points to plan trajectories
             servo_times = np.arange(0,math.ceil(move_time/self.machine.servo_dt)*self.machine.servo_dt,self.machine.servo_dt)
-            joint_position_samples = np.zeros([np.size(servo_times),self.machine.num_joints])
+            joint_position_samples = np.zeros([np.size(servo_times),self.machine.number_of_joints])
             #Force initial position
             joint_position_samples[0][:] = start_points
 
             #State machine for integration
-            last_joint_positions = np.zeros([3,self.machine.num_joints]).tolist()
-            phase_switch_times = np.zeros([3,self.machine.num_joints]).tolist()
+            last_joint_positions = np.zeros([3,self.machine.number_of_joints]).tolist()
+            phase_switch_times = np.zeros([3,self.machine.number_of_joints]).tolist()
 
             max_move_velocity = np.multiply(motion_scale_factors,max_move_velocity)
             max_joint_accelerations = np.multiply(np.power(motion_scale_factors,2), max_joint_accelerations)
 
             for ndx in range(0,np.size(servo_times)):
                 t = servo_times[ndx]
-                for joint in range(0, self.machine.num_joints):
+                for joint in range(0, self.machine.number_of_joints):
                     #Phase -1: Joint hold position
                     if time_points[0][joint] == 0 and time_points[1][joint] == 0 and time_points[2][joint] == 0:
                         joint_position_samples[ndx][joint] = start_points[joint]
