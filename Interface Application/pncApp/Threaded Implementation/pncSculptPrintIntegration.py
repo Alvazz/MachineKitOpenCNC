@@ -2,6 +2,10 @@ import sys
 import numpy as np
 print('imported numpy 10')
 print(sys.path)
+project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+if project_path not in sys.path:
+    sys.path.append('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\')
+
 #import pncMachineControl
 from pncApp import appInit, appClose
 #import pncApp
@@ -21,7 +25,7 @@ LF_start_time_index, HF_start_time_index = (0, 0)
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 axis_sensor_id = [0, 1]
-SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL'], ['T','X','Z','S','Y','A','B','V','W']]
+SP_data_formats = [['T','X','Z','S','Y','B','A','V','W','BL'], ['T','X','Z','S','Y','A','B','V','W']]
 
 #from pncApp import machine_controller, data_store, feedback_listener
 #global feedback_listener, machine_controller, encoder_interface, data_store

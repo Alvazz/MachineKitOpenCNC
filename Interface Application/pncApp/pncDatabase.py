@@ -1,8 +1,7 @@
-import numpy as np
-import threading
-import queue
-import time
-import sys
+from multiprocessing import Process, Value#, Lock
+from multiprocessing.managers import NamespaceProxy
+from threading import Thread, Event as threadEvent
+import queue, time, numpy as np
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -12,39 +11,127 @@ import sys
 #    d) n time values approximating when each stepgen feedback point was generated
 #    e) A snapshot of the tcq length at T
 
-class Record():
-    def __init__(self, data, timestamp):
+class DatabaseCommand():
+    def __init__(self, command_type, data, timestamp):
+        self.command_type = command_type
         self.timestamp = timestamp
         self.data = data
 
-class DataStoreManager(threading.Thread):
+class Record():
+    def __init__(self, data_type, data, timestamp):
+        self.data_type = data_type
+        self.timestamp = timestamp
+        self.data = data
+
+class DatabaseOutputArea():
     def __init__(self):
-        super(DataStoreManager, self).__init__()
-        # Thread locks
-        self.data_store_lock = threading.Lock()
+        self.database_output = None
 
-        self.record_queue = queue.Queue()
-        self.data_store = DataStore()
-        self.machine = None
+class Synchronizers():
+    def __init__(self, manager):
+        # self.database_input_queue = manager.Queue()
+        # self.database_command_queue = manager.Queue()
+        # self.database_output_queue = manager.Queue()
 
-        self._running_thread = True
+        #State Switch Events
+        self.connection_change_event = manager.Event()
+        self.link_change_event = manager.Event()
+        self.echo_change_event = manager.Event()
+        self.estop_change_event = manager.Event()
+        self.drive_power_change_event = manager.Event()
+        self.status_change_event = manager.Event()
+        #self.status_change_event.clear()
+        self.mode_change_event = manager.Event()
+        self.logging_mode_change_event = manager.Event()
+        self.comm_mode_change_event = manager.Event()
+        self.home_change_event = manager.Event()
+        self.all_homed_event = manager.Event()
+        self.restore_mode_event = manager.Event()
+        self.ping_event = manager.Event()
+        self.clock_event = manager.Event()
+        self.buffer_level_reception_event = manager.Event()
+        self.servo_feedback_reception_event = manager.Event()
+        #FIXME implement this
+        self.position_change_event = manager.Event()
+        self.initial_position_set_event = manager.Event()
+        self.encoder_init_event = manager.Event()
+
+        self.data_store_lock = manager.Lock()
+
+class LoggingServer(Thread):
+    def __init__(self, machine):
+        super(LoggingServer, self).__init__()
+        self.machine = machine
+        self.output_directory = self.machine.log_file_output_directory
+        self.log_queue = queue.Queue()
 
     def run(self):
-        while self._running_thread:
-            if not self.record_queue.empty():
+        while True:
+            pass
+
+class DatabaseServer(Process):
+    def __init__(self, machine, push_queue_proxy, command_queue_proxy, output_queue_proxy):
+        super(DatabaseServer, self).__init__()
+
+        self.machine = machine
+        self.push_queue = push_queue_proxy
+        self.command_queue = command_queue_proxy
+        self.output_queue = output_queue_proxy
+        #self.output_buffer = output_value_proxy
+
+        #self.synchronizers = synchronizers
+
+        self.synchronizers = Synchronizers(self.machine._manager)
+        self.data_store = DataStore()
+
+        # Thread locks
+        #self.data_store_lock = lock#self.synchronizers.database_lock
+        #self.record_queue = queue.Queue()
+
+        #self.synchronizers.database_queue
+
+
+        self._running_process = True
+
+    def run(self):
+        self.logging_server = LoggingServer(self.machine)
+        self.logging_server.start()
+
+        while self._running_process:
+            #First handle incoming commands
+            if not self.command_queue.empty():
+                self.handleCommand(self.command_queue.get())
+
+            if not self.push_queue.empty:
                 records = self.record_queue.get()
                 #FIXME what about time stamp?
                 self.appendMachineFeedbackRecords([records.data])
                 self.record_queue.task_done()
 
-            #update_data = self.pull(['STEPGEN_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH'],[-1,-1],[None, None])
             position_update = self.pull(['STEPGEN_FEEDBACK_POSITIONS'], [-1], [None])
             buffer_level_update = self.pull(['HIGHRES_TC_QUEUE_LENGTH'], [-1], [None])
             if position_update[0]:
                 self.machine.current_position = position_update[1][0][0].tolist()
-                self.machine.initial_position_set_event.set()
+                self.synchronizers.initial_position_set_event.set()
             if buffer_level_update[0]:
                 self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
+
+
+        # while self._running_process:
+        #     if not self.record_queue.empty():
+        #         records = self.record_queue.get()
+        #         #FIXME what about time stamp?
+        #         self.appendMachineFeedbackRecords([records.data])
+        #         self.record_queue.task_done()
+        #
+        #     #update_data = self.pull(['STEPGEN_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH'],[-1,-1],[None, None])
+        #     position_update = self.pull(['STEPGEN_FEEDBACK_POSITIONS'], [-1], [None])
+        #     buffer_level_update = self.pull(['HIGHRES_TC_QUEUE_LENGTH'], [-1], [None])
+        #     if position_update[0]:
+        #         self.machine.current_position = position_update[1][0][0].tolist()
+        #         self.machine.initial_position_set_event.set()
+        #     if buffer_level_update[0]:
+        #         self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
 
     def push(self, records):
@@ -56,13 +143,15 @@ class DataStoreManager(threading.Thread):
         for key, value in records.items():
             records_upper[key.upper()] = value
         #records_upper.append(record_upper)
-        self.record_queue.put(Record(records_upper, time.clock()))
+        if self.machine.clock_event.isSet():
+            #Only push data to DB after clocks have been synced
+            self.record_queue.put(Record(records_upper, time.clock()))
 
     def pull(self, data_types, start_indices, end_indices):
         if type(data_types) is list:
             return_data = []
             success_flag = True
-            self.data_store_lock.acquire()
+            self.synchronizers.data_store_lock.acquire()
             for k in range(0,len(data_types)):
                 data_type = data_types[k]
                 data_array = self.data_store.lookupDataType(data_type.upper())
@@ -71,17 +160,32 @@ class DataStoreManager(threading.Thread):
                 if np.shape(data_array)[0] == 0:
                     #print('the shape is ' + str(np.shape(data_array)))
                     #print('data array for type ' + str(data_type) + ' is empty')
-                    return_data.append(None)
+                    if self.machine.rsh_buffer_level > 0:
+                        print('break')
+                    #return_data.append(None)
+                    return_data.append(np.empty((0,data_array.shape[1])))
+
                     success_flag = success_flag and False
-                elif (start_index or 0) > np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
-                    print('data index for type ' + str(data_type) + ' out of range')
-                    return_data.append(None)
+                elif (start_index or 0) >= np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
+                    #print('data index for type ' + str(data_type) + ' out of range')
+                    #return_data.append(None)
+                    return_data.append(np.empty((0, data_array.shape[1])))
                     success_flag = success_flag and False
                 else:
                     return_data.append(data_array[start_index:end_index,:])
+                    if len(data_array[start_index:end_index,:]) == 0:
+                        print('break')
                     success_flag = success_flag and True
 
-            self.data_store_lock.release()
+            self.synchronizers.data_store_lock.release()
+
+            #if None in return_data:
+            try:
+                if any([d is None for d in return_data]):
+                    if success_flag is True:
+                        print('break')
+            except:
+                print('break')
             return (success_flag, return_data)
 
         # elif type(data_types) is str:
@@ -115,10 +219,10 @@ class DataStoreManager(threading.Thread):
                     (self.data_store.STEPGEN_FEEDBACK_POSITIONS, record['STEPGEN_FEEDBACK_POSITIONS']))
 
             if 'ENCODER_FEEDBACK_POSITIONS' in record:
-                self.data_store.encoder_feedback_positions = np.vstack(
-                    (self.data_store.encoder_feedback_positions, record['ENCODER_FEEDBACK_POSITIONS']))
-                print('current encoder record is ' + str(self.data_store.encoder_feedback_num_records))
-                self.data_store.encoder_feedback_num_records += 1
+                self.data_store.ENCODER_FEEDBACK_POSITIONS = np.vstack(
+                    (self.data_store.ENCODER_FEEDBACK_POSITIONS, record['ENCODER_FEEDBACK_POSITIONS']))
+                #print('current encoder record is ' + str(self.data_store.encoder_feedback_num_records))
+                #self.data_store.encoder_feedback_num_records += 1
 
             if 'HIGHRES_TC_QUEUE_LENGTH' in record:
                 self.data_store.HIGHRES_TC_QUEUE_LENGTH = np.vstack(
@@ -160,8 +264,8 @@ class DataStoreManager(threading.Thread):
                 self.data_store.RSH_CLOCK_TIMES = np.vstack((self.data_store.RSH_CLOCK_TIMES, record['RSH_CLOCK_TIMES']))
 
             if 'SERIAL_RECEIVED_TIMES' in record:
-                self.data_store.serial_received_times = np.vstack(
-                    (self.data_store.serial_received_times, record['SERIAL_RECEIVED_TIMES']))
+                self.data_store.SERIAL_RECEIVED_TIMES = np.vstack(
+                    (self.data_store.SERIAL_RECEIVED_TIMES, record['SERIAL_RECEIVED_TIMES']))
 
             if 'NETW0RK_PID_DELAY' in record:
                 self.data_store.network_PID_delays = np.vstack((self.data_store.network_PID_delays, record['NETWORK_PID_DELAY']))
@@ -199,7 +303,7 @@ class DataStore():
         self.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RSH_CLOCK_TIMES = np.empty((0, 1), float)
         #self.SERIAL_RECEIVED_TIMES = np.zeros(1, dtype=float)
-        self.serial_received_times = np.empty((0,1), float)
+        self.SERIAL_RECEIVED_TIMES = np.empty((0, 1), float)
 
         #Buffer fill level
         self.machine_tc_queue_length = np.empty((0,1), float)
@@ -216,7 +320,7 @@ class DataStore():
         self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0,5), float)
         #self.ENCODER_FEEDBACK_POSITIONS = np.zeros([1,5],dtype=float)
         #self.stepgen_feedback_positions = np.empty((0,5), float)
-        self.encoder_feedback_positions = np.empty((0,5), float)
+        self.ENCODER_FEEDBACK_POSITIONS = np.empty((0, 5), float)
 
         #Thread counter
         #self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
@@ -235,10 +339,11 @@ class DataStore():
 
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
-                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES']
+                                 'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
+                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS']
 
         self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
-                             self.STEPGEN_FEEDBACK_POSITIONS, self.encoder_feedback_positions,
+                             self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,
                              self.HIGHRES_TC_QUEUE_LENGTH, self.RTAPI_CLOCK_TIMES, self.LOWFREQ_ETHERNET_RECEIVED_TIMES,
                              self.HIGHFREQ_ETHERNET_RECEIVED_TIMES]
 
@@ -252,73 +357,9 @@ class DataStore():
             print('data does not exist')
             return None
 
-    # ##FIXME implement data store manager class for threadlocks, methods, etc
-    # def appendMachineFeedbackRecords(self, records):
-    #     self.data_store_lock.acquire()
-    #     for record in records:
-    #         if 'RTAPI_feedback_indices' in record:
-    #             self.RTAPI_feedback_indices = np.vstack((self.RTAPI_feedback_indices,record['RTAPI_feedback_indices']))
-    #
-    #         if 'commanded_joint_positions' in record:
-    #             self.commanded_joint_positions = np.vstack((self.commanded_joint_positions, record['commanded_joint_positions']))
-    #             ## FIXME increment machine feedback number of records if ANY of these, except encoder data, is provided
-    #             self.machine_feedback_num_records += 1
-    #
-    #         if 'stepgen_feedback_positions' in record:
-    #             self.stepgen_feedback_positions = np.vstack((self.stepgen_feedback_positions, record['stepgen_feedback_positions']))
-    #             #self.machine.
-    #
-    #         if 'ENCODER_FEEDBACK_POSITIONS' in record:
-    #             self.ENCODER_FEEDBACK_POSITIONS = np.vstack((self.ENCODER_FEEDBACK_POSITIONS, record['ENCODER_FEEDBACK_POSITIONS']))
-    #             print('current encoder record is ' + str(self.encoder_feedback_num_records))
-    #             self.encoder_feedback_num_records += 1
-    #
-    #         if 'HIGHRES_TC_QUEUE_LENGTH' in record:
-    #             self.HIGHRES_TC_QUEUE_LENGTH = np.vstack((self.HIGHRES_TC_QUEUE_LENGTH, record['HIGHRES_TC_QUEUE_LENGTH']))
-    #
-    #         if 'machine_clock_times' in record:
-    #             self.machine_clock_times = np.vstack((self.machine_clock_times, record['machine_clock_times']))
-    #
-    #         if 'machine_time_delta' in record:
-    #             self.machine_time_delta = np.append(self.machine_time_delta, record['machine_time_delta'])
-    #
-    #         if 'machine_times_interpolated' in record:
-    #             self.machine_times_interpolated = np.append(self.machine_times_interpolated, record['machine_times_interpolated'])
-    #
-    #         if 'machine_tcq_length' in record:
-    #             self.machine_tc_queue_length = np.append(self.machine_tc_queue_length, record['machine_tcq_length'])
-    #
-    #         if 'rt_thread_num_executions_delta' in record:
-    #             self.rt_thread_num_executions_delta = np.append(self.rt_thread_num_executions_delta, record['rt_thread_num_executions_delta'])
-    #
-    #         if 'machine_time_delta' in record:
-    #             self.machine_running_time += record['machine_time_delta']
-    #
-    #         if 'lowfreq_ethernet_received_times' in record:
-    #             self.lowfreq_ethernet_received_times = np.vstack((self.lowfreq_ethernet_received_times, record['lowfreq_ethernet_received_times']))
-    #
-    #         if 'RTAPI_clock_times' in record:
-    #             self.RTAPI_clock_times = np.vstack((self.RTAPI_clock_times,record['RTAPI_clock_times']))
-    #
-    #         if 'highfreq_ethernet_received_times' in record:
-    #             self.highfreq_ethernet_received_times = np.vstack((self.highfreq_ethernet_received_times, record['highfreq_ethernet_received_times']))
-    #
-    #         if 'rsh_clock_times' in record:
-    #             self.rsh_clock_times = np.vstack((self.rsh_clock_times,record['rsh_clock_times']))
-    #
-    #         if 'SERIAL_RECEIVED_TIMES' in record:
-    #             self.SERIAL_RECEIVED_TIMES = np.vstack((self.SERIAL_RECEIVED_TIMES, record['SERIAL_RECEIVED_TIMES']))
-    #
-    #         if 'network_PID_delay' in record:
-    #             self.network_PID_delays = np.vstack((self.network_PID_delays, record['network_PID_delay']))
-    #
-    #     self.data_store_lock.release()
+class DatabaseServerProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
 
-    # def appendMachineControlRecords(self, records):
-    #     for record in records:
-    #         self.HIGHRES_TC_QUEUE_LENGTH = np.append(self.HIGHRES_TC_QUEUE_LENGTH, record['highres_tcq_length'])
-
-    def appendEncoderFeedbackRecords(self, records):
-        for record in records:
-            pass
+class DatabaseOutputProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
 

@@ -57,7 +57,7 @@ class EncoderInterface(Process):
             print('Could not open serial port, error: ' + str(error))
 
         if self.serial_port.isOpen():
-            print('Successful launch of encoder interface process, PID: ' + str(self.pid) + ', Process: ' + current_process())
+            print('Successful launch of encoder interface process, PID: ' + str(self.pid) + ', Process: ' + str(current_process()))
             #global encoderData, serialLock
             #self.setEncoderCount(self.machine.encoder_init)
             if not self.acknowledgeBoot():

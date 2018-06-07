@@ -1,22 +1,21 @@
-import socket
-import threading, time
-import re
-import numpy as np
-import serial, math, sys, select, datetime, struct
+from multiprocessing import Process
+import socket, time, select, datetime, struct, numpy as np
+import pncLibrary
 
-global machine
+#global machine
 
-class MachineFeedbackListener(threading.Thread):
-    global machine
-    def __init__(self, machine):
+class MachineFeedbackListener(Process):
+    #global machine
+    def __init__(self, machine, database_push_queue_proxy):
         super(MachineFeedbackListener, self).__init__()
-        self.rsyslog_socket = socket
-        self._running_thread = True
-        self._shutdown = False
-
         self.machine = machine
+        self.database_push_queue = database_push_queue_proxy
+
+        #self._shutdown = False
+
+
         #self.machine_controller = machine_controller
-        self.rsh_socket = self.machine.machine_controller_thread_handle.rsh_socket
+        #self.rsh_socket = self.machine.machine_controller_thread_handle.rsh_socket
         #self.data_store = data_store
 
 
@@ -31,7 +30,7 @@ class MachineFeedbackListener(threading.Thread):
 
         # Binary Feedback
         self.byte_string = bytearray()
-        self.binary_transmission_length = self.machine.calculateBinaryTransmissionLength()
+        self.binary_transmission_length = pncLibrary.calculateBinaryTransmissionLength(machine)
 
         self.transmission_received = False
         self.terminator_received = False
@@ -46,19 +45,22 @@ class MachineFeedbackListener(threading.Thread):
         self.header_delimiter_index = None
         self.rsh_error_check = False
 
+        self._running_process = True
+        print('PROCESS LAUNCHED: RSH feedback handler, PID: ' + self.pid + ' from ' + str(super().pid))
+
     def run(self):
-        print('feedback socket is ' + str(self.rsh_socket))
-        while self._running_thread:
+        print('feedback socket is ' + str(self.machine.rsh_socket))
+        while self._running_process:
             # Process feedback from EMCRSH
-            data_available = select.select([self.rsh_socket], [], [], 0)
+            data_available = select.select([self.machine.rsh_socket], [], [], 0)
             if data_available[0]:
                 #Clock when these data were received
                 rx_received_time = time.clock()
                 #First parse the header
                 #FIXME can never catch up to rate of data transmission due to select.wait
-                bytes_received = self.rsh_socket.recv(self.machine.bytes_to_receive)
+                bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
-
+                print('byte_string length is now ' + str(len(self.byte_string)))
                 #FIXME handle this with database manager
                 self.log_file_handle.write(str(rx_received_time) + str(bytes_received) + '\n')
                 self.log_file_handle.flush()
@@ -348,12 +350,14 @@ class MachineFeedbackListener(threading.Thread):
                     # self.machine.home_change_event.set()
                 self.machine.home_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
+                # PING
                 self.machine.ping_rx_time = rx_received_time
                 self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
                 self.machine.ping_event.set()
             elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
                 # Time
-                self.machine.last_unix_time = float(feedback_data[0])
+                self.machine.last_unix_time = float(feedback_data[0])*self.machine.clock_resolution
+                self.machine.clock_sync_received_time = rx_received_time
                 self.machine.clock_event.set()
             elif self.machine.ascii_rsh_feedback_strings[13] == feedback_type:
                 # Comm mode
@@ -368,8 +372,8 @@ class MachineFeedbackListener(threading.Thread):
             if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
                 if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
                     #Servo position feedback
-                    if len(feedback_data) < 2400:
-                        print('break')
+                    # if len(feedback_data) < 2400:
+                    #     print('break')
                     feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
                         self.machine.binary_line_terminator)) / self.machine.size_of_feedback_double), feedback_data)
                     self.processPositionFeedback('binary',rx_received_time,feedback_data)
@@ -381,6 +385,7 @@ class MachineFeedbackListener(threading.Thread):
 
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        print('got buffer_level feedback')
         if feedback_encoding == 'ascii':
             #print('trying to parse buffer level feedback string: ' + data_string)
             #rx_received_time = time.clock()
@@ -404,17 +409,16 @@ class MachineFeedbackListener(threading.Thread):
 
         record = dict()
         record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_level
+        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = rx_received_time
 
-        #FIXME this is shit
-        #self.machine.rsh_buffer_level = rsh_buffer_level
-
-        record['highfreq_ethernet_received_times'] = rx_received_time
-        record['rsh_clock_times'] = rsh_clock_time
+        #FIXME major band-aid
+        record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
 
         #self.data_store.appendMachineFeedbackRecords([record])
         self.machine.data_store_manager_thread_handle.push(record)
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        print('got position feedback')
         try:
             #machine_feedback_records = []
             if feedback_encoding == 'ascii':
@@ -453,12 +457,12 @@ class MachineFeedbackListener(threading.Thread):
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
                     #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
 
-                record = dict()
-                record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-                record['RTAPI_clock_times'] = RTAPI_clock_times
-                record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
-                # record['lowfreq_ethernet_received_times'] = received_times_interpolated
+                # record = dict()
+                # record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+                # record['RTAPI_clock_times'] = RTAPI_clock_times
+                # record['stepgen_feedback_positions'] = stepgen_feedback_positions
+                # record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+                # # record['lowfreq_ethernet_received_times'] = received_times_interpolated
 
             elif feedback_encoding == 'binary':
                 number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
@@ -479,11 +483,18 @@ class MachineFeedbackListener(threading.Thread):
                     stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
 
-                record = dict()
-                record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-                record['RTAPI_clock_times'] = RTAPI_clock_times
-                record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+            else:
+                return
+
+            record = dict()
+            record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+            record['RTAPI_clock_times'] = RTAPI_clock_times
+            record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+
+            ## FIXME major band-aid
+            if len(self.machine.data_store_manager_thread_handle.data_store.RTAPI_CLOCK_TIMES) == 0:
+                self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
 
 
         except Exception as error:
@@ -502,239 +513,263 @@ class MachineFeedbackListener(threading.Thread):
 
 
 #serialLock = threading.Lock()
-class SerialInterface(threading.Thread):
-    def __init__(self, machine):
-        super(SerialInterface, self).__init__()
-        self.machine = machine
-
-        #self._running = True
-        self._shutdown = False
-
-        self.serial_port = serial.Serial()
-        self.serial_port.port = self.machine.comm_port
-        self.serial_port.baudrate = self.machine.baudrate
-        #FIXME handle if serial is not connected
-
-        try:
-            if self.serial_port.isOpen():
-                print('serial port already open')
-            self.serial_port.open()
-
-            time.sleep(0.5)
-            self._running_thread = True
-
-            # if self.machine.initial_position_set_event.wait():
-            #     self.setAllEncoderCounts(self.machine.axes,self.machine.current_position)
-            #     self.machine.encoder_init_event.set()
-            #while not self.machine.data_store_manager_thread_handle.pull(['stepgen_feedback_positions'],[-1],[None])[0]:
-
-        except Exception as error:
-            print('Could not open serial port, error: ' + str(error))
-
-
-        print('serialInterface started')
-        #time.sleep(0.5)
-
-    def run(self):
-        #global encoderData, serialLock
-        #self.setEncoderCount(self.machine.encoder_init)
-        if not self.acknowledgeBoot():
-            print('Decoder board not responsive')
-            return
-        else:
-            print('Successful boot of decoder board')
-
-        if self.machine.initial_position_set_event.wait():
-            self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
-            self.machine.encoder_init_event.set()
-
-        self.setBaudrate(250000)
-
-        while self._running_thread:
-            #counts = self.getEncoderCounts('current')
-            start = time.clock()
-            self.writeUnicode('G')
-            if self.serial_port.in_waiting > self.machine.max_encoder_transmission_length:
-                self.serial_port.readline()
-                #print(self.serial_port.readline())
-                #print(time.clock() - start)
-            #else:
-                #print('looping')
-            #print(self.serial_port.readline())
-            #print(self.serial_port.read_until('\r\n'.encode()))
-            #print(self.serial_port.read_all())
-            #self.serial_port.read_all()
-            #if self.serial_port.
-            #rx_received_time = time.clock()
-            #print(counts)
-            #print(time.clock()-start)
-
-        #Flag set, shutdown
-        print('Closing serial port')
-        print('ENCODER INTERFACE: thread shut down')
-        self.serial_port.close()
-        #self._shutdown = True
-
-    def read(self):
-        line = self.serial_port.readline()
-        return line
-
-    def writeUnicode(self, string):
-        self.serial_port.write(string.encode('utf-8'))
-        #time.sleep(0.01)
-        #self.serial_port.flush()
-
-    ##    def write(self, data):
-    ##        line = self.serial_port.readline()
-    ##        return line
-
-    # def reset(self):
-    #     global encoderData, serialLock
-    #     #serialLock.acquire()
-    #     self.serial_port.close()
-    #     self.serial_port.open()
-    #     encoderData = np.array([0])
-    #     queueData = np.array([0])
-    #     #serialLock.release()
-
-    ########################### UTILITIES ###########################
-
-    def countBytesInTransmission(self, transmission):
-        return math.floor(round(math.log(transmission, 10), 6)) + 1
-
-    def positionToCounts(self, axis, position):
-        axis_index = self.machine.axes.index(axis.upper())
-        return round(position / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]
-
-    def positionsToCounts(self, axes, positions):
-        counts = []
-        for axis in range(0,len(axes)):
-            axis_index = self.machine.axes.index(axes[axis].upper())
-            counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
-        return counts
-
-    def countsToPosition(self, axis, counts):
-        axis_index = self.machine.axes.index(axis.upper())
-        return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
-
-    def waitForBytes(self, number_of_bytes, timeout = 0.5):
-        read_byte_count = 0
-        read_data = ''
-        start_time = time.clock()
-        while read_byte_count < number_of_bytes and (time.clock() - start_time) < timeout:
-            read_data += self.serial_port.read(1).decode('utf-8')
-            read_byte_count += 1
-
-        if read_byte_count == number_of_bytes:
-            return (True, read_data)
-        else:
-            return (False, None)
-
-    def waitForString(self, string, timeout = 0.5):
-        # #read_byte_count = 0
-        # read_data = ''
-        # start_time = time.clock()
-        # while string not in read_data and (time.clock() - start_time) < timeout:
-        #     read_data += self.serial_port.readline().decode('utf-8')
-        #     #read_byte_count += 1
-
-        start = time.clock()
-        read_data = self.serial_port.readline().decode('utf-8')
-        print('read took ' + str(time.clock()-start))
-        if string in read_data:
-            return (True, read_data)
-        else:
-            return (False, None)
-
-    def rebootDevice(self):
-        self.serial_port.setDTR(0)
-        self.serial_port.setDTR(1)
-
-    ########################### COMMS ###########################
-
-    def acknowledgeBoot(self):
-        return self.waitForString(self.machine.encoder_ack_strings[0])[0]
-
-    def setAxisEncoderCount(self, axis, count):
-        #number_of_bytes = math.floor(round(math.log(count, 10),6)) + 1
-        command_string = 'S' + str(axis) + str(self.countBytesInTransmission(count)) + str(count)
-        self.writeUnicode(command_string)
-        if self.waitForString(self.machine.encoder_ack_strings[1]):
-        #if self.waitForBytes(len(self.machine.encoder_ack_strings[0]))[1] == self.machine.encoder_ack_strings[0]:
-            return True
-        else:
-            return False
-
-    def setAllEncoderCounts(self, axes, counts):
-        for axis in axes:
-            axis_index = self.machine.axes.index(axis)
-            self.setAxisEncoderCount(axis_index+1,counts[axis_index])
-
-    # def setEncoderCount(self, count):
-    #     # self.serial_port.write('R'.encode('utf-8'))
-    #     # Calculate number of characters in set command
-    #     numBytes = math.floor(round(math.log(count, 10),6)) + 1
-    #     commandStr = 'S' + str(numBytes) + str(count) + '\n'
-    #     print('setting' + commandStr)
-    #     self.serial_port.write(commandStr.encode('utf-8'))
-    #
-    #     ack = self.waitForBytes(2)[1]
-    #     if ack == 'S&':
-    #         return True
-    #     else:
-    #         return False
-    #     # readData = ''
-    #     # while 'S&' not in readData:
-    #     #     #print("waiting to read")
-    #     #     readData += self.serial_port.read(1).decode("utf-8").strip()
-    #     # print('Successful set of encoder count to ' + str(count))
-
-    def getEncoderCounts(self, request_type):
-        #print('requesting encoder count')
-        #self.serial_port.write('G'.encode('utf-8'))
-        if request_type.upper() == 'STORED':
-            request_string = self.machine.encoder_command_strings[1]
-            ack_string = self.machine.encoder_ack_strings[2]
-        elif request_type.upper() == 'CURRENT':
-            request_string = self.machine.encoder_command_strings[2]
-            ack_string = self.machine.encoder_ack_strings[3]
-        else:
-            return (False, None)
-
-        self.writeUnicode(request_string)
-        received_counts = self.waitForString(ack_string)
-
-        if received_counts[0]:
-            #First character should be G
-            counts = received_counts[1].split(' ')
-            if counts[0] == request_string and counts[-1] == ack_string:
-                if len(counts[1]) < 9:
-                    print('break')
-                return (True, list(map(int,counts[1:-1])))
-        #else:
-        return (False, None)
-
-        # if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
-        #
-        # #time.sleep(0.1)
-        # readData = ''
-        # while 'C&' not in readData:
-        #     #print("waiting to read")
-        #     readData += self.serial_port.read(1).decode("utf-8")
-        # #print('Successful get of encoder count')
-        # #print(readData.strip())
-        # return readData.strip()
-
-    def setBaudrate(self, baudrate):
-        self.writeUnicode(self.machine.encoder_command_strings[3] + str(self.countBytesInTransmission(baudrate)) + str(baudrate))
-        ack = self.waitForString(self.machine.encoder_ack_strings[4])
-        if int(ack[1].split(' ')[1]) == baudrate:
-            time.sleep(0.5)
-            self.serial_port.baudrate = baudrate
-            print('SUCCESS: Decoder board baudrate is now ' + str(baudrate))
-
-    def close(self):
-        print('setting serial port close flag')
-        self._running_thread = False
-        #sys.exit()
+# class SerialInterface(threading.Thread):
+#     def __init__(self, machine):
+#         super(SerialInterface, self).__init__()
+#         self.machine = machine
+#
+#         #self._running = True
+#         self._shutdown = False
+#
+#         self.serial_port = serial.Serial()
+#         self.serial_port.port = self.machine.comm_port
+#         self.serial_port.baudrate = self.machine.baudrate
+#         #FIXME handle if serial is not connected
+#
+#         try:
+#             if self.serial_port.isOpen():
+#                 print('serial port already open')
+#             self.serial_port.open()
+#             time.sleep(0.5)
+#             #self.rebootDevice()
+#
+#             self._running_thread = True
+#
+#             # if self.machine.initial_position_set_event.wait():
+#             #     self.setAllEncoderCounts(self.machine.axes,self.machine.current_position)
+#             #     self.machine.encoder_init_event.set()
+#             #while not self.machine.data_store_manager_thread_handle.pull(['stepgen_feedback_positions'],[-1],[None])[0]:
+#
+#         except Exception as error:
+#             print('Could not open serial port, error: ' + str(error))
+#
+#
+#         print('serialInterface started')
+#         #time.sleep(0.5)
+#
+#     def run(self):
+#         #global encoderData, serialLock
+#         #self.setEncoderCount(self.machine.encoder_init)
+#         if not self.acknowledgeBoot():
+#             print('Decoder board not responsive')
+#             return
+#         else:
+#             print('SUCCESS: Decoder board boot')
+#
+#         if self.machine.initial_position_set_event.wait():
+#             self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
+#             self.machine.encoder_init_event.set()
+#
+#         self.setBaudrate(250000)
+#         self.serial_port.flushInput()
+#
+#         while self._running_thread:
+#             rx_received_time = time.clock()
+#
+#             encoder_counts = self.getEncoderCounts('current')
+#
+#             if encoder_counts[0]:
+#                 #Got good data, push to DB
+#                 self.machine.data_store_manager_thread_handle.push(
+#                     {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
+#
+#             # start = time.clock()
+#
+#             # if self.serial_port.in_waiting > self.machine.max_encoder_transmission_length:
+#             #     self.serial_port.readline()
+#             #     #print(self.serial_port.readline())
+#                 #print(time.clock() - start)
+#             #else:
+#                 #print('looping')
+#             #print(self.serial_port.readline())
+#             #print(self.serial_port.read_until('\r\n'.encode()))
+#             #print(self.serial_port.read_all())
+#             #self.serial_port.read_all()
+#             #if self.serial_port.
+#             #rx_received_time = time.clock()
+#             #print(counts)
+#             #print(time.clock()-start)
+#
+#         #Flag set, shutdown
+#         print('Closing serial port')
+#         print('ENCODER INTERFACE: thread shut down')
+#         self.serial_port.close()
+#         #self._shutdown = True
+#
+#     def read(self):
+#         line = self.serial_port.readline()
+#         return line
+#
+#     def writeUnicode(self, string):
+#         self.serial_port.write(string.encode('utf-8'))
+#         #time.sleep(0.01)
+#         #self.serial_port.flush()
+#
+#     ##    def write(self, data):
+#     ##        line = self.serial_port.readline()
+#     ##        return line
+#
+#     # def reset(self):
+#     #     global encoderData, serialLock
+#     #     #serialLock.acquire()
+#     #     self.serial_port.close()
+#     #     self.serial_port.open()
+#     #     encoderData = np.array([0])
+#     #     queueData = np.array([0])
+#     #     #serialLock.release()
+#
+#     ########################### UTILITIES ###########################
+#
+#     def countBytesInTransmission(self, transmission):
+#         return math.floor(round(math.log(transmission, 10), 6)) + 1
+#
+#     def positionToCounts(self, axis, position):
+#         axis_index = self.machine.axes.index(axis.upper())
+#         return round(position / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]
+#
+#     def positionsToCounts(self, axes, positions):
+#         counts = []
+#         for axis in range(0,len(axes)):
+#             axis_index = self.machine.axes.index(axes[axis].upper())
+#             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
+#         return counts
+#
+#     def countsToPosition(self, axis, counts):
+#         axis_index = self.machine.axes.index(axis.upper())
+#         return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
+#
+#     def countsToPositions(self, axes, counts):
+#         positions = []
+#         for axis in range(0, len(axes)):
+#             axis_index = self.machine.axes.index(axes[axis].upper())
+#             positions.append((counts[axis] - self.machine.encoder_offset[axis_index]) * self.machine.encoder_scale[axis_index] + self.machine.machine_zero[axis_index])
+#         return positions
+#
+#     def waitForBytes(self, number_of_bytes, timeout = 0.5):
+#         read_byte_count = 0
+#         read_data = ''
+#         start_time = time.clock()
+#         while read_byte_count < number_of_bytes and (time.clock() - start_time) < timeout:
+#             read_data += self.serial_port.read(1).decode('utf-8')
+#             read_byte_count += 1
+#
+#         if read_byte_count == number_of_bytes:
+#             return (True, read_data)
+#         else:
+#             return (False, None)
+#
+#     def waitForString(self, string, timeout = 0.5):
+#         # #read_byte_count = 0
+#         # read_data = ''
+#         # start_time = time.clock()
+#         # while string not in read_data and (time.clock() - start_time) < timeout:
+#         #     read_data += self.serial_port.readline().decode('utf-8')
+#         #     #read_byte_count += 1
+#
+#         start = time.clock()
+#         read_data = self.serial_port.readline().decode('utf-8')
+#         print('read took ' + str(time.clock()-start))
+#         if string in read_data:
+#             return (True, read_data)
+#         else:
+#             return (False, None)
+#
+#     def rebootDevice(self):
+#         self.serial_port.setDTR(0)
+#         self.serial_port.setDTR(1)
+#         time.sleep(0.5)
+#
+#     ########################### COMMS ###########################
+#
+#     def acknowledgeBoot(self):
+#         return self.waitForString(self.machine.encoder_ack_strings[0])[0]
+#
+#     def setAxisEncoderCount(self, axis, count):
+#         #number_of_bytes = math.floor(round(math.log(count, 10),6)) + 1
+#         command_string = 'S' + str(axis) + str(self.countBytesInTransmission(count)) + str(count)
+#         self.writeUnicode(command_string)
+#         if self.waitForString(self.machine.encoder_ack_strings[1]):
+#         #if self.waitForBytes(len(self.machine.encoder_ack_strings[0]))[1] == self.machine.encoder_ack_strings[0]:
+#             return True
+#         else:
+#             return False
+#
+#     def setAllEncoderCounts(self, axes, counts):
+#         for axis in axes:
+#             axis_index = self.machine.axes.index(axis)
+#             self.setAxisEncoderCount(axis_index+1,counts[axis_index])
+#
+#     # def setEncoderCount(self, count):
+#     #     # self.serial_port.write('R'.encode('utf-8'))
+#     #     # Calculate number of characters in set command
+#     #     numBytes = math.floor(round(math.log(count, 10),6)) + 1
+#     #     commandStr = 'S' + str(numBytes) + str(count) + '\n'
+#     #     print('setting' + commandStr)
+#     #     self.serial_port.write(commandStr.encode('utf-8'))
+#     #
+#     #     ack = self.waitForBytes(2)[1]
+#     #     if ack == 'S&':
+#     #         return True
+#     #     else:
+#     #         return False
+#     #     # readData = ''
+#     #     # while 'S&' not in readData:
+#     #     #     #print("waiting to read")
+#     #     #     readData += self.serial_port.read(1).decode("utf-8").strip()
+#     #     # print('Successful set of encoder count to ' + str(count))
+#
+#     def getEncoderCounts(self, request_type):
+#         #print('requesting encoder count')
+#         #self.serial_port.write('G'.encode('utf-8'))
+#         if request_type.upper() == 'STORED':
+#             request_string = self.machine.encoder_command_strings[1]
+#             ack_string = self.machine.encoder_ack_strings[-1]
+#         elif request_type.upper() == 'CURRENT':
+#             request_string = self.machine.encoder_command_strings[2]
+#             ack_string = self.machine.encoder_ack_strings[-1]
+#         else:
+#             return (False, None)
+#
+#         self.writeUnicode(request_string)
+#         encoder_bytes = self.serial_port.read(self.machine.max_encoder_transmission_length)
+#         encoder_data = struct.unpack('!' + 'c' + self.machine.number_of_encoders * 'I' + 'c', encoder_bytes)
+#         if encoder_data[0].decode() == request_string and encoder_data[-1].decode() == ack_string:
+#             return (True, encoder_data[1:-1])
+#         return(False, None)
+#
+#         # received_counts = self.waitForString(ack_string)
+#         #
+#         # if received_counts[0]:
+#         #     #First character should be G
+#         #     counts = received_counts[1].split(' ')
+#         #     if counts[0] == request_string and counts[-1] == ack_string:
+#         #         if len(counts[1]) < 9:
+#         #             print('break')
+#         #         return (True, list(map(int,counts[1:-1])))
+#         # #else:
+#         # return (False, None)
+#
+#         # if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
+#         #
+#         # #time.sleep(0.1)
+#         # readData = ''
+#         # while 'C&' not in readData:
+#         #     #print("waiting to read")
+#         #     readData += self.serial_port.read(1).decode("utf-8")
+#         # #print('Successful get of encoder count')
+#         # #print(readData.strip())
+#         # return readData.strip()
+#
+#     def setBaudrate(self, baudrate):
+#         self.writeUnicode(self.machine.encoder_command_strings[3] + str(self.countBytesInTransmission(baudrate)) + str(baudrate))
+#         ack = self.waitForString(self.machine.encoder_ack_strings[4])
+#         if int(ack[1].split(' ')[1]) == baudrate:
+#             time.sleep(0.5)
+#             self.serial_port.baudrate = baudrate
+#             print('SUCCESS: Decoder board baudrate is now ' + str(baudrate))
+#
+#     def close(self):
+#         print('setting serial port close flag')
+#         self._running_thread = False
+#         #sys.exit()
 
