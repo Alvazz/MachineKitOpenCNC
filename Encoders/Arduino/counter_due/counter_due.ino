@@ -272,23 +272,14 @@ void loop() {
         if (commandData.cmdResult) {
           Serial.print(commandData.cmd);
           for (int axis = 0; axis < numAxes; axis++) {
-            //Serial.print(' ');
-            //Serial.println(encoderStateData.encoderCounts[axis].comb, DEC);
-            //const uint8_t* encoder_count = &encoderStateData.encoderCounts[axis];
             byte4 encoder_count;
             encoder_count.comb = htonl(encoderStateData.encoderCounts[axis].comb);
             Serial.write(encoder_count.bytes,sizeof(uint32_t));
           }
-          //Serial.print(' ');
-          //Serial.print(commandData.cmd);
-          //Serial.println("&");
           Serial.print('&');
         } else {
           Serial.println("F&");
         }
-        //Serial.print(stateData.encoderCounts[numAxes-1]);
-        //Serial.println("done");
-        //Serial.println("C&");
         
         break;
       case 'S':

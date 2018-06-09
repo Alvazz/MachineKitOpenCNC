@@ -1,23 +1,16 @@
 import multiprocessing, socket, sys,  time, inspect
+from threading import current_thread
 
 #PNC Modules
 from pncMachineModel import MachineModel, MachineModelProxy#, MachineModelMethods
-from pncDatabase import DatabaseServer, DatabaseServerProxy
+from pncDatabase import DatabaseServer#, Synchronizer, DatabaseServerProxy, SynchronizersProxy
 from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackListener
 from pncEncoderInterface import EncoderInterface
+from pncCamUserInterface import SculptPrintInterface
+import pncLibrary
 
 from pncCamUserInterface import SculptPrintInterface
-
-#Handles
-#global data_store, machine_controller, machine, encoder_interface, feedback_listener
-
-# Default connection parameters
-# def_feedback_listen_ip = '0.0.0.0'
-# def_feedback_listen_port = 515
-# def_control_client_ip = '129.1.15.5'
-# #def_control_client_ip = '129.1.15.69'
-# def_control_client_port = 5007
 
 # class IPCPrimitives():
 #     def __init__(self, manager):
@@ -29,144 +22,133 @@ from pncCamUserInterface import SculptPrintInterface
 #     database_queue = manager.Queue()
 #     database_lock = manager.Lock()
 
-# Initialize control communication with PocketNC using TCP and feedback read
-# communication with UDP.
-def appInit(control_client_ip = -1, control_client_port = -1, simulate = False):
-    global data_store, machine_controller, machine, encoder_interface, feedback_listener
+class PNCAppManager(multiprocessing.managers.SyncManager): pass
 
-    registerProxy('MachineModel',MachineModel,MachineModelProxy, PNCAppManager)
-    #registerProxy('DatabaseServer', DatabaseServer, DatabaseServerProxy)
+class testclass(): pass
 
+def registerProxy(name, cls, proxy, manager):
+    for attr in dir(cls):
+        if inspect.ismethod(getattr(cls, attr)) and not attr.startswith("__"):
+            proxy._exposed_ += (attr,)
+            setattr(proxy, attr,
+                    lambda s: object.__getattribute__(s, '_callmethod')(attr))
+    manager.register(name, cls, proxy)
 
-    pncAppManager = PNCAppManager()
-    pncAppManager.start()
-
-    #synchronizers = Synchronizers(pncAppManager)
-    machine = pncAppManager.MachineModel()
-
-    #machine.synchronizers = Synchronizers(pncAppManager)
-    machine.local_epoch = time.clock()
-
-    database_push_queue_proxy = pncAppManager.Queue()
-    database_pull_queue_proxy = pncAppManager.Queue()
-    database_output_queue_proxy = pncAppManager.Queue()
-
-    #machine.database_push_queue_proxy = database_push_queue_proxy
-
-    database = DatabaseServer(machine, database_push_queue_proxy, database_pull_queue_proxy, database_output_queue_proxy)
-    database.start()
-
-
-    #synchronizers = Synchronizers(pncAppManager)
-    #machine.synchronizers = initSynchronizers(pncAppManager)
-
-    # testprocess = test()
-    # testprocess.start()
-
-    #database = pncAppManager.DatabaseServer(machine)
-
-    #machine.database_proxy = database
-
-    #machineself = machine.getSelf()
-
-
-    #machine.database_lock = database_lock
-    #machine.database_input_queue = synchronizers.database_intput_queue
-    #machine.database_output_queue = synchronizers.database_intput_queue
-
-    #machine_model_methods = MachineModelMethods(machine)
-    #machine = pncAppManager.Namespace()
-
-    #Begin CPU clock
-    # machine.setRSHError()
-    # print('rsh error is ' + str(machine.rsh_error))
-    # machine.resetRSHError()
-    # print('rsh error is ' + str(machine.rsh_error))
-    #local_epoch = time.clock()
-
-    #data_store = DataStore()
-    #data_store_manager = DatabaseServer(machine, database_input_queue, database_output_queue)
-    #data_store_manager.start()
-    #machine = MachineModel()
-
-    #machine.sculptprint_interface = SculptPrintInterface()
-
-    #machine.data_store_manager_thread_handle = data_store_manager
-    #data_store_manager.machine = machine
-    #print(machine.axis_offsets)
-
-    # if feedback_listen_ip == -1:
-    #     feedback_listen_ip = machine.listen_ip
-    # if feedback_listen_port == -1:
-    #     feedback_listen_port = machine.udp_port
-    if control_client_ip == -1:
-        control_client_ip = machine.ip_address
-    if control_client_port == -1:
-        control_client_port = machine.tcp_port
-
-    # try:
-    #     feedback_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    #     feedback_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    #     feedback_socket.bind((feedback_listen_ip, feedback_listen_port))
-    # except socket.error:
-    #     print ('Failed to bind to feedback socket to listen on 2')
-    #     sys.exit()
-
+def openNetworkConnection(machine, control_client_ip, control_client_port):
     try:
         machine.rsh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         machine.rsh_socket.connect((control_client_ip, control_client_port))
-        print('CONNECTED to ' + machine.name + ' remote shell at ' + str(control_client_ip) + ':' + str(control_client_port))
-        #machine.rsh_socket = control_socket
+        pncLibrary.printTerminalString(machine.connection_string, machine.name, control_client_ip, control_client_port)
+        return True
     except socket.error:
-        print ('Failed to connect to client IP. Is machine ON?')
-        #return appClose()
-        #sys.exit()
+        pncLibrary.printTerminalString(machine.failed_connection_string, machine.name, control_client_ip, control_client_port)
+        return False
 
-    #print ('[+] Listening for feedback data on port', feedback_listen_port)
+def appInit(type = 'pocketnc', control_client_ip = -1, control_client_port = -1):
+    global pnc_app_manager
+    print('Current process: ' + str(multiprocessing.current_process().pid) + ', current thread: ' + str(current_thread().name))
+    registerProxy('MachineModel', MachineModel, MachineModelProxy, PNCAppManager)
+    #registerProxy('Synchronizers', Synchronizers, SynchronizersProxy, PNCAppManager)
+    #registerProxy('DatabaseServer', DatabaseServer, DatabaseServerProxy)
 
+    #FIXME ignore SIGINT
+    pnc_app_manager = PNCAppManager()#(mgr_init)
+    pnc_app_manager.name = 'pnc_app_manager'
+    pnc_app_manager.start()
 
-    # serial_port = serial.Serial()
-    # serial_port.port = machine.comm_port
-    # serial_port.baudrate = machine.baudrate
-    # FIXME handle if serial is not connected
+    #synchronizers = Synchronizers(pnc_app_manager)
+    machine = pnc_app_manager.MachineModel()
+    synchronizer = pncLibrary.Synchronizer(pnc_app_manager)
+    pncLibrary.setTaskRunFlags(synchronizer)
+    machine.sculptprint_interface = SculptPrintInterface()
+    machine.local_epoch = time.clock()
 
+    #print(machine.manager_launch_string.format(pnc_app_manager.name, str(pnc_app_manager._process.pid)))
+    pncLibrary.printTerminalString(machine.manager_launch_string, pnc_app_manager.name, pnc_app_manager._process.pid)
+    #pncLibrary.printTerminalString(machine.manager_launch_string, pnc_app_manager.name, multiprocessing.current_process().pid)
 
-    # machine.data_store_manager_thread_handle = data_store_manager
-    # data_store_manager.start()
+    #machine.synchronizers = Synchronizers(pnc_app_manager)
 
-    #encoder_interface = EncoderInterface(machine, database_push_queue_proxy)
-    encoder_interface = EncoderInterface(machine, database_push_queue_proxy)
-    #machine.encoder_thread_handle = encoder_interface
+    if type == 'simulator':
+        control_client_ip = machine.simulator_ip_address
+        machine.name = machine.simulator_name
+    elif type == 'pocketnc':
+        control_client_ip = machine.ip_address
+        machine.name = machine.machine_name
+    else:
+        print('Unrecognized type ' + type + ' for machine initialization, aborting')
+        return
+    control_client_port = machine.tcp_port
+
+    # database_push_queue_proxy = pnc_app_manager.Queue()
+    # database_pull_queue_proxy = pnc_app_manager.Queue()
+    # database_output_queue_proxy = pnc_app_manager.Queue()
+    #testevent = pnc_app_manager.Event()
+
+    database = DatabaseServer(machine, synchronizer)
+    database.start()
+    pncLibrary.printTerminalString(machine.process_launch_string, database.name, database.pid, pnc_app_manager.name, pnc_app_manager._process.pid)
+
+    encoder_interface = EncoderInterface(machine, synchronizer)
     encoder_interface.start()
+    pncLibrary.printTerminalString(machine.process_launch_string, encoder_interface.name, encoder_interface.pid, pnc_app_manager.name, pnc_app_manager._process.pid)
 
-    machine_controller = MachineController(machine, database_push_queue_proxy)
-    #machine.machine_controller_thread_handle = machine_controller
+    feedback_handler = MachineFeedbackListener(machine, synchronizer)
+    feedback_handler.start()
+    pncLibrary.printTerminalString(machine.process_launch_string, feedback_handler.name, feedback_handler.pid, pnc_app_manager.name, pnc_app_manager._process.pid)
+
+    machine_controller = MachineController(machine, synchronizer)
     machine_controller.start()
+    pncLibrary.printTerminalString(machine.process_launch_string, machine_controller.name, machine_controller.pid, pnc_app_manager.name, pnc_app_manager._process.pid)
 
-    feedback_listener = MachineFeedbackListener(machine, database_push_queue_proxy)
-    #machine.feedback_listener_thread_handle = feedback_listener
-    feedback_listener.start()
+    openNetworkConnection(machine, control_client_ip, control_client_port)
+    waitForAppStart(synchronizer)
 
-    print('pncApp Started Successfully')
+    pnc_app_manager.machine = machine
+    pnc_app_manager.database = database
+    pnc_app_manager.encoder_interface = encoder_interface
+    pnc_app_manager.machine_controller = machine_controller
+    pnc_app_manager.feedback_handler = feedback_handler
 
-    #return machine, feedback_listener, machine_controller, encoder_interface, data_store
+    signalProcessWake(synchronizer)
+    pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
+
+    return pnc_app_manager, database, encoder_interface, machine_controller, feedback_handler, synchronizer
 
 def appClose():
-    print('closing sockets')
-    if machine_controller != []:
-        #machine_controller.shutdown()
-        print('flagging machine controller thread to shutdown')
-        machine_controller._running_thread = False
-        while not machine_controller._shutdown:
-            #Wait for shutdown flag
-            #print('pncApp: waiting for machine controller shutdown')
-            pass
-        print('pncApp: machine controller shutdown')
-    #print('active threads are ' + str(threading.enumerate()))
-	
+    print('pnc_app_manager is ' + str(pnc_app_manager))
+    pnc_app_manager.machine.run_machine_controller = False
+    pnc_app_manager.machine_controller.join()
 
-### MULTIPROCESSING STUFF ###
-class PNCAppManager(multiprocessing.managers.SyncManager): pass
+def waitForAppStart(synchronizer):
+    synchronizer.db_startup_event.wait()
+    synchronizer.ei_startup_event.wait()
+    synchronizer.fb_startup_event.wait()
+    synchronizer.mc_startup_event.wait()
+
+def signalProcessWake(synchronizer):
+    synchronizer.process_start_signal.set()
+
+    # if machine_controller != []:
+    #     #machine_controller.shutdown()
+    #     print('flagging machine controller thread to shutdown')
+    #     machine_controller._running_thread = False
+    #     while not machine_controller._shutdown:
+    #         #Wait for shutdown flag
+    #         #print('pncApp: waiting for machine controller shutdown')
+    #         pass
+    #     print('pncApp: machine controller shutdown')
+
+    #print('active threads are ' + str(threading.enumerate()))
+
+if __name__ == '__main__':
+    pnc_app_manager, database, encoder_interface, machine_controller, feedback_handler, synchronizer = appInit('pocketnc')
+    #Store process handles in pnc_app_manager?
+    synchronizer.mvc_connect_event.set()
+    machine_controller.join()
+    #time.sleep(1)
+    appClose()
+
 
 # self.connection_change_event = Event()
 #         self.link_change_event = Event()
@@ -189,22 +171,3 @@ class PNCAppManager(multiprocessing.managers.SyncManager): pass
 #         self.position_change_event = Event()
 #         self.initial_position_set_event = Event()
 #         self.encoder_init_event = Event()
-
-def registerProxy(name, cls, proxy, manager):
-    for attr in dir(cls):
-        if inspect.ismethod(getattr(cls, attr)) and not attr.startswith("__"):
-            proxy._exposed_ += (attr,)
-            setattr(proxy, attr,
-                    lambda s: object.__getattribute__(s, '_callmethod')(attr))
-    manager.register(name, cls, proxy)
-
-
-# Global variables
-#data_store = DataStore()
-# data_store = []
-# machine_controller = []
-# feedback_listener = []
-# encoder_interface = []
-
-if __name__ == '__main__':
-    appInit()

@@ -634,7 +634,7 @@ class MachineFeedbackListener(Process):
 #             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
 #         return counts
 #
-#     def countsToPosition(self, axis, counts):
+#     def countToPosition(self, axis, counts):
 #         axis_index = self.machine.axes.index(axis.upper())
 #         return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
 #

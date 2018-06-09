@@ -1,7 +1,9 @@
-from multiprocessing import Process, Value#, Lock
+import pncLibrary
+from multiprocessing import Process, Event, Lock, Queue, current_process#Value#, Lock
+#from multiprocessing.synchronize import Event
 from multiprocessing.managers import NamespaceProxy
-from threading import Thread, Event as threadEvent
-import queue, time, numpy as np
+from threading import Thread, current_thread#, Event as threadEvent
+import queue, time, datetime, numpy as np
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -11,11 +13,12 @@ import queue, time, numpy as np
 #    d) n time values approximating when each stepgen feedback point was generated
 #    e) A snapshot of the tcq length at T
 
-class DatabaseCommand():
-    def __init__(self, command_type, data, timestamp):
-        self.command_type = command_type
-        self.timestamp = timestamp
-        self.data = data
+# class DatabaseCommand():
+#     def __init__(self, command_type, data, timestamp):
+#         self.input_output
+#         self.command_type = command_type
+#         self.timestamp = timestamp
+#         self.data = data
 
 class Record():
     def __init__(self, data_type, data, timestamp):
@@ -23,98 +26,232 @@ class Record():
         self.timestamp = timestamp
         self.data = data
 
-class DatabaseOutputArea():
-    def __init__(self):
-        self.database_output = None
+class ReturnRecord(Record):
+    def __init__(self, record_id, data):
+        super(Record, self).__init__(None, None, None)
+        self.id = record_id
+        self.output_data = data
+        #self.data_type = data_type
+        #self.timestamp = timestamp
+        #self.data = data
 
-class Synchronizers():
-    def __init__(self, manager):
-        # self.database_input_queue = manager.Queue()
-        # self.database_command_queue = manager.Queue()
-        # self.database_output_queue = manager.Queue()
+# class DatabaseCommand():
+#     def __init__(self, command_type, records, parameters = None):
+#         self.command_type = command_type
+#         self.data = records
+#         self.command_parameters = parameters
 
-        #State Switch Events
-        self.connection_change_event = manager.Event()
-        self.link_change_event = manager.Event()
-        self.echo_change_event = manager.Event()
-        self.estop_change_event = manager.Event()
-        self.drive_power_change_event = manager.Event()
-        self.status_change_event = manager.Event()
-        #self.status_change_event.clear()
-        self.mode_change_event = manager.Event()
-        self.logging_mode_change_event = manager.Event()
-        self.comm_mode_change_event = manager.Event()
-        self.home_change_event = manager.Event()
-        self.all_homed_event = manager.Event()
-        self.restore_mode_event = manager.Event()
-        self.ping_event = manager.Event()
-        self.clock_event = manager.Event()
-        self.buffer_level_reception_event = manager.Event()
-        self.servo_feedback_reception_event = manager.Event()
-        #FIXME implement this
-        self.position_change_event = manager.Event()
-        self.initial_position_set_event = manager.Event()
-        self.encoder_init_event = manager.Event()
+# class DatabaseOutputArea():
+#     def __init__(self):
+#         self.database_output = None
 
-        self.data_store_lock = manager.Lock()
+# class Synchronizer():
+#     def __init__(self, manager):
+#         #Process run events
+#         self.p_enable_database_event = manager.Event()
+#         self.p_enable_encoder_event = manager.Event()
+#         self.p_enable_feedback_handler_event = manager.Event()
+#         self.p_enable_machine_controller_event = manager.Event()
+#         self.p_run_database_event = manager.Event()
+#         self.p_run_encoder_interface_event = manager.Event()
+#         self.p_run_machine_controller_event = manager.Event()
+#         self.p_run_feedback_handler_event = manager.Event()
+#         self.t_run_motion_controller_event = manager.Event()
+#         self.t_run_logger_event = manager.Event()
+#         self.t_run_puller_event = manager.Event()
+#         self.t_run_pusher_event = manager.Event()
+#         self.t_run_state_manipulator_event = manager.Event()
+#
+#         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
+#         self.fb_connection_change_event = manager.Event()
+#         self.fb_link_change_event = manager.Event()
+#         self.fb_echo_change_event = manager.Event()
+#         self.fb_estop_change_event = manager.Event()
+#         self.fb_drive_power_change_event = manager.Event()
+#         self.fb_status_change_event = manager.Event()
+#         self.fb_status_change_event.clear()
+#         self.fb_mode_change_event = manager.Event()
+#         self.fb_logging_mode_change_event = manager.Event()
+#         self.fb_comm_mode_change_event = manager.Event()
+#         self.fb_home_change_event = manager.Event()
+#         self.fb_all_homed_event = manager.Event()
+#         self.fb_ping_event = manager.Event()
+#         self.fb_clock_event = manager.Event()
+#         self.fb_buffer_level_reception_event = manager.Event()
+#         self.fb_servo_feedback_reception_event = manager.Event()
+#
+#         # #FIXME implement this
+#         self.fb_position_change_event = manager.Event()
+#
+#         self.mc_initial_position_set_event = manager.Event()
+#         self.mc_restore_mode_event = manager.Event()
+#         self.mc_clock_sync_event = manager.Event()
+#         self.ei_encoder_init_event = manager.Event()
+#
+#         self.mc_startup_event = manager.Event()
+#         self.fb_startup_event = manager.Event()
+#         self.ei_startup_event = manager.Event()
+#         self.db_startup_event = manager.Event()
+#         self.mc_running_event = manager.Event()
+#         self.fb_running_event = manager.Event()
+#         self.ei_running_event = manager.Event()
+#         self.db_running_event = manager.Event()
+#
+#         #self.testevent = Event()
+#
+#         #SculptPrint MVC Events
+#         self.mvc_connect_event = manager.Event()
+#         self.mvc_enqueue_moves_event = manager.Event()
+#         self.mvc_moves_queued_event = manager.Event()
+#         self.mvc_execute_motion_event = manager.Event()
+#
+#         # Queues
+#         self.q_database_command_queue_proxy = manager.Queue()
+#         #self.q_database_pull_queue_proxy = manager.Queue()
+#         self.q_database_output_queue_proxy = manager.Queue()
+#
+#         # Locks
+#         self.db_data_store_lock = Lock()
+#         self.db_machine_state_lock = Lock()
+#         self.mc_socket_lock = Lock()
+#         #self.db_data_store_lock = manager.Lock()
 
-class LoggingServer(Thread):
-    def __init__(self, machine):
-        super(LoggingServer, self).__init__()
+class TerminalLoggingServer(Thread):
+    def __init__(self, machine, synchronizer):
+        super(TerminalLoggingServer, self).__init__()
+        self.name = "logging_server"
         self.machine = machine
+        self.synchronizer = synchronizer
         self.output_directory = self.machine.log_file_output_directory
-        self.log_queue = queue.Queue()
+
+        self.log_queue = Queue()
+        self.startup_event = Event()
 
     def run(self):
+        self.startup_event.set()
+
+class LoggingServer(Thread):
+    def __init__(self, machine, synchronizer):
+        super(LoggingServer, self).__init__()
+        self.name = "logging_server"
+        self.machine = machine
+        self.synchronizer = synchronizer
+        self.output_directory = self.machine.log_file_output_directory
+
+        self.log_queue = Queue()
+        self.startup_event = Event()
+
+    def run(self):
+        self.startup_event.set()
+        try:
+            self.log_file_handle = open(self.output_directory + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
+            pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        except Exception as log_open_error:
+            print('Log file open error: ' + str(log_open_error))
+            return
+
+        while self.synchronizer.t_run_logger_event.is_set():
+            if not self.log_queue.empty():
+                log_time, log_message = self.log_queue.get()
+                self.log_file_handle.write(str(log_time) + ': ' + str(log_message))
+                self.log_file_handle.flush()
+        self.log_file_handle.close()
+
+class Puller(Thread):
+    def __init__(self, machine, synchronizer):
+        super(Puller, self).__init__()
+        self.name = "database_puller"
+        self.machine = machine
+        self.output_queue = synchronizer.q_database_output_queue_proxy
+        self.database_lock = synchronizer.db_data_store_lock
+
+        self.pull_queue = Queue()
+        self.startup_event = Event()
+
+    def run(self):
+        self.startup_event.set()
+        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        while True:
+            pass
+
+class Pusher(Thread):
+    def __init__(self, machine, synchronizer):
+        super(Pusher, self).__init__()
+        self.name = "database_pusher"
+        self.machine = machine
+        self.database_lock = synchronizer.db_data_store_lock
+
+        self.push_queue = Queue()
+        self.startup_event = Event()
+
+    def run(self):
+        self.startup_event.set()
+        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        while True:
+            pass
+
+class StateManipulator(Thread):
+    def __init__(self, machine, synchronizer):
+        super(StateManipulator, self).__init__()
+        self.name = "machine_state_manipulator"
+        self.machine = machine
+        self.machine_state_lock = synchronizer.db_machine_state_lock
+
+        self.state_change_queue = Queue()
+        self.startup_event = Event()
+
+    def run(self):
+        self.startup_event.set()
+        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
         while True:
             pass
 
 class DatabaseServer(Process):
-    def __init__(self, machine, push_queue_proxy, command_queue_proxy, output_queue_proxy):
+    def __init__(self, machine, synchronizer):
         super(DatabaseServer, self).__init__()
-
+        self.name = "database"
+        self.main_thread_name = self.name + ".MainThread"
         self.machine = machine
-        self.push_queue = push_queue_proxy
-        self.command_queue = command_queue_proxy
-        self.output_queue = output_queue_proxy
+        self.synchronizer = synchronizer
+
+        self.command_queue = self.synchronizer.q_database_command_queue_proxy
+        self.output_queue = self.synchronizer.q_database_output_queue_proxy
         #self.output_buffer = output_value_proxy
 
-        #self.synchronizers = synchronizers
-
-        self.synchronizers = Synchronizers(self.machine._manager)
+        #self.synchronizers = Synchronizers(self.machine._manager)
         self.data_store = DataStore()
 
-        # Thread locks
-        #self.data_store_lock = lock#self.synchronizers.database_lock
-        #self.record_queue = queue.Queue()
-
-        #self.synchronizers.database_queue
-
-
-        self._running_process = True
+        #self._running_process = True
 
     def run(self):
-        self.logging_server = LoggingServer(self.machine)
-        self.logging_server.start()
+        current_thread().name = self.main_thread_name
+        self.waitForDatabaseHelperThreads()
+        self.synchronizer.db_startup_event.set()
 
-        while self._running_process:
-            #First handle incoming commands
-            if not self.command_queue.empty():
-                self.handleCommand(self.command_queue.get())
+        self.synchronizer.process_start_signal.wait()
+        time.clock()
 
-            if not self.push_queue.empty:
-                records = self.record_queue.get()
-                #FIXME what about time stamp?
-                self.appendMachineFeedbackRecords([records.data])
-                self.record_queue.task_done()
+        if self.synchronizer.p_enable_database_event.is_set():
+            self.synchronizer.p_run_database_event.wait()
+            while self.synchronizer.p_run_database_event.is_set():
+                #First handle incoming commands
+                if not self.command_queue.empty():
+                    command = self.command_queue.get()
+                    self.handleCommand(command)
 
-            position_update = self.pull(['STEPGEN_FEEDBACK_POSITIONS'], [-1], [None])
-            buffer_level_update = self.pull(['HIGHRES_TC_QUEUE_LENGTH'], [-1], [None])
-            if position_update[0]:
-                self.machine.current_position = position_update[1][0][0].tolist()
-                self.synchronizers.initial_position_set_event.set()
-            if buffer_level_update[0]:
-                self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
+                # if not self.push_queue.empty:
+                #     records = self.record_queue.get()
+                #     #FIXME what about time stamp?
+                #     self.appendMachineFeedbackRecords([records.data])
+                #     self.record_queue.task_done()
+
+                position_update = self.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
+                buffer_level_update = self.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
+                if position_update[0]:
+                    self.machine.current_position = position_update[1][0][0].tolist()
+                    self.synchronizers.initial_position_set_event.set()
+                if buffer_level_update[0]:
+                    self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
 
         # while self._running_process:
@@ -133,25 +270,70 @@ class DatabaseServer(Process):
         #     if buffer_level_update[0]:
         #         self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
+    def waitForDatabaseHelperThreads(self):
+        self.pusher = Pusher(self.machine, self.synchronizer)
+        self.puller = Puller(self.machine, self.synchronizer)
+        self.state_manipulator = StateManipulator(self.machine, self.synchronizer)
+        self.logging_server = LoggingServer(self.machine, self.synchronizer)
 
-    def push(self, records):
-        #FIXME implement type to log to file
-        #Upper all keys
-        records_upper = {}
-        #for record_key in records:
-#            record_upper = {}
-        for key, value in records.items():
-            records_upper[key.upper()] = value
-        #records_upper.append(record_upper)
-        if self.machine.clock_event.isSet():
-            #Only push data to DB after clocks have been synced
-            self.record_queue.put(Record(records_upper, time.clock()))
+        self.state_manipulator.start()
+        self.pusher.start()
+        self.puller.start()
+        self.logging_server.start()
+
+        self.state_manipulator.startup_event.wait()
+        self.pusher.startup_event.wait()
+        self.puller.startup_event.wait()
+        self.logging_server.startup_event.wait()
+
+    def handleCommand(self, command):
+        #FIXME do I need separate pusher/puller threads?
+        if command.command_type == 'push':
+            records_upper = {}
+            for key, value in command.data.items():
+                records_upper[key.upper()] = value
+
+            #FIXME this is a band-aid, perhaps the database should only be started once clocks are synced
+            if self.synchronizer.mc_clock_sync_event.is_set() or 1:
+                # Only push data to DB after clocks have been synced
+                self.appendMachineFeedbackRecords([records_upper])
+                #self.record_queue.put(Record(records_upper, time.clock()))
+
+        elif command.command_type == 'pull':
+            data_types, start_indices, end_indices = command.parameters
+            self.synchronizer.database_output_queue_proxy.put(self.pull(data_types, start_indices, end_indices))
+
+        elif command.command_type == "machine_model_update":
+            #setattr(self.machine,command.data) = command.data
+            pass
+
+        elif command.command_type == 'log':
+            self.logging_server.log_queue.put((command.time, command.data))
+
+
+
+#     def push(self, records):
+#         #FIXME implement type to log to file
+#         #Upper all keys
+#         records_upper = {}
+#         #for record_key in records:
+# #            record_upper = {}
+#         for key, value in records.items():
+#             records_upper[key.upper()] = value
+#         #records_upper.append(record_upper)
+#         if self.machine.clock_event.isSet():
+#             #Only push data to DB after clocks have been synced
+#             self.record_queue.put(Record(records_upper, time.clock()))
 
     def pull(self, data_types, start_indices, end_indices):
-        if type(data_types) is list:
-            return_data = []
-            success_flag = True
-            self.synchronizers.data_store_lock.acquire()
+        #FIXME return a success flag for each data item returned
+        if type(data_types) is not list:
+            data_types, start_indices, end_indices = [[d] for d in [data_types, start_indices, end_indices]]
+
+        return_data = []
+        success_flag = True
+        #self.synchronizer.db_data_store_lock.acquire()
+        with self.synchronizer.db_data_store_lock:
             for k in range(0,len(data_types)):
                 data_type = data_types[k]
                 data_array = self.data_store.lookupDataType(data_type.upper())
@@ -161,7 +343,7 @@ class DatabaseServer(Process):
                     #print('the shape is ' + str(np.shape(data_array)))
                     #print('data array for type ' + str(data_type) + ' is empty')
                     if self.machine.rsh_buffer_level > 0:
-                        print('break')
+                        print('pull break')
                     #return_data.append(None)
                     return_data.append(np.empty((0,data_array.shape[1])))
 
@@ -177,16 +359,15 @@ class DatabaseServer(Process):
                         print('break')
                     success_flag = success_flag and True
 
-            self.synchronizers.data_store_lock.release()
 
-            #if None in return_data:
-            try:
-                if any([d is None for d in return_data]):
-                    if success_flag is True:
-                        print('break')
-            except:
-                print('break')
-            return (success_flag, return_data)
+        #if None in return_data:
+        try:
+            if any([d is None for d in return_data]):
+                if success_flag is True:
+                    print('break')
+        except:
+            print('break')
+        return (success_flag, return_data)
 
         # elif type(data_types) is str:
         #     #FIXME will this work?
@@ -195,14 +376,14 @@ class DatabaseServer(Process):
         #         print('data indices out of range')
         #         return None
         #
-        #     self.data_store_lock.acquire()
+        #     self.db_data_store_lock.acquire()
         #     data = data_array[start_index:end_index,:]
-        #     self.data_store_lock.release()
+        #     self.db_data_store_lock.release()
         #     return data
 
         ##FIXME implement data store manager class for threadlocks, methods, etc
     def appendMachineFeedbackRecords(self, records):
-        self.data_store_lock.acquire()
+        self.synchronizer.db_data_store_lock.acquire()
         for record in records:
             if 'RTAPI_FEEDBACK_INDICES' in record:
                 self.data_store.RTAPI_FEEDBACK_INDICES = np.vstack(
@@ -212,7 +393,7 @@ class DatabaseServer(Process):
                 self.data_store.commanded_joint_positions = np.vstack(
                     (self.data_store.commanded_joint_positions, record['commanded_joint_positions']))
                 ## FIXME increment machine feedback number of records if ANY of these, except encoder data, is provided
-                self.data_store.machine_feedback_num_records += 1
+                #self.data_store.machine_feedback_num_records += 1
 
             if 'STEPGEN_FEEDBACK_POSITIONS' in record:
                 self.data_store.STEPGEN_FEEDBACK_POSITIONS = np.vstack(
@@ -267,10 +448,10 @@ class DatabaseServer(Process):
                 self.data_store.SERIAL_RECEIVED_TIMES = np.vstack(
                     (self.data_store.SERIAL_RECEIVED_TIMES, record['SERIAL_RECEIVED_TIMES']))
 
-            if 'NETW0RK_PID_DELAY' in record:
+            if 'NETWORK_PID_DELAY' in record:
                 self.data_store.network_PID_delays = np.vstack((self.data_store.network_PID_delays, record['NETWORK_PID_DELAY']))
 
-        self.data_store_lock.release()
+        self.synchronizer.db_data_store_lock.release()
 
 
 class DataStore():
@@ -342,16 +523,14 @@ class DataStore():
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
                                  'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS']
 
-        self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
-                             self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,
-                             self.HIGHRES_TC_QUEUE_LENGTH, self.RTAPI_CLOCK_TIMES, self.LOWFREQ_ETHERNET_RECEIVED_TIMES,
-                             self.HIGHFREQ_ETHERNET_RECEIVED_TIMES]
+        # self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
+        #                      self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,
+        #                      self.HIGHRES_TC_QUEUE_LENGTH, self.RTAPI_CLOCK_TIMES, self.LOWFREQ_ETHERNET_RECEIVED_TIMES,
+        #                      self.HIGHFREQ_ETHERNET_RECEIVED_TIMES]
 
     def lookupDataType(self, data_type):
         data_type = data_type.upper()
         if data_type in self.data_descriptors:
-            #return self.RTAPI_clock_times
-            #return self.data_handles[self.data_descriptors.index(data_type)]
             return getattr(self,data_type)
         else:
             print('data does not exist')
@@ -361,5 +540,8 @@ class DatabaseServerProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
 
 class DatabaseOutputProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
+
+class SynchronizersProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
 

@@ -1,24 +1,32 @@
-#from pncMachineControl import MachineController
-#import multiprocessing.Event
-from multiprocessing import Event
 from multiprocessing.managers import NamespaceProxy
-from multiprocessing import Value
-import time, inspect
-import queue
 
 class MachineModel():
     #global machine_controller
     def __init__(self):
+        self.name = None
+
         #Jokes
-        self.name = "PocketVMC"
+        self.machine_name = "PocketVMC"
         self.simulator_name = "the_danke$t"
 
-        #Threads and Objects
-        self.feedback_listener_thread_handle = None
-        self.machine_controller_thread_handle = None
-        self.encoder_thread_handle = None
-        self.data_store_manager_thread_handle = None
-        self.system_controller_thread_handle = None
+        #Terminal printouts
+        self.connection_string = "CONNECTED to {} remote shell at {}:{}"
+        self.failed_connection_string = "Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+        self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
+        self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
+        self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+        self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+        self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+        self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+        self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+        self.connection_open_string = "CONNECTED to {} on {}"
+        self.connection_close_string = "DISCONNECTED from {} on {}"
+
+        # self.feedback_listener_thread_handle = None
+        # self.machine_controller_thread_handle = None
+        # self.encoder_thread_handle = None
+        # self.data_store_manager_thread_handle = None
+        # self.system_controller_thread_handle = None
         self.sculptprint_interface = None
 
         #State variables
@@ -194,91 +202,91 @@ class MachineModel():
     # def getSelf(self):
     #     return self
 
-class MachineModelMethods():
-    def __init__(self, machine):
-        self.machine = machine
-
-    ######################## State Machine ########################
-    def pushState(self):
-        # save machine state
-        # self.prev_mode = self.mode
-        self.machine.mode_stack += self.machine.mode
-        # return #saved state structure
-
-    def popState(self):
-        # prev_mode = self.machine.mode_stack[-1]
-        # mode_stack = self.machine.mode_stack[0:-1]
-        return self.machine.mode_stack.pop()
-        # return prev_mode
-
-    # def restoreState(self):
-    #     #machine_controller.modeSwitchWait(self.machine.prev_mode)
-    #     if len(self.machine.mode_stack):
-    #         mode_to_restore = self.machine.popState()
-    #         self.machine.machine_controller_thread_handle.waitForSet(self.machine.machine_controller_thread_handle.setMachineMode,mode_to_restore,self.machine.machine_controller_thread_handle.getMachineMode)
-    #     else:
-    #         print('mode stack empty, leaving mode unchanged')
-    #     self.machine.restore_mode_event.set()
-    #     #Restore state to prev state after op
-    #     #return
-
-    ###################################################################
-    # def setLoggingMode(self, mode):
-    #     self.machine.logging_mode = mode
-    #     self.machine.logging_mode_changed_callback(mode)
-
-    def resetRSHError(self):
-        print('before ' + str(self.machine.rsh_error))
-        print(self)
-        print(super())
-        # super(MachineModel, self).rsh_error = 0
-        self.machine.rsh_error = 0
-        print('after ' + str(self.machine.machine.rsh_error))
-        # self.machine.rsh_error.value = 0
-
-    def checkOnOff(self, flag):
-        return self.machine.rsh_feedback_flags.index(flag.strip().upper()) % 2
-
-    def isAutoMode(self):
-        if self.machine.mode.upper() == 'AUTO' and self.machine.mode_change_event.isSet():
-            return True
-        else:
-            return False
-
-    def isManualMode(self):
-        if self.machine.mode.upper() == 'MANUAL' and self.machine.mode_change_event.isSet():
-            return True
-        else:
-            return False
-
-    def isHomed(self):
-        return (all(self.machine.axis_home_state) and self.machine.home_change_event.isSet())
-        # if all(self.machine.axis_home_state) and self.machine.home_change_event.isSet():
-        #     return True
-        # else:
-        #     return False
-
-    def isIdle(self):
-        if self.machine.status.upper() == 'IDLE' and self.machine.status_change_event.isSet():
-            return True
-        else:
-            return False
-
-    ######################## Clocking ########################
-    def estimateMachineClock(self, time_to_estimate=-1):
-        if not self.machine.clock_event.isSet():
-            print('WARNING: missing clock synchronization flag')
-
-        if time_to_estimate == -1:
-            time_to_estimate = time.clock()
-
-        return self.machine.RT_clock_offset + (time_to_estimate - self.machine.estimated_network_latency) * self.machine.clock_resolution
-
-    ######################## Comms ########################
-    def calculateBinaryTransmissionLength(self):
-        self.machine.binary_transmission_length = 2 + (
-                    self.machine.servo_log_num_axes * self.machine.servo_log_buffer_size + self.machine.servo_log_buffer_size) * self.machine.size_of_feedback_double + 1
-        return self.machine.binary_transmission_length
+# class MachineModelMethods():
+#     def __init__(self, machine):
+#         self.machine = machine
+#
+#     ######################## State Machine ########################
+#     def pushState(self):
+#         # save machine state
+#         # self.prev_mode = self.mode
+#         self.machine.mode_stack += self.machine.mode
+#         # return #saved state structure
+#
+#     def popState(self):
+#         # prev_mode = self.machine.mode_stack[-1]
+#         # mode_stack = self.machine.mode_stack[0:-1]
+#         return self.machine.mode_stack.pop()
+#         # return prev_mode
+#
+#     # def restoreState(self):
+#     #     #machine_controller.modeSwitchWait(self.machine.prev_mode)
+#     #     if len(self.machine.mode_stack):
+#     #         mode_to_restore = self.machine.popState()
+#     #         self.machine.machine_controller_thread_handle.waitForSet(self.machine.machine_controller_thread_handle.setMachineMode,mode_to_restore,self.machine.machine_controller_thread_handle.getMachineMode)
+#     #     else:
+#     #         print('mode stack empty, leaving mode unchanged')
+#     #     self.machine.restore_mode_event.set()
+#     #     #Restore state to prev state after op
+#     #     #return
+#
+#     ###################################################################
+#     # def setLoggingMode(self, mode):
+#     #     self.machine.logging_mode = mode
+#     #     self.machine.logging_mode_changed_callback(mode)
+#
+#     def resetRSHError(self):
+#         print('before ' + str(self.machine.rsh_error))
+#         print(self)
+#         print(super())
+#         # super(MachineModel, self).rsh_error = 0
+#         self.machine.rsh_error = 0
+#         print('after ' + str(self.machine.machine.rsh_error))
+#         # self.machine.rsh_error.value = 0
+#
+#     def checkOnOff(self, flag):
+#         return self.machine.rsh_feedback_flags.index(flag.strip().upper()) % 2
+#
+#     def isAutoMode(self):
+#         if self.machine.mode.upper() == 'AUTO' and self.machine.mode_change_event.isSet():
+#             return True
+#         else:
+#             return False
+#
+#     def isManualMode(self):
+#         if self.machine.mode.upper() == 'MANUAL' and self.machine.mode_change_event.isSet():
+#             return True
+#         else:
+#             return False
+#
+#     def isHomed(self):
+#         return (all(self.machine.axis_home_state) and self.machine.home_change_event.isSet())
+#         # if all(self.machine.axis_home_state) and self.machine.home_change_event.isSet():
+#         #     return True
+#         # else:
+#         #     return False
+#
+#     def isIdle(self):
+#         if self.machine.status.upper() == 'IDLE' and self.machine.status_change_event.isSet():
+#             return True
+#         else:
+#             return False
+#
+#     ######################## Clocking ########################
+#     def estimateMachineClock(self, time_to_estimate=-1):
+#         if not self.machine.clock_event.isSet():
+#             print('WARNING: missing clock synchronization flag')
+#
+#         if time_to_estimate == -1:
+#             time_to_estimate = time.clock()
+#
+#         return self.machine.RT_clock_offset + (time_to_estimate - self.machine.estimated_network_latency) * self.machine.clock_resolution
+#
+#     ######################## Comms ########################
+#     def calculateBinaryTransmissionLength(self):
+#         self.machine.binary_transmission_length = 2 + (
+#                     self.machine.servo_log_num_axes * self.machine.servo_log_buffer_size + self.machine.servo_log_buffer_size) * self.machine.size_of_feedback_double + 1
+#         return self.machine.binary_transmission_length
 
 class MachineModelProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

@@ -1,169 +1,167 @@
-from multiprocessing import Process, current_process
-import socket, time, select, datetime, struct, numpy as np
 import pncLibrary
+from threading import Thread
+from multiprocessing import Process, Queue, Event, current_process
+from threading import current_thread
+import socket, time, select, datetime, struct, os, numpy as np
 
 #global machine
 
-class MachineFeedbackListener(Process):
-    #global machine
-    def __init__(self, machine, database_push_queue_proxy):
-        super(MachineFeedbackListener, self).__init__()
-        self.machine = machine
-        self.database_push_queue = database_push_queue_proxy
-
-        #self._shutdown = False
-
-
-        #self.machine_controller = machine_controller
-        #self.rsh_socket = self.machine.machine_controller_thread_handle.rsh_socket
-        #self.data_store = data_store
-
-
-        print('Feedback thread started')
-        #self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
-        self.log_file_handle = open('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
-
-        self.rx_received_time = 0
-
-        #ASCII Feedback
-        self.received_data_string = ""
-
-        # Binary Feedback
+class FeedbackState():
+    def __init__(self, machine):
+        # Feedback State
         self.byte_string = bytearray()
         self.binary_transmission_length = pncLibrary.calculateBinaryTransmissionLength(machine)
-
-        self.transmission_received = False
-        self.terminator_received = False
-
-        self.header_processed = False
-        self.header_processing_error = False
-        self.feedback_data_processed = False
-        self.feedback_data_processing_error = False
         self.incoming_transmission_length = None
         self.feedback_encoding = None
         self.feedback_type = None
         self.header_delimiter_index = None
+
+        self.transmission_received = False
+        self.terminator_received = False
+        self.header_processed = False
+        self.header_processing_error = False
+        self.feedback_data_processed = False
+        self.feedback_data_processing_error = False
         self.rsh_error_check = False
 
-        self._running_process = True
-        print('PROCESS LAUNCHED: RSH feedback handler, PID: ' + self.pid + ' from ' + str(current_process()))
+class FeedbackData():
+    def __init__(self):
+        self.data = None
+
+class FeedbackProcessor(Thread):
+    def __init__(self, machine):
+        super(FeedbackProcessor, self).__init__()
+        self.name = "feedback_processor"
+        self.machine = machine
+
+        self.process_queue = Queue()
+        self.processed_queue = Queue()
+        self.startup_event = Event()
 
     def run(self):
-        print('feedback socket is ' + str(self.machine.rsh_socket))
-        while self._running_process:
-            # Process feedback from EMCRSH
-            data_available = select.select([self.machine.rsh_socket], [], [], 0)
-            if data_available[0]:
-                #Clock when these data were received
-                rx_received_time = time.clock()
-                #First parse the header
-                #FIXME can never catch up to rate of data transmission due to select.wait
-                bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
-                self.byte_string.extend(bytes_received)
-                print('byte_string length is now ' + str(len(self.byte_string)))
-                #FIXME handle this with database manager
-                self.log_file_handle.write(str(rx_received_time) + str(bytes_received) + '\n')
-                self.log_file_handle.flush()
+        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        self.startup_event.set()
+        while True:
+            #FIXME handle rx_received_time accurately here
+            pass
 
-            if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
-                self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index = self.assembleFeedbackHeader(self.byte_string)
-                self.rx_received_time = rx_received_time
+class MachineFeedbackListener(Process):
+    #global machine
+    def __init__(self, machine, synchronizer):
+        super(MachineFeedbackListener, self).__init__()
+        self.name = "feedback_handler"
+        self.main_thread_name = self.name + ".MainThread"
 
-            #FIXME should this handle multiple transmissions in one loop?
-            if self.header_processed and not self.header_processing_error:
-                #Drop header data, it's already good
-                old_byte_string_before_header = self.byte_string
-                self.byte_string = self.byte_string[self.header_delimiter_index:]
-                self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
-                    self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
+        # Args
+        self.machine = machine
+        self.synchronizer = synchronizer
 
-                if self.feedback_data_processed and not self.feedback_data_processing_error:
-                    #Now drop the complete command from the buffer and reset flags
-                    old_byte_string = self.byte_string
-                    self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
-                    # if len(self.byte_string) >= 1:
-                    #     if self.byte_string[0] == 67:
-                    #         print('break')
-                    self.header_processed = False
-                    self.header_processing_error = False
-                    self.feedback_data_processed = False
-                    self.feedback_data_processing_error = False
-                    self.last_processed_byte_string = self.byte_string
+        # Feedback State
+        self.byte_string = bytearray()
+        self.binary_transmission_length = pncLibrary.calculateBinaryTransmissionLength(machine)
+        self.incoming_transmission_length = None
+        self.feedback_encoding = None
+        self.feedback_type = None
+        self.header_delimiter_index = None
 
+        # Flags
+        self.transmission_received = False
+        self.terminator_received = False
+        self.header_processed = False
+        self.header_processing_error = False
+        self.feedback_data_processed = False
+        self.feedback_data_processing_error = False
+        self.rsh_error_check = False
 
+        #self._running_process = True
 
-                    #     #Check for a space character
-                    #     if self.machine.header_delimiter_bytes in self.byte_string:
-                    #         #Count delimiters in header string
-                    #         #?
-                    #         print('the byte string is ' + self.byte_string.decode('utf-8'))
-                    #         #self.processFeedbackHeader(self.byte_string[:self.byte_string.index(self.machine.header_delimiter_bytes)])
-                    #         self.processFeedbackHeader()
-                    #     else:
-                    #         #No space received yet, make another pass
-                    #         pass
-                    # else:
-                    #     #Not enough data yet, make another pass
-                    #     pass
+    def run(self):
+        current_thread().name = self.name + '.MainThread'
+        self.waitForThreadLaunch()
+        self.synchronizer.fb_startup_event.set()
 
+        self.synchronizer.process_start_signal.wait()
+        time.clock()
 
-                    # if not len(self.byte_string) >= self.machine.binary_header_length:
-                    #     #We haven't received a complete header yet, make another pass
-                    #     pass
+        if self.synchronizer.p_enable_feedback_handler_event.is_set():
+            self.synchronizer.p_run_feedback_handler_event.wait()
+            while self.synchronizer.p_run_feedback_handler_event.is_set():
+                # Process feedback from EMCRSH
+                #FIXME store state in FeedbackState object
+                if select.select([self.machine.rsh_socket], [], [], 0)[0]:
+                    #Clock when these data were received
+                    rx_received_time = time.clock()
+                    #First parse the header
+                    bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
+                    self.byte_string.extend(bytes_received)
+                    print('byte_string length is now ' + str(len(self.byte_string)))
+                    self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log', bytes_received, None, rx_received_time))
 
-                    # if self.header_received:
-                    #     #bytes_received = self.rsh_socket.recv(self.machine.bytes_to_receive)
-                    #     #Receive feedback data each loop
-                    #     if len(self.byte_string) > self.feedback_type[1]:
-                    #         #Received more bytes than are in a complete transmission, so roll over to the next one
-                    #         self.complete_byte_string = self.byte_string[:self.feedback_type[1]]
-                    #         #Now process this feedback
-                    #         self.processBinaryFeedback(self.rx_received_time, self.complete_byte_string)
-                    #
-                    #         #This byte_string starts with a header
-                    #         self.byte_string = self.byte_string[self.feedback_type[1]:]
-                    #         self.header_received = False
+                if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
+                    self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index, self.rx_received_time = self.assembleFeedbackHeader(self.byte_string, rx_received_time)
 
-                    # else:
-                    #     self.feedback_type = self.processBinaryHeader(self.byte_string[:self.machine.binary_header_length])
-                    #     self.rx_received_time = rx_received_time
-                    #     self.header_received = True
-                    #
-                    #     #Now drop the header
-                    #     self.byte_string = self.byte_string[self.machine.binary_header_length:]
-                    #
-                    #     #Update this in case it changed since last go round
-                    #     self.binary_transmission_length = self.machine.calculateBinaryTransmissionLength()
-                    #     #self.incoming_transmission_length = self.feedback_type[1]
+                #FIXME should this handle multiple transmissions in one loop?
+                if self.header_processed and not self.header_processing_error:
+                    #Drop header data, it's already good
+                    old_byte_string_before_header = self.byte_string
+                    self.byte_string = self.byte_string[self.header_delimiter_index:]
+                    self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
+                        self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
+
+                    if self.feedback_data_processed and not self.feedback_data_processing_error:
+                        #Now drop the complete command from the buffer and reset flags
+                        old_byte_string = self.byte_string
+                        self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
+                        # if len(self.byte_string) >= 1:
+                        #     if self.byte_string[0] == 67:
+                        #         print('break')
+                        self.resetFeedbackState()
+                        # self.header_processed = False
+                        # self.header_processing_error = False
+                        # self.feedback_data_processed = False
+                        # self.feedback_data_processing_error = False
+                        # self.last_processed_byte_string = self.byte_string
 
         #Flag set, shutdown. Handle socket closure in machine_controller
         print('flagging feedback socket')
         #self.machine_controller._running = False
-        self.log_file_handle.close()
-        self._shutdown = True
+        #self.log_file_handle.close()
+        #self._shutdown = True
 
-    def gobbleTerminators(self, byte_string, terminator):
-        if len(byte_string) >= len(terminator):
-            if byte_string[0:len(terminator)] == terminator:
-                print('detected useless terminators')
-                return self.gobbleTerminators(byte_string[len(terminator):],terminator) or b''
-            else:
-                return byte_string
-        else:
-            return byte_string
-
-    def countTerminatorsToGobble(self, byte_string, terminator):
-        terminator_count = 0
-        if len(byte_string) >= len(terminator):
-            for b in range(0,len(byte_string),len(terminator)):
-                if byte_string[b:b+len(terminator)] == terminator:
-                    terminator_count += 1
-                else:
-                    break
-        return terminator_count
+    def resetFeedbackState(self):
+        self.header_processed = False
+        self.header_processing_error = False
+        self.feedback_data_processed = False
+        self.feedback_data_processing_error = False
+        self.last_processed_byte_string = self.byte_string
 
 
-    def assembleFeedbackHeader(self, byte_string):
+    def waitForThreadLaunch(self):
+        self.feedback_processor = FeedbackProcessor(self.machine)
+        self.feedback_processor.start()
+        self.feedback_processor.startup_event.wait()
+
+    # def gobbleTerminators(self, byte_string, terminator):
+    #     if len(byte_string) >= len(terminator):
+    #         if byte_string[0:len(terminator)] == terminator:
+    #             print('detected useless terminators')
+    #             return self.gobbleTerminators(byte_string[len(terminator):],terminator) or b''
+    #         else:
+    #             return byte_string
+    #     else:
+    #         return byte_string
+    #
+    # def countTerminatorsToGobble(self, byte_string, terminator):
+    #     terminator_count = 0
+    #     if len(byte_string) >= len(terminator):
+    #         for b in range(0,len(byte_string),len(terminator)):
+    #             if byte_string[b:b+len(terminator)] == terminator:
+    #                 terminator_count += 1
+    #             else:
+    #                 break
+    #     return terminator_count
+
+    def assembleFeedbackHeader(self, byte_string, rx_received_time):
         #Return data as header processed flag, error flag, encoding, feedback type, header delimiter index
         header_delimiter_index = byte_string.index(self.machine.ascii_header_delimiter_bytes)
 
@@ -194,20 +192,20 @@ class MachineFeedbackListener(Process):
             feedback_encoding = 'binary'
             #feedback_type = self.machine.binary_rsh_feedback_strings.index([s for s in self.machine.binary_rsh_feedback_strings if header_string in s][0])
             feedback_type = header_string.upper()
-            header_delimiter_index += self.countTerminatorsToGobble(byte_string[header_delimiter_index:],self.machine.binary_header_delimiter)*len(self.machine.binary_header_delimiter)
+            header_delimiter_index += pncLibrary.countTerminatorsToGobble(byte_string[header_delimiter_index:],self.machine.binary_header_delimiter)*len(self.machine.binary_header_delimiter)
         elif any(s in header_string for s in self.machine.rsh_echo_strings):
             feedback_encoding = 'ascii'
             feedback_type = 'command echo'
         else:
-            print('can\'t find header string')
-            return False, False, None, None, None
+            errmsg = 'FEEDBACK HANDLER: Can\'t find header string \"' + header_string + '\"'
+            print(errmsg)
+            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log',errmsg))
+            return False, True, None, None, None, None
 
             # if self.rsh_error_check:
             #     print('definite error')
 
-        return True, False, feedback_encoding, feedback_type, header_delimiter_index
-        #print('the complete feedback string is ' + complete_feedback_string)
-        #print('determined feedback type ' + self.feedback_type)
+        return True, False, feedback_encoding, feedback_type, header_delimiter_index, rx_received_time
 
     def assembleAndProcessFeedbackData(self, feedback_encoding, feedback_type, byte_string, rx_received_time):
         # Now split the command at the delimiter depending on the type
@@ -313,30 +311,30 @@ class MachineFeedbackListener(Process):
                 # Drive Power
                 #self.machine.drive_power = self.machine.rsh_feedback_flags.index(feedback_data.upper())
                 self.machine.drive_power = self.machine.checkOnOff(feedback_data[0])
-                self.machine.drive_power_change_event.set()
+                self.synchronizer.fb_drive_power_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[6] == feedback_type:
                 # Echo
                 # print('got set echo: ' + data_string)
-                self.machine.echo = self.machine.checkOnOff(feedback_data[0])
-                self.machine.echo_change_event.set()
+                self.machine.echo = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_echo_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[7] == feedback_type:
                 # Hello
                 print('got hello')
-                self.machine.connected = 1
-                self.machine.connection_change_event.set()
+                self.machine.connected = True
+                self.synchronizer.fb_connection_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[8] == feedback_type:
                 # Enable
                 # print('got enable')
                 #self.machine.linked = self.machine.rsh_feedback_flags.index(feedback_data[0].upper())
-                self.machine.linked = self.machine.checkOnOff(feedback_data[0])
-                self.machine.link_change_event.set()
-                self.machine.sculptprint_interface.connect_event.set()
+                self.machine.linked = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_link_change_event.set()
+                self.synchronizer.mvc_connected_event.set()
             elif self.machine.ascii_rsh_feedback_strings[9] == feedback_type:
                 # EStop
                 # print('got estop: ' + data_string)
                 #self.machine.estop = self.machine.rsh_feedback_flags.index(feedback_data.upper())
-                self.machine.estop = self.machine.checkOnOff(feedback_data[0])
-                self.machine.estop_change_event.set()
+                self.machine.estop = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_estop_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
                 # Joint homed
                 # print('got joint home: ' + data_string)
@@ -634,7 +632,7 @@ class MachineFeedbackListener(Process):
 #             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
 #         return counts
 #
-#     def countsToPosition(self, axis, counts):
+#     def countToPosition(self, axis, counts):
 #         axis_index = self.machine.axes.index(axis.upper())
 #         return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
 #

@@ -1,95 +1,110 @@
-import serial, time, struct
+import serial, time, struct, math
 import numpy as np
 from pncDatabase import Record
 from multiprocessing import Process, current_process
+from threading import current_thread
+import pncLibrary
 
 class EncoderInterface(Process):
-    def __init__(self, machine, database_push_queue):
+    def __init__(self, machine, synchronizer):
         super(EncoderInterface, self).__init__()
+        self.name = "encoder_interface"
+        self.main_thread_name = self.name + ".MainThread"
+        self.device_name = "Quadrature Decoder Rev.2"
         self.machine = machine
-        self.database_push_queue = database_push_queue
+        self.synchronizer = synchronizer
+
         #self.serial_port = serial_port
 
         #self._running = True
-        self._shutdown = False
-
+        #self._shutdown = False
 
         self.serial_port = serial.Serial()
         self.serial_port.port = self.machine.comm_port
         self.serial_port.baudrate = self.machine.baudrate
-        #self.serial_port.port = 'COM3'
-        #self.serial_port.baudrate = 115200
-        # #self.serial_port.open()
-        # #return
-        # #FIXME handle if serial is not connected
-        #
-        # try:
-        #     if self.serial_port.isOpen():
-        #         print('serial port already open')
-        #     self.serial_port.open()
-        #     time.sleep(0.5)
-        #     #self.rebootDevice()
-        #
-        #     self._running_thread = True
-        #
-        #     # if self.machine.initial_position_set_event.wait():
-        #     #     self.setAllEncoderCounts(self.machine.axes,self.machine.current_position)
-        #     #     self.machine.encoder_init_event.set()
-        #     #while not self.machine.data_store_manager_thread_handle.pull(['stepgen_feedback_positions'],[-1],[None])[0]:
-        #
-        # except Exception as error:
-        #     print('Could not open serial port, error: ' + str(error))
-        #except:
-            #print('Could not open serial port, error')
+
+        self.encoder_reads = 0
+        self.encoder_reading_time = 0
+        self.encoder_read_time_moving_average = 0
+
 
         #print('serialInterface started')
         #time.sleep(0.5)
+        #self._running_process = True
 
     def run(self):
+        current_thread().name = self.main_thread_name
         print('break')
         try:
-            self.serial_port.open()
             if self.serial_port.isOpen():
-                print('serial port already open')
-            # serial_port.open()
-            # time.sleep(0.5)
-        except Exception as error:
-            print('Could not open serial port, error: ' + str(error))
+                print('Serial port already open')
+                self.serial_port.close()
+                self.serial_port.open()
+            else:
+                self.serial_port.open()
 
-        if self.serial_port.isOpen():
-            print('Successful launch of encoder interface process, PID: ' + str(self.pid) + ', Process: ' + str(current_process()))
-            #global encoderData, serialLock
-            #self.setEncoderCount(self.machine.encoder_init)
+            time.sleep(0.5)
+
             if not self.acknowledgeBoot():
                 print('Decoder board not responsive')
                 return
             else:
-                print('SUCCESS: Decoder board boot')
+                pncLibrary.printTerminalString(self.machine.device_boot_string, self.device_name, self.serial_port.name)
+            # serial_port.open()
+            # time.sleep(0.5)
+            #self._running_process = True
+        except Exception as error:
+            print('Could not open serial port, error: ' + str(error))
 
-            if self.machine.initial_position_set_event.wait():
-                self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
-                self.machine.encoder_init_event.set()
+        self.synchronizer.ei_startup_event.set()
+        self.synchronizer.process_start_signal.wait()
+        time.clock()
+
+        #FIXME this logic is not necessary
+        if self.serial_port.isOpen():
+            #print('Successful launch of encoder interface process, PID: ' + str(self.pid) + ', Process: ' + str(current_process()))
+            #global encoderData, serialLock
+            #self.setEncoderCount(self.machine.encoder_init)
+
+            #FIXME uncomment for actual run
+            # if self.synchronizer.mc_initial_position_set_event.wait() or 1:
+            #     self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
+            #     self.machine.encoder_init_event.set()
 
             self.setBaudrate(250000)
             self.serial_port.flushInput()
 
-            while self._running_thread:
-                rx_received_time = time.clock()
+            if self.synchronizer.p_enable_encoder_event.is_set():
+                self.synchronizer.p_run_encoder_interface_event.wait()
+                while self.synchronizer.p_run_encoder_interface_event.is_set():
+                    #FIXME move to getEncoderCounts
+                    request_time = time.clock()
+                    encoder_counts = self.getEncoderCounts('current')
+                    #print('serial read time is: ' + str(time.clock()-rx_received_time))
 
-                encoder_counts = self.getEncoderCounts('current')
+                    if encoder_counts[0]:
+                        #Got good data, push to DB
+                        self.encoder_reading_time += (time.clock() - request_time)
+                        self.encoder_reads += 1
+                        self.encoder_read_time_moving_average = self.encoder_reading_time/self.encoder_reads
+                        self.machine.average_encoder_read_frequency = 1.0/self.encoder_read_time_moving_average
 
-                if encoder_counts[0]:
-                    #Got good data, push to DB
-                    self.machine.data_store_manager_thread_handle.push(
-                        {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
+                        #FIXME should probably push packets of data instead of every sample
+                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])}
+                        self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',encoder_data_record))
+                        time.sleep(1)
+                        # self.machine.data_store_manager_thread_handle.push(
+                        #     {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
 
             #Flag set, shutdown
-            print('Closing serial port')
-            print('ENCODER INTERFACE: thread shut down')
+            #print('Closing serial port')
             self.serial_port.close()
+            print('ENCODER INTERFACE: Serial port closed')
+
             #self._shutdown = True
         else:
             print('closing serial interface process because port is not open')
+            pncLibrary.printTerminalString(self.machine.process_terminate_string,self.name,self.pid)
 
     def read(self):
         line = self.serial_port.readline()
@@ -129,7 +144,7 @@ class EncoderInterface(Process):
             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
         return counts
 
-    def countsToPosition(self, axis, counts):
+    def countToPosition(self, axis, counts):
         axis_index = self.machine.axes.index(axis.upper())
         return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
 
@@ -227,9 +242,10 @@ class EncoderInterface(Process):
 
         self.writeUnicode(request_string)
         encoder_bytes = self.serial_port.read(self.machine.max_encoder_transmission_length)
+        rx_received_time = time.clock()
         encoder_data = struct.unpack('!' + 'c' + self.machine.number_of_encoders * 'I' + 'c', encoder_bytes)
         if encoder_data[0].decode() == request_string and encoder_data[-1].decode() == ack_string:
-            return (True, encoder_data[1:-1])
+            return (True, encoder_data[1:-1], rx_received_time)
         return(False, None)
 
         # received_counts = self.waitForString(ack_string)
@@ -261,9 +277,10 @@ class EncoderInterface(Process):
         if int(ack[1].split(' ')[1]) == baudrate:
             time.sleep(0.5)
             self.serial_port.baudrate = baudrate
+            self.machine.baudrate = baudrate
             print('SUCCESS: Decoder board baudrate is now ' + str(baudrate))
 
     def close(self):
         print('setting serial port close flag')
-        self._running_thread = False
+        self._running_process = False
         #sys.exit()
