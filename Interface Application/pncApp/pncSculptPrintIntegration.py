@@ -1,20 +1,20 @@
-import sys
-import numpy as np
-print('imported numpy 10')
-print(sys.path)
-#import pncMachineControl
-from pncApp import appInit, appClose
-#import pncApp
+import sys, numpy as np
+print('Current PYTHONPATH is ' + str(sys.path))
+project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+if project_path not in sys.path:
+    sys.path.append('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\')
+from pncApp import appInit, appStart, appStop, appClose
+from pncDatabase import DatabaseServer
+import multiprocessing, inspect
+from pncMachineModel import MachineModelProxy, MachineModel
+from threading import current_thread
+import os, sys
+import pncLibrary
+
 import pncMachineModel
 
-input('input')
-print('here2')
 print(appInit)
-#import pncApp
-#import numpy as np
 
-#import time
-print('here3')
 machine_feedback_record_id = 0
 encoder_feedback_record_id = 0
 LF_start_time_index, HF_start_time_index = (0, 0)
@@ -22,7 +22,7 @@ LF_start_time_index, HF_start_time_index = (0, 0)
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 axis_sensor_id = [0, 1]
 SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL'], ['T','X','Z','S','Y','A','B','V','W']]
-
+machine = 0
 #from pncApp import machine_controller, data_store, feedback_listener
 #global feedback_listener, machine_controller, encoder_interface, data_store
 #global machine
@@ -70,28 +70,66 @@ def setupUserFunctionNames():
     stringArray = [r'Enqueue Movements',r'Begin Motion Execution',r'my function 3']
     return stringArray
 
+class PNCAppManager(multiprocessing.managers.SyncManager): pass
+
+def registerProxy(name, cls, proxy, manager):
+    for attr in dir(cls):
+        if inspect.ismethod(getattr(cls, attr)) and not attr.startswith("__"):
+            proxy._exposed_ += (attr,)
+            setattr(proxy, attr,
+                    lambda s: object.__getattribute__(s, '_callmethod')(attr))
+    manager.register(name, cls, proxy)
+
 ######################## Operation ########################
 def start():
     #global machine_controller
-    global machine#, feedback_listener, machine_controller, encoder_interface, data_store, data_store_lock
+    #global machine#, feedback_listener, machine_controller, encoder_interface, data_store, data_store_lock
     #commInit()
-    print('initializing')
+    #print('initializing')
     #pnc.pncApp.appInit()
-    machine, feedback_listener, machine_controller, encoder_interface, data_store = appInit()
+    #global pnc_app_manager
+    pnc_app_manager, machine, synchronizer = appInit()
+    pncLibrary.startPrintServer(machine, synchronizer)
+
+    main_process_name = str(multiprocessing.current_process().name)
+    main_process_pid = str(multiprocessing.current_process().pid)
+
+    pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, main_process_name, main_process_pid)
+
+    database, encoder_interface, feedback_handler, machine_controller = appStart('pocketnc', pnc_app_manager, machine, synchronizer)
+
+    # print('Current process: ' + str(multiprocessing.current_process().pid) + ', current thread: ' + str(
+    #     current_thread().name))
+    # registerProxy('MachineModel', MachineModel, MachineModelProxy, PNCAppManager)
+    # # registerProxy('Synchronizers', Synchronizers, SynchronizersProxy, PNCAppManager)
+    # # registerProxy('DatabaseServer', DatabaseServer, DatabaseServerProxy)
+    #
+    # print('name is: ' + str(__name__))
+    #
+    # # FIXME ignore SIGINT
+    print('starting new process')
+    # pnc_app_manager = PNCAppManager()
+    # pnc_app_manager.name = 'pnc_app_manager'
+    # pnc_app_manager.start()
+
+    #database = DatabaseServer(0, 0)
+    #database.start()
+
+    pnc_app_manager, machine, database, encoder_interface, machine_controller, feedback_handler, synchronizer = appInit('pocketnc')
 	
     #Log machine feedback start point
-    while machine_controller == []:
-        print('busy waiting')
-        pass
+    # while machine_controller == []:
+    #     print('busy waiting')
+    #     pass
 
     #Log feedback start point
-    machine.machine_feedback_written_record_id = machine_controller.data_store.machine_feedback_num_records
-    machine.encoder_feedback_written_record_id = machine_controller.data_store.encoder_feedback_num_records
+    #machine.machine_feedback_written_record_id = machine_controller.data_store.machine_feedback_num_records
+    #machine.encoder_feedback_written_record_id = machine_controller.data_store.encoder_feedback_num_records
 
     #Configure SP data format in machine model
-    machine.SP_data_format = SP_data_formats
+    #machine.SP_data_format = SP_data_formats
 
-    machine.sculptprint_interface.connect_event.set()
+    #machine.sculptprint_interface.connect_event.set()
 
     return True
 
@@ -256,60 +294,29 @@ def readMachine(axis_sensor_id):
     global LF_start_time_index, HF_start_time_index#, highfreq_rx_time, lowfreq_rx_time
     #print('reading machine')
     ## FIXME should be incorporated below, can this check be removed?
-    if not machine.logging_mode:
+    #if not machine.servo_feedback_mode:
         #print('logging not enabled, not returning data')
-        return []
-
+        #return []
+    return []
     if axis_sensor_id == 0:
         ## FIXME check that logging is enabled and that threads are set up right
         #Snapshot data store
 
-        DB_query_data = machine.data_store_manager_thread_handle.pull(
-            ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
-            [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
-            [None,None,None,None])
+        #DB_query_data = pncLibrary.lockedPull
+
+        # DB_query_data = machine.data_store_manager_thread_handle.pull(
+        #     ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
+        #     [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
+        #     [None,None,None,None])
 
         HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = DB_query_data[1]
 
         if len(HF_ethernet_data_slice) == 0 and len(LF_ethernet_data_slice) == 0:
             return []
 
-        # if DB_query_data[0]:
-        #     HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = DB_query_data[1]
-        # else:
-        #     return []
-
-        # HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = machine.data_store_manager_thread_handle.pull(
-        #     ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
-        #     [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
-        #     [None,None,None,None])
-
-        # machine_controller.data_store.data_store_lock.acquire()
-        # data_store_snapshot = DataStore()
-        # data_store_snapshot.RSH_CLOCK_TIMES = np.copy(data_store.rsh_clock_times)
-        # data_store_snapshot.RTAPI_CLOCK_TIMES = np.copy(data_store.RTAPI_clock_times)
-        # data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH = np.copy(data_store.highres_tc_queue_length)
-        # data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS = np.copy(data_store.stepgen_feedback_positions)
-        # data_store_snapshot.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.lowfreq_ethernet_received_times)
-        # data_store_snapshot.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.copy(data_store.highfreq_ethernet_received_times)
-        # machine_controller.data_store.data_store_lock.release()
-        #data_store_snapshot = copy.deepcopy(machine_controller.data_store)
-
-        #Pull relevant section of data from data_store_snapshot
-        #Serial_time_index = LF_time_index = findNextClosestTimeIndex(data_sample_time,data_store_snapshot.SERIAL_RECEIVED_TIMES)
-        #LF_ethernet_time_slice = data_store_snapshot.lowfreq_ethernet_received_times[LF_start_time_index:]-machine_controller.machine.pncApp_clock_offset
-
-        # LF_ethernet_time_slice = data_store_snapshot.RTAPI_CLOCK_TIMES[LF_start_time_index:]# - machine_controller.machine.OS_clock_offset
-        # LF_ethernet_data_slice = data_store_snapshot.STEPGEN_FEEDBACK_POSITIONS[LF_start_time_index:]
-        # #HF_ethernet_time_slice = data_store_snapshot.highfreq_ethernet_received_times[HF_start_time_index:]-machine_controller.machine.OS_clock_offset
-        # HF_ethernet_time_slice = data_store_snapshot.RSH_CLOCK_TIMES[HF_start_time_index:]# - machine_controller.machine.OS_clock_offset
-        # HF_ethernet_data_slice = data_store_snapshot.HIGHRES_TC_QUEUE_LENGTH[HF_start_time_index:]
-
-
         #BBB_feedback, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(LF_ethernet_time_slice,HF_ethernet_time_slice,LF_ethernet_data_slice,HF_ethernet_data_slice)
         times, positions, auxes, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(
             LF_ethernet_time_slice, HF_ethernet_time_slice, LF_ethernet_data_slice, HF_ethernet_data_slice)
-
 
         LF_start_time_index += LF_start_time_index_increment
         HF_start_time_index += HF_start_time_index_increment
@@ -351,10 +358,10 @@ def readMachine(axis_sensor_id):
     else:
         return np.asarray([[0, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=float).tolist()
 
-
 # Returns true if monitoring is currently happening.
 def isMonitoring():
-    return bool(machine.machine_controller_thread_handle.is_alive() & machine.logging_mode)
+    return 1
+    return bool(machine.machine_controller_thread_handle.is_alive() & machine.servo_feedback_mode)
 
 ############################# User Functions #############################
 
@@ -393,25 +400,25 @@ def testMonitoring():
             print('returning good data')
         print('read machine')
 
-if False:
-    read_data0 = []
-    time_to_read0 = []
-    read_data1 = []
-    start()
-    machine.sculptprint_interface.enqueue_moves_event.set()
-    machine.sculptprint_interface.run_motion_event.set()
-    while True:
-        start = time.clock()
-        data0 = readMachine(0)
-        time_to_read0.append(time.clock()-start)
-        data1 = readMachine(1)
-        #print(data)
-        if data0 != []:
-            print('appending data0')
-            read_data0.append(data0)
-        if data1 != []:
-            print('appending data1')
-            read_data1.append(data1)
+# if False:
+#     read_data0 = []
+#     time_to_read0 = []
+#     read_data1 = []
+#     start()
+#     machine.sculptprint_interface.enqueue_moves_event.set()
+#     machine.sculptprint_interface.run_motion_event.set()
+#     while True:
+#         start = time.clock()
+#         data0 = readMachine(0)
+#         time_to_read0.append(time.clock()-start)
+#         data1 = readMachine(1)
+#         #print(data)
+#         if data0 != []:
+#             print('appending data0')
+#             read_data0.append(data0)
+#         if data1 != []:
+#             print('appending data1')
+#             read_data1.append(data1)
     #else:
         #print('not appending data')
 
@@ -420,4 +427,11 @@ if False:
 #
 # while True:
 #     readMachine(0)
-print('here3')
+# print('here')
+# if __name__ == '__main__':
+#     start()
+multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
+print('main name is ' + str(__name__))
+if __name__ == '__main__':
+    multiprocessing.freeze_support()
+    start()

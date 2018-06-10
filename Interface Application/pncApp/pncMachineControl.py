@@ -164,15 +164,12 @@ class MachineController(Process):
         #self.database_push_queue_proxy = database_push_queue_proxy
         #self.rsh_socket = self.machine.rsh_socket
 
-        #self._shutdown = False
-        #self.received_data_string = ""
-        #self.data_store = data_store
         self.rsh_buffer_level = 0
 
         #self.command_queue = queue.Queue()
 
         self.getFunctions = [self.getMachineMode, self.getEstop]
-        self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setLogging, self.setMachineMode, self.setEstop]
+        self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
 
         self._running_process = True
 
@@ -182,7 +179,6 @@ class MachineController(Process):
         self.waitForMotionControllerStart()
 
         #FIXME wait on start signal
-        #self.synchronizer.p_run_machine_controller_event.wait()
         self.synchronizer.mc_startup_event.set()
 
         self.synchronizer.process_start_signal.wait()
@@ -192,7 +188,7 @@ class MachineController(Process):
             self.synchronizer.p_run_machine_controller_event.wait()
             while self.synchronizer.p_run_machine_controller_event.is_set():
                 self.checkSculptPrintUI()
-                #if self.machine.logging_mode:
+                #if self.machine.servo_feedback_mode:
                 ## FIXME set up loop for running command queue
                 ## FIXME update state machine every loop?
                 pass
@@ -204,7 +200,7 @@ class MachineController(Process):
         if self.motion_controller.is_alive():
             self.motion_controller.join()
 
-        self.waitForSet(self.setLogging, 0, self.getLogging)
+        self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
         self.machine.feedback_listener_thread_handle._running_thread = False
         print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
         if self.machine.feedback_listener_thread_handle.is_alive():
@@ -263,11 +259,11 @@ class MachineController(Process):
 
     ######################## SculptPrint MVC ########################
     def checkSculptPrintUI(self):
-        #FIXME this is a waste of CPU
+        #FIXME this is a waste of CPU, use a stateupdate event from SP interface
         if self.synchronizer.mvc_connect_event.is_set():
             self.connectAndLink()
             self.machine.sculptprint_interface.connected = True
-            self.machine.sculptprint_interface.connect_event.clear()
+            self.synchronizer.mvc_connect_event.clear()
 
         if self.machine.sculptprint_interface.connected:
             if self.synchronizer.mvc_enqueue_moves_event.is_set():
@@ -306,26 +302,27 @@ class MachineController(Process):
             return False
         else:
             self.waitForSet(self.setEcho, 0, self.getEcho)
+            self.readyMachine()
             #self.setBinaryMode(1)
 
             #FIXME do this a number of times and average
-            # if self.getLatencyEstimate()[0]:
-            #     print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
-            # else:
-            #     print('failed to get network latency')
+            if self.getLatencyEstimate()[0]:
+                print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+            else:
+                print('failed to get network latency')
 
-            while not self.syncMachineClock():# and self.machine.logging_mode:
+
+            while not self.syncMachineClock():# and self.machine.servo_feedback_mode:
                  #Busy wait for clock sync
                  print('waiting for clock sync')
-
-            self.readyMachine()
 
             if not self.synchronizer.ei_encoder_init_event.is_set():
                 print('MACHINE CONTROLLER: Waiting for encoder inital position set')
                 self.synchronizer.ei_encoder_init_event.wait()
 
-        self.synchronizer.mvc_connected_event.set()
+            self.waitForSet(self.setCommMode, 1, self.getCommMode)
 
+        self.synchronizer.mvc_connected_event.set()
 
     def login(self, timeout = 0.5):
         self.synchronizer.fb_connection_change_event.clear()
@@ -341,14 +338,13 @@ class MachineController(Process):
         self.waitForSet(self.setEstop, 0, self.getEstop)
         self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
         #self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
-        if not self.machine.isHomed():
+        if not pncLibrary.isHomed(self.machine, self.synchronizer):
             self.waitForSet(self.setHomeAll,None,self.getAllHomed)
         print('ready machine done homing')
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
-        self.waitForSet(self.setLogging, 1, self.getLogging)
+        self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
 
     ############################# GETs #############################
-
     def getLatencyEstimate(self, timeout = 0.5):
         self.sendPing()
         if self.synchronizer.fb_ping_event.wait(timeout):
@@ -360,13 +356,13 @@ class MachineController(Process):
         self.writeLineUTF('get time')
         return (self.synchronizer.fb_clock_event.wait(), self.machine.last_unix_time)
 
-    def getAllHomed(self, timeout = 0.5):
+    def getAllHomed(self, timeout = 1):
         #self.writeLineUTF('get joint_homed')
         self.getHomeState()
-        if self.synchronizer.fb_home_change_event.wait(timeout) and self.synchronizer.fb_all_homed_event.isSet():
+        if self.synchronizer.fb_home_change_event.wait(timeout) and self.synchronizer.fb_all_homed_event.is_set():
             if not self.synchronizer.mc_restore_mode_event.is_set():
                 print('restoring previous state')
-                self.machine.restoreState()
+                pncLibrary.restoreState()
             return (True, self.machine.axis_home_state)
         else:
             #print('getAllHomed returning False')
@@ -391,26 +387,31 @@ class MachineController(Process):
         self.synchronizer.fb_status_change_event.clear()
         self.writeLineUTF('get program_status')
         return (self.synchronizer.fb_status_change_event.wait(timeout), self.machine.status)
-        # if self.machine.status_change_event.wait(timeout):
-        #     return (True, self.machine.status)
-        # else:
-        #     return (False, self.machine.status)
 
-    def getMachineMode(self, timeout = 0.5):
+    def getMachineMode(self, timeout = None):
+        if timeout is None:
+            timeout = self.machine.event_wait_timeout
+        self.synchronizer.fb_mode_change_event.clear()
         self.writeLineUTF('get mode')
-        if self.synchronizer.fb_mode_change_event.wait(timeout):
-            return (True, self.machine.mode)
-        else:
-            return (False, self.machine.mode)
+        return (self.synchronizer.fb_mode_change_event.wait(timeout), self.machine.mode)
+        # if self.synchronizer.fb_mode_change_event.wait(timeout):
+        #     return (True, self.machine.mode)
+        # else:
+        #     return (False, self.machine.mode)
         
-    def getDrivePower(self, timeout = 0.5):
+    def getDrivePower(self, timeout = None):
+        if timeout is None:
+            timeout = self.machine.event_wait_timeout
+        self.synchronizer.fb_drive_power_change_event.clear()
         self.writeLineUTF('get machine')
-        if self.synchronizer.fb_drive_power_change_event.wait(timeout):
-            return (True, self.machine.drive_power)
-        else:
-            return (False, self.machine.drive_power)
+        return (self.synchronizer.fb_drive_power_change_event.wait(timeout),self.machine.drive_power)
+        # if self.synchronizer.fb_drive_power_change_event.wait(timeout):
+        #     return (True, self.machine.drive_power)
+        # else:
+        #     return (False, self.machine.drive_power)
 
     def getEstop(self, timeout = 0.5):
+        #FIXME clear event flag before GET from machine for all methods here
         self.writeLineUTF('get estop')
         if self.synchronizer.fb_estop_change_event.wait(timeout):
             return (True, self.machine.estop)
@@ -424,13 +425,20 @@ class MachineController(Process):
         else:
             return (False, self.machine.linked)
 
-    def getLogging(self, timeout = 0.5):
+    def getServoFeedbackMode(self, timeout = 0.5):
         #FIXME write this ALL to get servo logging parameters
         self.writeLineUTF('get servo_log_params')
-        if self.synchronizer.fb_logging_mode_change_event.wait(timeout):
-            return (True, self.machine.logging_mode)
+        if self.synchronizer.fb_servo_logging_mode_change_event.wait(timeout):
+            return (True, self.machine.servo_feedback_mode)
         else:
-            return (False, self.machine.logging_mode)
+            return (False, self.machine.servo_feedback_mode)
+
+    def getBufferLevelFeedbackMode(self, timeout = None):
+        if timeout is None:
+            timeout = self.machine.event_wait_timeout
+        self.synchronizer.fb_buffer_level_feedback_change_event.clear()
+        self.writeLineUTF('get buffer_level_feedback')
+        return (self.synchronizer.fb_buffer_level_feedback_mode_change_event.wait(timeout), self.machine.buff)
 
     def getCommMode(self, timeout = 0.5):
         self.writeLineUTF('get comm_mode')
@@ -496,7 +504,7 @@ class MachineController(Process):
         self.synchronizer.fb_estop_change_event.clear()
         self.writeLineUTF(sendstr)
 
-    def setLogging(self, flag, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
+    def setServoFeedbackMode(self, flag, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
         if not sub_sample_rate:
             sub_sample_rate = self.machine.servo_log_sub_sample_rate
         if not buffer_size:
@@ -504,10 +512,16 @@ class MachineController(Process):
         if not axes:
             axes = self.machine.servo_log_num_axes
 
-        self.synchronizer.fb_logging_mode_change_event.clear()
+        self.synchronizer.fb_servo_logging_mode_change_event.clear()
         self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) +
                           ' ' + str(sub_sample_rate) + ' ' + str(buffer_size) +
                           ' ' + str(dump_flag) + ' ' + str(write_buffer))
+
+    def setBufferLevelFeedbackMode(self, flag, feedback_period = None):
+        if feedback_period is None:
+            feedback_period = self.machine.buffer_level_feedback_period_us
+        self.synchronizer.fb_buffer_level_feedback_mode_change_event.clear()
+        self.writeLineUTF('set buffer_level_feedback ' + str(flag) + ' ' + str(feedback_period))
 
     def setHomeAll(self):
         #FIXME implement timeout
@@ -516,6 +530,7 @@ class MachineController(Process):
             pncLibrary.pushState(self.machine)
             self.waitForSet(self.setMachineMode,'manual',self.getMachineMode)
 
+        self.synchronizer.fb_all_homed_event.clear()
         for axis in range(0,self.machine.number_of_joints):
             self.writeLineUTF('set home ' + str(axis))
 
@@ -531,9 +546,9 @@ class MachineController(Process):
         success_flag and self.getDrivePower()[0]
         self.synchronizer.fb_mode_change_event.clear()
         success_flag and self.getMachineMode()[0]
-        self.synchronizer.fb_logging_mode_change_event.clear()
+        self.synchronizer.fb_servo_logging_mode_change_event.clear()
         #print('getting logging mode')
-        success_flag and self.getLogging()[0]
+        success_flag and self.getServoFeedbackMode()[0]
         #print('getting home state')
         self.synchronizer.fb_home_change_event.clear()
         success_flag and self.getHomeState()[0]
@@ -545,20 +560,13 @@ class MachineController(Process):
         return success_flag
 
     def syncMachineClock(self):
-        #if not self.machine.logging_mode or len(self.data_store.RTAPI_clock_times) < self.machine.servo_log_buffer_size:
-        #clock_data = self.machine.data_store_manager_thread_handle.pull(['RTAPI_clock_times', 'lowfreq_ethernet_received_times'],[0, 0],[1, 1])
-        #pncApp_clock_data = self.machine.data_store_manager_thread_handle.pull(['lowfreq_ethernet_received_times'],[None],[1])
-
-        # if not self.machine.logging_mode or not clock_data[0]:
-        #     print('logging disabled or not enough data, can\'t sync clocks')
-        #     return False
-
         if self.getClock()[0]:
             #FIXME this only syncs the RSH clock, which does not match RTAPI clock?
-            print('Successful clock synchronization')
-            self.machine.OS_clock_offset = self.machine.last_unix_time#clock_data[1][0].item()
+            self.machine.OS_clock_offset = self.machine.last_unix_time
             self.machine.pncApp_clock_offset = self.machine.clock_sync_received_time
             self.synchronizer.mc_clock_sync_event.set()
+            self.synchronizer.mc_xenomai_clock_sync_event.wait()
+            print('Successful clock synchronization')
             return True
         else:
             return False
@@ -576,7 +584,7 @@ class MachineController(Process):
         ## FIXME call set again after some time?
         print('success: ' + str(get_function) + ' returned True')
         ## FIXME set up timeout here
-        #print('logging mode is ' + str(self.machine.logging_mode))
+        #print('logging mode is ' + str(self.machine.servo_feedback_mode))
 
     def checkMachineReady(self, timeout = 0.5):
         if self.pncLibrary.isAutoMode(self.machine, self.synchronizer) and self.getProgramStatus()[0] and self.machine.status == 'IDLE':

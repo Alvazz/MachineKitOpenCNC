@@ -1,9 +1,75 @@
 from multiprocessing.managers import NamespaceProxy
 
-class MachineModel():
-    #global machine_controller
+class MachineModelStatics():
+    def __init__(self):
+        self.name = None#Jokes
+        self.machine_name = "PocketVMC"
+        self.simulator_name = "the_danke$t"
+
+        #Terminal printouts
+        self.connection_string = "CONNECTED to {} remote shell at {}:{}"
+        self.failed_connection_string = "Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+        self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
+        self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
+        self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+        self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+        self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+        self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+        self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+        self.connection_open_string = "CONNECTED to {} on {}"
+        self.connection_close_string = "DISCONNECTED from {} on {}"
+        self.sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
+
+class MachineModelState():
     def __init__(self):
         self.name = None
+        # Init states
+        self.local_epoch = 0
+        self.mode = self.modes[0]
+        self.mode_stack = []
+        self.status = self.statuses[2]
+
+        self.estop = 0
+        self.drive_power = 0
+        self.echo = 1
+        self.comm_mode = 0
+        self.logging_mode = 0
+        self.units = 'inch'
+
+        # self.rsh_error = 0
+        self.rsh_error = 0
+        self.linked = 0
+        self.connected = 0
+        self.axis_home_state = [0] * self.number_of_joints
+        self.current_move_serial_number = -1
+
+        self.ping_tx_time = 0
+        self.ping_rx_time = 0
+        self.estimated_network_latency = 0
+        self.OS_clock_offset = 0
+        self.RT_clock_offset = 0
+        self.pncApp_clock_offset = 0
+        self.last_unix_time = 0
+        self.clock_sync_received_time = 0
+
+        # Servo log parameters
+        self.servo_log_num_axes = 5
+        self.servo_log_sub_sample_rate = 10
+        self.servo_log_buffer_size = 50
+        self.buffer_level_feedback_period_us = 1e6
+
+        self.polylines_per_tx = 1
+        self.points_per_polyline = 25
+        self.buffer_level_setpoint = 1000
+
+class MachineModel():
+    def __init__(self):
+        self.name = None
+
+        #Thread/Process Parameters
+        self.thread_queue_wait_timeout = 0.1
+        self.process_queue_wait_timeout = 0.1
+        self.event_wait_timeout = 1
 
         #Jokes
         self.machine_name = "PocketVMC"
@@ -19,6 +85,7 @@ class MachineModel():
         self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
         self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
         self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+        self.device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
         self.connection_open_string = "CONNECTED to {} on {}"
         self.connection_close_string = "DISCONNECTED from {} on {}"
 
@@ -38,7 +105,7 @@ class MachineModel():
         self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
         self.rsh_error_string = 'NAK'
         self.rsh_echo_strings = ['SET', 'GET', 'DM']
-        self.ascii_rsh_feedback_strings = ['*', 'bTbL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'NAK']
+        self.ascii_rsh_feedback_strings = ['*', 'bTbL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'BUFFER_LEVEL_FEEDBACK', 'NAK']
         self.binary_rsh_feedback_strings = ['SF', 'BL']
         self.minimum_header_length = 3
         self.ascii_header_delimiter = ' '
@@ -94,7 +161,9 @@ class MachineModel():
         self.drive_power = 0
         self.echo = 1
         self.comm_mode = 0
-        self.logging_mode = 0
+        self.servo_feedback_mode = 0
+        self.buffer_level_feedback_mode = 0
+        self.buffer_level_feedback_period = 1e6
         self.units = 'inch'
 
         #self.rsh_error = 0
@@ -159,13 +228,14 @@ class MachineModel():
         #self.udp_port = 515
         #self.listen_ip = '0.0.0.0'
         self.comm_port = 'COM3'
-        self.baudrate = 115200
+        self.initial_baudrate = 115200
+        self.target_baudrate = 250000
         self.ssh_opts = '-X'
         self.ssh_credentials = 'pocketnc@' + self.ip_address
         self.ssh_hosts_path = 'E:\SculptPrint\PocketNC\OpenCNC\Interface Application\pncApp\Support Files\known_hosts'
 
         #TCP Control Parameters
-        self.polylines_per_tx = 2
+        self.polylines_per_tx = 1
         self.points_per_polyline = 25
         self.buffer_level_setpoint = 1000
         self.max_buffer_level = 2000
@@ -232,7 +302,7 @@ class MachineModel():
 #
 #     ###################################################################
 #     # def setLoggingMode(self, mode):
-#     #     self.machine.logging_mode = mode
+#     #     self.machine.servo_feedback_mode = mode
 #     #     self.machine.logging_mode_changed_callback(mode)
 #
 #     def resetRSHError(self):

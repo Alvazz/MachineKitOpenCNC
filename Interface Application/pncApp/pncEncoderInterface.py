@@ -21,7 +21,7 @@ class EncoderInterface(Process):
 
         self.serial_port = serial.Serial()
         self.serial_port.port = self.machine.comm_port
-        self.serial_port.baudrate = self.machine.baudrate
+        self.serial_port.baudrate = self.machine.initial_baudrate
 
         self.encoder_reads = 0
         self.encoder_reading_time = 0
@@ -70,13 +70,20 @@ class EncoderInterface(Process):
             # if self.synchronizer.mc_initial_position_set_event.wait() or 1:
             #     self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
             #     self.machine.encoder_init_event.set()
+            # self.synchronizer.mc_initial_position_set_event.wait()
+            # self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
+            # self.machine.encoder_init_event.set()
+            self.syncEncoderToStepgen()
+            self.initializeSerialComm(self.machine.target_baudrate)
 
-            self.setBaudrate(250000)
-            self.serial_port.flushInput()
+            #self.setBaudrate(250000)
+            #self.serial_port.flushInput()
 
             if self.synchronizer.p_enable_encoder_event.is_set():
                 self.synchronizer.p_run_encoder_interface_event.wait()
+                pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name, self.name)
                 while self.synchronizer.p_run_encoder_interface_event.is_set():
+                    #FIXME should this be on a timer?
                     #FIXME move to getEncoderCounts
                     request_time = time.clock()
                     encoder_counts = self.getEncoderCounts('current')
@@ -90,9 +97,9 @@ class EncoderInterface(Process):
                         self.machine.average_encoder_read_frequency = 1.0/self.encoder_read_time_moving_average
 
                         #FIXME should probably push packets of data instead of every sample
-                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])}
-                        self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',encoder_data_record))
-                        time.sleep(1)
+                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])])}
+                        self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
+                        #time.sleep(1)
                         # self.machine.data_store_manager_thread_handle.push(
                         #     {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
 
@@ -106,14 +113,16 @@ class EncoderInterface(Process):
             print('closing serial interface process because port is not open')
             pncLibrary.printTerminalString(self.machine.process_terminate_string,self.name,self.pid)
 
-    def read(self):
-        line = self.serial_port.readline()
-        return line
+    def syncEncoderToStepgen(self):
+        self.synchronizer.mc_initial_position_set_event.wait()
+        self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(
+            map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
+        self.synchronizer.ei_encoder_init_event.set()
 
-    def writeUnicode(self, string):
-        self.serial_port.write(string.encode('utf-8'))
-        #time.sleep(0.01)
-        #self.serial_port.flush()
+    def initializeSerialComm(self, baudrate):
+        self.serial_port.flushInput()
+        self.setBaudrate(baudrate)
+        self.serial_port.flushInput()
 
     ##    def write(self, data):
     ##        line = self.serial_port.readline()
@@ -190,6 +199,14 @@ class EncoderInterface(Process):
         time.sleep(0.5)
 
     ########################### COMMS ###########################
+    def read(self):
+        line = self.serial_port.readline()
+        return line
+
+    def writeUnicode(self, string):
+        self.serial_port.write(string.encode('utf-8'))
+        #time.sleep(0.01)
+        #self.serial_port.flush()
 
     def acknowledgeBoot(self):
         return self.waitForString(self.machine.encoder_ack_strings[0])[0]

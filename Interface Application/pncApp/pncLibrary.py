@@ -1,7 +1,22 @@
 import pncTrajectoryGeneration as tp
-#from multiprocessing import Event, Lock, Queue
+from threading import Thread
+from multiprocessing import Event, current_process
 
 ######################## Useful Classes ########################
+class PrintServer(Thread):
+    def __init__(self, machine, synchronizer):
+        super(PrintServer, self).__init__()
+        self.name = "print_server"
+        self.machine = machine
+        self.synchronizer = synchronizer
+        self.startup_event = Event()
+
+    def run(self):
+        printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        self.startup_event.set()
+        while self.synchronizer.t_run_print_server.is_set():
+            print(self.synchronizer.q_print_server_message_queue.get())
+
 class Synchronizer():
     def __init__(self, manager):
         #Process run events
@@ -14,10 +29,12 @@ class Synchronizer():
         self.p_run_machine_controller_event = manager.Event()
         self.p_run_feedback_handler_event = manager.Event()
         self.t_run_motion_controller_event = manager.Event()
+        self.t_run_feedback_processor_event = manager.Event()
         self.t_run_logger_event = manager.Event()
         self.t_run_puller_event = manager.Event()
         self.t_run_pusher_event = manager.Event()
         self.t_run_state_manipulator_event = manager.Event()
+        self.t_run_print_server_event = manager.Event()
 
         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
         self.fb_connection_change_event = manager.Event()
@@ -28,7 +45,8 @@ class Synchronizer():
         self.fb_status_change_event = manager.Event()
         self.fb_status_change_event.clear()
         self.fb_mode_change_event = manager.Event()
-        self.fb_logging_mode_change_event = manager.Event()
+        self.fb_servo_logging_mode_change_event = manager.Event()
+        self.fb_buffer_level_feedback_mode_change_event = manager.Event()
         self.fb_comm_mode_change_event = manager.Event()
         self.fb_home_change_event = manager.Event()
         self.fb_all_homed_event = manager.Event()
@@ -36,6 +54,7 @@ class Synchronizer():
         self.fb_clock_event = manager.Event()
         self.fb_buffer_level_reception_event = manager.Event()
         self.fb_servo_feedback_reception_event = manager.Event()
+        self.fb_feedback_data_initialized_event = manager.Event()
 
         # #FIXME implement this
         self.fb_position_change_event = manager.Event()
@@ -43,6 +62,7 @@ class Synchronizer():
         self.mc_initial_position_set_event = manager.Event()
         self.mc_restore_mode_event = manager.Event()
         self.mc_clock_sync_event = manager.Event()
+        self.mc_xenomai_clock_sync_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
@@ -65,14 +85,14 @@ class Synchronizer():
 
         # Queues
         self.q_database_command_queue_proxy = manager.Queue()
-        #self.q_database_pull_queue_proxy = manager.Queue()
         self.q_database_output_queue_proxy = manager.Queue()
+        self.q_print_server_message_queue = manager.Queue()
 
         # Locks
         self.db_data_store_lock = manager.Lock()
         self.db_machine_state_lock = manager.Lock()
+        self.db_pull_lock = manager.Lock()
         self.mc_socket_lock = manager.Lock()
-        #self.db_data_store_lock = manager.Lock()
 
         # Process Clock Sync
         self.process_start_signal = manager.Event()
@@ -112,9 +132,26 @@ class DatabaseCommand():
         self.command_parameters = parameters
         self.time = time
 
+######################## Multitank Management ########################
+def startPrintServer(machine, synchronizer):
+    print_server = PrintServer(machine, synchronizer)
+    print_server.start()
+    print_server.startup_event.wait()
+    printTerminalString(machine.thread_launch_string, current_process().name, print_server.name)
+    return print_server
+
+def waitForThreadStart(args):
+    # FIXME implement this
+    pass
+
 ######################## IPC ########################
 def getEventStatus(event, database_command_queue_proxy, database_output_queue_proxy):
     database_command_queue_proxy.put('get_event_status')
+
+def lockedPull(synchronizer, data_types, start_indices, end_indices):
+    with synchronizer.db_pull_lock:
+        synchronizer.q_database_command_queue_proxy.put(DatabaseCommand('pull', data_types, (start_indices, end_indices)))
+        return synchronizer.q_database_output_queue_proxy.get()
 
 ######################## State Machine ########################
 def setTaskRunFlags(synchronizer, state = True):
@@ -132,10 +169,11 @@ def pushState(machine):
     # return #saved state structure
 
 def popState(machine):
-    # prev_mode = self.machine.mode_stack[-1]
-    # mode_stack = self.machine.mode_stack[0:-1]
     return machine.mode_stack.pop()
     # return prev_mode
+
+def restoreState(machine):
+    print("IMPLEMENT RESTORE STATE IF NEEDED")
 
 def resetRSHError(machine):
     print('before ' + str(machine.rsh_error))
@@ -148,26 +186,26 @@ def checkOnOff(machine, flag):
     return machine.rsh_feedback_flags.index(flag.strip().upper()) % 2
 
 def isAutoMode(machine, synchronizer):
-    if machine.mode.upper() == 'AUTO' and synchronizer.mode_change_event.is_set():
+    if machine.mode.upper() == 'AUTO' and synchronizer.fb_mode_change_event.is_set():
         return True
     else:
         return False
 
 def isManualMode(machine, synchronizer):
-    if machine.mode.upper() == 'MANUAL' and synchronizer.fb_mode_change_event.isSet():
+    if machine.mode.upper() == 'MANUAL' and synchronizer.fb_mode_change_event.is_set():
         return True
     else:
         return False
 
-def isHomed(machine):
-    return (all(machine.axis_home_state) and machine.home_change_event.isSet())
+def isHomed(machine, synchronizer):
+    return (all(machine.axis_home_state) and synchronizer.fb_home_change_event.is_set())
     # if all(self.machine.axis_home_state) and self.machine.home_change_event.isSet():
     #     return True
     # else:
     #     return False
 
-def isIdle(machine):
-    if machine.status.upper() == 'IDLE' and machine.status_change_event.isSet():
+def isIdle(machine, synchronizer):
+    if machine.status.upper() == 'IDLE' and synchronizer.fb_status_change_event.is_set():
         return True
     else:
         return False

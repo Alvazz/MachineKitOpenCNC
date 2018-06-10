@@ -29,26 +29,270 @@ class FeedbackData():
         self.data = None
 
 class FeedbackProcessor(Thread):
-    def __init__(self, machine):
+    def __init__(self, machine, synchronizer):
         super(FeedbackProcessor, self).__init__()
         self.name = "feedback_processor"
         self.machine = machine
+        self.synchronizer = synchronizer
+        self.queue_wait_timeout = machine.thread_queue_wait_timeout
 
         self.process_queue = Queue()
-        self.processed_queue = Queue()
+        #self.processed_queue = Queue()
         self.startup_event = Event()
 
     def run(self):
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
+        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        while self.synchronizer.t_run_feedback_processor_event.is_set():
+            #if not self.process_queue.empty():
+            try:
+                raw_data = self.process_queue.get(True, self.queue_wait_timeout)
+                self.processFeedbackData(*raw_data)
+            except:
+                pass
         while True:
             #FIXME handle rx_received_time accurately here
             pass
 
-class MachineFeedbackListener(Process):
+    def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
+        if feedback_type.upper() == 'COMMAND ECHO':
+            if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data:
+                print('RSH error')
+                self.handleRSHError()
+            else:
+                print('got echo data')
+            return
+
+        if feedback_encoding == 'ascii':
+            # if type(feedback_type) is str:
+            #     print('break')
+            #feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
+            #feedback_data = [s.upper() for s in feedback_data]
+            feedback_data = list(map(str.upper,feedback_data))
+            #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
+            if self.machine.ascii_rsh_feedback_strings[0] == feedback_type:
+                #Position feedback
+                if self.machine.servo_feedback_mode != 1:
+                    print('state machine sync error')
+                self.processPositionFeedback('ascii', rx_received_time, feedback_data)
+            elif self.machine.ascii_rsh_feedback_strings[1] == feedback_type:
+                # Buffer Length
+                self.processBufferLevelFeedback('ascii', rx_received_time, feedback_data)
+            elif self.machine.ascii_rsh_feedback_strings[2] == feedback_type:
+                # Program Status
+                # print('program status')
+                self.machine.status = feedback_data
+                # print('set program status to ' + self.machine.status)
+                self.synchronizer.fb_status_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[3] == feedback_type:
+                # Machine Mode
+                # print('mode set')
+                #print('got mode ' + feedback_data[0])
+                self.machine.mode = feedback_data[0]
+                self.synchronizer.fb_mode_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[4] == feedback_type:
+                # Servo Log Params
+                print('got logging ' + str(feedback_data))
+                self.machine.servo_feedback_mode = int(feedback_data[0])
+                self.synchronizer.fb_servo_logging_mode_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[5] == feedback_type:
+                # Drive Power
+                #self.machine.drive_power = self.machine.rsh_feedback_flags.index(feedback_data.upper())
+                self.machine.drive_power = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_drive_power_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[6] == feedback_type:
+                # Echo
+                # print('got set echo: ' + data_string)
+                self.machine.echo = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_echo_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[7] == feedback_type:
+                # Hello
+                print('got hello')
+                self.machine.connected = True
+                self.synchronizer.fb_connection_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[8] == feedback_type:
+                # Enable
+                # print('got enable')
+                #self.machine.linked = self.machine.rsh_feedback_flags.index(feedback_data[0].upper())
+                self.machine.linked = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_link_change_event.set()
+                self.synchronizer.mvc_connected_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[9] == feedback_type:
+                # EStop
+                # print('got estop: ' + data_string)
+                #self.machine.estop = self.machine.rsh_feedback_flags.index(feedback_data.upper())
+                self.machine.estop = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_estop_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
+                # Joint homed
+                # print('got joint home: ' + data_string)
+                home_state = [0]*self.machine.number_of_joints
+                for axis in range(0, self.machine.number_of_joints):
+                    # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
+                    home_state[axis] = pncLibrary.checkOnOff(self.machine,feedback_data[axis])
+                    #print(home_state)
+                    #print(pncLibrary.checkOnOff(self.machine,feedback_data[axis]))
+                    #self.machine.axis_home_state[axis] = pncLibrary.checkOnOff(self.machine,feedback_data[axis])
+                    #print('joint home state is ' + str(self.machine.axis_home_state))
+                self.machine.axis_home_state = home_state
+                if all(self.machine.axis_home_state):
+                    print('all joints homed')
+                    self.synchronizer.fb_all_homed_event.set()
+                    # self.machine.home_change_event.set()
+                self.synchronizer.fb_home_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
+                # PING
+                self.machine.ping_rx_time = rx_received_time
+                self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
+                self.synchronizer.fb_ping_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
+                # Time
+                self.machine.last_unix_time = float(feedback_data[0])*self.machine.clock_resolution
+                self.machine.clock_sync_received_time = rx_received_time
+                self.synchronizer.fb_clock_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[13] == feedback_type:
+                # Comm mode
+                print('got comm_mode')
+                self.machine.comm_mode = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.synchronizer.fb_comm_mode_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[14] == feedback_type:
+                # BL feedback mode
+                print('got BL feedback params')
+                self.machine.buffer_level_feedback_mode = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+                self.machine.buffer_level_feedback_period = feedback_data[1]
+                self.synchronizer.fb_buffer_level_feedback_mode_change_event.set()
+            else:
+                print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
+        elif feedback_encoding == 'binary':
+            #feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
+            #print('the feedback type is: ' + feedback_type)
+            if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
+                if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
+                    #Servo position feedback
+                    # if len(feedback_data) < 2400:
+                    #     print('break')
+                    feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
+                        self.machine.binary_line_terminator)) / self.machine.size_of_feedback_double), feedback_data)
+                    self.processPositionFeedback('binary',rx_received_time,feedback_data)
+                    self.machine.servo_feedback_reception_event.set()
+                elif self.machine.binary_rsh_feedback_strings[1] == feedback_type:
+                    #FIXME unpack binary here
+                    self.processBufferLevelFeedback('binary', rx_received_time, feedback_data)
+                    self.machine.buffer_level_reception_event.set()
+
+    def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        print('got buffer_level feedback')
+        if feedback_encoding == 'ascii':
+            #print('trying to parse buffer level feedback string: ' + data_string)
+            #rx_received_time = time.clock()
+            #m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)'+self.machine.rsh_feedback_strings[2]+'([+-]?([0-9]*[.])?[0-9]+)', data_string)
+            #BL_data = feedback_data.split()
+            rsh_clock_time = float(feedback_data[0])
+            rsh_buffer_level = int(feedback_data[1])
+        elif feedback_encoding == 'binary':
+            feedback_data = struct.unpack('!dI', feedback_data)
+            rsh_clock_time = feedback_data[0]
+            rsh_buffer_level = feedback_data[1]
+
+        record = dict()
+        record['HIGHRES_TC_QUEUE_LENGTH'] = np.array([[rsh_buffer_level]])
+        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time]])
+
+        #FIXME major band-aid
+        record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
+
+        self.machine.data_store_manager_thread_handle.push([record])
+
+    def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        #print('got position feedback')
+        try:
+            #machine_feedback_records = []
+            if feedback_encoding == 'ascii':
+                #samples = feedback_data.strip('*').strip('|').split('*')
+                #Handle error for incomplete last entry, FIXME find root cause
+                number_of_feedback_points = len(feedback_data)
+                #Check end line terminator
+                if not feedback_data[-1][-1] == self.machine.ascii_servo_feedback_terminator or len(feedback_data[-1].split(self.machine.ascii_servo_feedback_terminator)) < self.machine.servo_log_num_axes:
+                    print('problem with ascii line terminator in servo feedback, dropping last entry')
+                    feedback_data = feedback_data[:-1]
+
+                feedback_data = [s.strip(self.machine.ascii_servo_feedback_terminator) for s in feedback_data]
+
+                stepgen_feedback_positions = np.zeros([number_of_feedback_points,self.machine.servo_log_num_axes])
+                RTAPI_clock_times = np.zeros([number_of_feedback_points,1])
+                received_times_interpolated = np.zeros([number_of_feedback_points, 1])
+                RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
+
+                #rx_received_time = time.clock()
+                if len(feedback_data) < 10:
+                    print('feedback error with data_string = ' + feedback_data)
+
+                for sample_number in range(0,number_of_feedback_points):
+                    sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
+                    RTAPI_feedback_indices[sample_number, :] += float(sample_number)
+                    RTAPI_clock_times[sample_number,:] = float(sample_point[0])
+                    stepgen_feedback_positions[sample_number,:] = np.asarray([float(s) for s in sample_point[1:]])+np.asarray(self.machine.axis_offsets)
+                    ## FIXME use clock delta between samples instead of straight interpolation
+                    received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
+                    #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
+
+            elif feedback_encoding == 'binary':
+                number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
+                step_size = self.machine.servo_log_num_axes + 1
+
+                RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+                RTAPI_clock_times = np.zeros([number_of_feedback_points, 1])
+                stepgen_feedback_positions = np.zeros([number_of_feedback_points, self.machine.servo_log_num_axes])
+                received_times_interpolated = np.zeros([number_of_feedback_points, 1])
+                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
+
+                for sample_number in range(0,number_of_feedback_points):
+                    sample_index = sample_number*step_size
+                    sample_point = feedback_data[sample_index:sample_index + step_size]
+
+                    RTAPI_feedback_indices[sample_number, :] += float(sample_number)
+                    RTAPI_clock_times[sample_number, :] = float(sample_point[0])
+                    stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
+                    received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
+
+            else:
+                return
+
+            record = dict()
+            record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+            record['RTAPI_clock_times'] = RTAPI_clock_times
+            record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+
+            ## FIXME major band-aid
+            #machine_time = pncLibrary.lockedPull(self.synchronizer, 'RTAPI_clock_times', None, 1)
+
+            if self.synchronizer.fb_feedback_data_initialized_event.is_set():
+                if not self.synchronizer.mc_xenomai_clock_sync_event.is_set():
+                    self.machine.RT_clock_offset = RTAPI_clock_times[0]
+                    self.synchronizer.mc_xenomai_clock_sync_event.set()
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
+            else:
+                # Throw away first data point because thread counter in RSH should start from thread_periods % servo_log_flush_samples = 0
+                self.synchronizer.fb_feedback_data_initialized_event.set()
+
+            # with self.synchronizer.db_pull_lock:
+            #     self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('pull', 'RTAPI_clock_times', (None, 1)))
+
+            #clock_times = self.synchronizer.q_database_output_queue_proxy.get()
+            #if len(self.machine.data_store_manager_thread_handle.data_store.RTAPI_CLOCK_TIMES) == 0:
+                #self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
+
+        except Exception as error:
+            print('had error processing feedback string. The data string is: ' + str(feedback_data))
+            print('the error is ' + str(error))
+            return
+
+class MachineFeedbackHandler(Process):
     #global machine
     def __init__(self, machine, synchronizer):
-        super(MachineFeedbackListener, self).__init__()
+        super(MachineFeedbackHandler, self).__init__()
         self.name = "feedback_handler"
         self.main_thread_name = self.name + ".MainThread"
 
@@ -112,14 +356,12 @@ class MachineFeedbackListener(Process):
                         #Now drop the complete command from the buffer and reset flags
                         old_byte_string = self.byte_string
                         self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
-                        # if len(self.byte_string) >= 1:
-                        #     if self.byte_string[0] == 67:
-                        #         print('break')
+                        #FIXME use feedbackstate object instead of individual flags
                         self.resetFeedbackState()
-                        # self.header_processed = False
-                        # self.header_processing_error = False
-                        # self.feedback_data_processed = False
-                        # self.feedback_data_processing_error = False
+                        self.header_processed = False
+                        self.header_processing_error = False
+                        self.feedback_data_processed = False
+                        self.feedback_data_processing_error = False
                         # self.last_processed_byte_string = self.byte_string
 
         #Flag set, shutdown. Handle socket closure in machine_controller
@@ -135,9 +377,8 @@ class MachineFeedbackListener(Process):
         self.feedback_data_processing_error = False
         self.last_processed_byte_string = self.byte_string
 
-
     def waitForThreadLaunch(self):
-        self.feedback_processor = FeedbackProcessor(self.machine)
+        self.feedback_processor = FeedbackProcessor(self.machine, self.synchronizer)
         self.feedback_processor.start()
         self.feedback_processor.startup_event.wait()
 
@@ -217,14 +458,17 @@ class MachineFeedbackListener(Process):
                 # We have enough data to form a complete transmission
                 line_terminator_index = byte_string.index(self.machine.ascii_line_terminator.encode('utf-8'))
                 feedback_data = byte_string[:line_terminator_index].decode('utf-8').split()
-                self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time)
+                # FIXME send to feedback_processor thread
+                #self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time)
+                self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time))
+
                 # Drop this command from the buffer and gobble remaining terminators
                 # remaining_byte_string = self.gobbleTerminators(byte_string[line_terminator_index:],
                 #                                                self.machine.ascii_line_terminator.encode('utf-8'))
 
                 #complete_transmission_delimiter_index = line_terminator_index + byte_string[line_terminator_index:].index(self.gobbleTerminators(byte_string[line_terminator_index:],self.machine.ascii_line_terminator.encode('utf-8'))[:])
                 #complete_transmission_delimiter_index = line_terminator_index + self.countTerminatorsToGobble(byte_string[line_terminator_index:]*len(line_terminator),line_terminator)
-                complete_transmission_delimiter_index = line_terminator_index + self.countTerminatorsToGobble(byte_string[line_terminator_index:], line_terminator)*len(line_terminator)
+                complete_transmission_delimiter_index = line_terminator_index + pncLibrary.countTerminatorsToGobble(byte_string[line_terminator_index:], line_terminator)*len(line_terminator)
                 # self.gobbleTerminators()
                 return True, False, feedback_data, complete_transmission_delimiter_index
             else:
@@ -249,7 +493,9 @@ class MachineFeedbackListener(Process):
                         feedback_data = byte_string[:-len(self.machine.binary_line_terminator)]
 
                         #feedback_data = byte_string[:-1]
-                        self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length)
+                        # FIXME send to feedback_processor thread
+                        #self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length)
+                        self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length))
                         complete_transmission_delimiter_index = self.machine.size_of_feedback_int+transmission_length
                         return True, False, feedback_data, complete_transmission_delimiter_index
                     else:
@@ -266,241 +512,245 @@ class MachineFeedbackListener(Process):
 
             #if self.machine.ascii_line_terminator.encode('utf-8') in byte_string:
 
-    def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
-        if feedback_type.upper() == 'COMMAND ECHO':
-            if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data:
-                print('RSH error')
-                self.handleRSHError()
-            else:
-                print('got echo data')
-            return
-
-        if feedback_encoding == 'ascii':
-            # if type(feedback_type) is str:
-            #     print('break')
-            #feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
-            #feedback_data = [s.upper() for s in feedback_data]
-            feedback_data = list(map(str.upper,feedback_data))
-            #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
-            if self.machine.ascii_rsh_feedback_strings[0] == feedback_type:
-                #Position feedback
-                if self.machine.logging_mode != 1:
-                    print('state machine sync error')
-                self.processPositionFeedback('ascii', rx_received_time, feedback_data)
-            elif self.machine.ascii_rsh_feedback_strings[1] == feedback_type:
-                # Buffer Length
-                self.processBufferLevelFeedback('ascii', rx_received_time, feedback_data)
-            elif self.machine.ascii_rsh_feedback_strings[2] == feedback_type:
-                # Program Status
-                # print('program status')
-                self.machine.status = feedback_data
-                # print('set program status to ' + self.machine.status)
-                self.machine.status_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[3] == feedback_type:
-                # Machine Mode
-                # print('mode set')
-                #print('got mode ' + feedback_data[0])
-                self.machine.mode = feedback_data[0]
-                self.machine.mode_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[4] == feedback_type:
-                # Servo Log Params
-                print('got logging ' + str(feedback_data))
-                self.machine.logging_mode = int(feedback_data[0])
-                self.machine.logging_mode_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[5] == feedback_type:
-                # Drive Power
-                #self.machine.drive_power = self.machine.rsh_feedback_flags.index(feedback_data.upper())
-                self.machine.drive_power = self.machine.checkOnOff(feedback_data[0])
-                self.synchronizer.fb_drive_power_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[6] == feedback_type:
-                # Echo
-                # print('got set echo: ' + data_string)
-                self.machine.echo = pncLibrary.checkOnOff(self.machine, feedback_data[0])
-                self.synchronizer.fb_echo_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[7] == feedback_type:
-                # Hello
-                print('got hello')
-                self.machine.connected = True
-                self.synchronizer.fb_connection_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[8] == feedback_type:
-                # Enable
-                # print('got enable')
-                #self.machine.linked = self.machine.rsh_feedback_flags.index(feedback_data[0].upper())
-                self.machine.linked = pncLibrary.checkOnOff(self.machine, feedback_data[0])
-                self.synchronizer.fb_link_change_event.set()
-                self.synchronizer.mvc_connected_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[9] == feedback_type:
-                # EStop
-                # print('got estop: ' + data_string)
-                #self.machine.estop = self.machine.rsh_feedback_flags.index(feedback_data.upper())
-                self.machine.estop = pncLibrary.checkOnOff(self.machine, feedback_data[0])
-                self.synchronizer.fb_estop_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
-                # Joint homed
-                # print('got joint home: ' + data_string)
-                for axis in range(0, self.machine.number_of_joints):
-                    # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
-                    self.machine.axis_home_state[axis] = self.machine.checkOnOff(feedback_data[axis])
-                    # print('joint home state is ' + str(self.machine.axis_home_state))
-                if all(self.machine.axis_home_state):
-                    print('all joints homed')
-                    self.machine.all_homed_event.set()
-                    # self.machine.home_change_event.set()
-                self.machine.home_change_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
-                # PING
-                self.machine.ping_rx_time = rx_received_time
-                self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
-                self.machine.ping_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
-                # Time
-                self.machine.last_unix_time = float(feedback_data[0])*self.machine.clock_resolution
-                self.machine.clock_sync_received_time = rx_received_time
-                self.machine.clock_event.set()
-            elif self.machine.ascii_rsh_feedback_strings[13] == feedback_type:
-                # Comm mode
-                print('got comm_mode')
-                self.machine.comm_mode = self.machine.checkOnOff(feedback_data[0])
-                self.machine.comm_mode_change_event.set()
-            else:
-                print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
-        elif feedback_encoding == 'binary':
-            #feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
-            #print('the feedback type is: ' + feedback_type)
-            if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
-                if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
-                    #Servo position feedback
-                    # if len(feedback_data) < 2400:
-                    #     print('break')
-                    feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
-                        self.machine.binary_line_terminator)) / self.machine.size_of_feedback_double), feedback_data)
-                    self.processPositionFeedback('binary',rx_received_time,feedback_data)
-                    self.machine.servo_feedback_reception_event.set()
-                elif self.machine.binary_rsh_feedback_strings[1] == feedback_type:
-                    #FIXME unpack binary here
-                    self.processBufferLevelFeedback('binary', rx_received_time, feedback_data)
-                    self.machine.buffer_level_reception_event.set()
-
-
-    def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
-        print('got buffer_level feedback')
-        if feedback_encoding == 'ascii':
-            #print('trying to parse buffer level feedback string: ' + data_string)
-            #rx_received_time = time.clock()
-            #m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)'+self.machine.rsh_feedback_strings[2]+'([+-]?([0-9]*[.])?[0-9]+)', data_string)
-            #BL_data = feedback_data.split()
-            rsh_clock_time = float(feedback_data[0])
-            rsh_buffer_level = int(feedback_data[1])
-
-
-            # self.rsh_buffer_level = int(m.group(1))
-            # rsh_clock_time = float(m.group(2))
-            #self.data_store.appendMachineControlRecords([dict([('highres_tcq_length', self.rsh_buffer_level)])])
-            # record = dict()
-            # record['HIGHRES_TC_QUEUE_LENGTH'] = self.rsh_buffer_level
-            # record['highfreq_ethernet_received_times'] = rx_received_time
-            # record['rsh_clock_times'] = rsh_clock_time
-        elif feedback_encoding == 'binary':
-            feedback_data = struct.unpack('!dI', feedback_data)
-            rsh_clock_time = feedback_data[0]
-            rsh_buffer_level = feedback_data[1]
-
-        record = dict()
-        record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_level
-        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = rx_received_time
-
-        #FIXME major band-aid
-        record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
-
-        #self.data_store.appendMachineFeedbackRecords([record])
-        self.machine.data_store_manager_thread_handle.push(record)
-
-    def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
-        print('got position feedback')
-        try:
-            #machine_feedback_records = []
-            if feedback_encoding == 'ascii':
-                #samples = feedback_data.strip('*').strip('|').split('*')
-                #Handle error for incomplete last entry, FIXME find root cause
-                number_of_feedback_points = len(feedback_data)
-                #Check end line terminator
-                if not feedback_data[-1][-1] == self.machine.ascii_servo_feedback_terminator or len(feedback_data[-1].split(self.machine.ascii_servo_feedback_terminator)) < self.machine.servo_log_num_axes:
-                    print('problem with ascii line terminator in servo feedback, dropping last entry')
-                    feedback_data = feedback_data[:-1]
-
-                feedback_data = [s.strip(self.machine.ascii_servo_feedback_terminator) for s in feedback_data]
-
-                stepgen_feedback_positions = np.zeros([number_of_feedback_points,self.machine.servo_log_num_axes])
-                RTAPI_clock_times = np.zeros([number_of_feedback_points,1])
-                received_times_interpolated = np.zeros([number_of_feedback_points, 1])
-                RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
-                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
-
-                # #FIXME move this to DataStoreManager
-                # if len(self.data_store.RTAPI_feedback_indices) != 0:
-                #     RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1]) + self.data_store.RTAPI_feedback_indices[-1] + 1
-                # else:
-                #     RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
-
-                #rx_received_time = time.clock()
-                if len(feedback_data) < 10:
-                    print('feedback error with data_string = ' + feedback_data)
-
-                for sample_number in range(0,number_of_feedback_points):
-                    sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
-                    RTAPI_feedback_indices[sample_number, :] += float(sample_number)
-                    RTAPI_clock_times[sample_number,:] = float(sample_point[0])
-                    stepgen_feedback_positions[sample_number,:] = np.asarray([float(s) for s in sample_point[1:]])+np.asarray(self.machine.axis_offsets)
-                    ## FIXME use clock delta between samples instead of straight interpolation
-                    received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
-                    #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
-
-                # record = dict()
-                # record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-                # record['RTAPI_clock_times'] = RTAPI_clock_times
-                # record['stepgen_feedback_positions'] = stepgen_feedback_positions
-                # record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
-                # # record['lowfreq_ethernet_received_times'] = received_times_interpolated
-
-            elif feedback_encoding == 'binary':
-                number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
-                step_size = self.machine.servo_log_num_axes + 1
-
-                RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
-                RTAPI_clock_times = np.zeros([number_of_feedback_points, 1])
-                stepgen_feedback_positions = np.zeros([number_of_feedback_points, self.machine.servo_log_num_axes])
-                received_times_interpolated = np.zeros([number_of_feedback_points, 1])
-                lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
-
-                for sample_number in range(0,number_of_feedback_points):
-                    sample_index = sample_number*step_size
-                    sample_point = feedback_data[sample_index:sample_index + step_size]
-
-                    RTAPI_feedback_indices[sample_number, :] += float(sample_number)
-                    RTAPI_clock_times[sample_number, :] = float(sample_point[0])
-                    stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
-                    received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
-
-            else:
-                return
-
-            record = dict()
-            record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-            record['RTAPI_clock_times'] = RTAPI_clock_times
-            record['stepgen_feedback_positions'] = stepgen_feedback_positions
-            record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
-
-            ## FIXME major band-aid
-            if len(self.machine.data_store_manager_thread_handle.data_store.RTAPI_CLOCK_TIMES) == 0:
-                self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
-
-
-        except Exception as error:
-            print('had error processing feedback string. The data string is: ' + str(feedback_data))
-            print('the error is ' + str(error))
-            return
-
-        self.machine.data_store_manager_thread_handle.push(record)
+    # def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
+    #     if feedback_type.upper() == 'COMMAND ECHO':
+    #         if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data:
+    #             print('RSH error')
+    #             self.handleRSHError()
+    #         else:
+    #             print('got echo data')
+    #         return
+    #
+    #     if feedback_encoding == 'ascii':
+    #         # if type(feedback_type) is str:
+    #         #     print('break')
+    #         #feedback_type = self.machine.ascii_rsh_feedback_strings[feedback_type]
+    #         #feedback_data = [s.upper() for s in feedback_data]
+    #         feedback_data = list(map(str.upper,feedback_data))
+    #         #if any(s in feedback_type for s in self.machine.ascii_rsh_feedback_strings):
+    #         if self.machine.ascii_rsh_feedback_strings[0] == feedback_type:
+    #             #Position feedback
+    #             if self.machine.servo_feedback_mode != 1:
+    #                 print('state machine sync error')
+    #             self.processPositionFeedback('ascii', rx_received_time, feedback_data)
+    #         elif self.machine.ascii_rsh_feedback_strings[1] == feedback_type:
+    #             # Buffer Length
+    #             self.processBufferLevelFeedback('ascii', rx_received_time, feedback_data)
+    #         elif self.machine.ascii_rsh_feedback_strings[2] == feedback_type:
+    #             # Program Status
+    #             # print('program status')
+    #             self.machine.status = feedback_data
+    #             # print('set program status to ' + self.machine.status)
+    #             self.synchronizer.fb_status_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[3] == feedback_type:
+    #             # Machine Mode
+    #             # print('mode set')
+    #             #print('got mode ' + feedback_data[0])
+    #             self.machine.mode = feedback_data[0]
+    #             self.synchronizer.fb_mode_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[4] == feedback_type:
+    #             # Servo Log Params
+    #             print('got logging ' + str(feedback_data))
+    #             self.machine.servo_feedback_mode = int(feedback_data[0])
+    #             self.synchronizer.fb_logging_mode_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[5] == feedback_type:
+    #             # Drive Power
+    #             #self.machine.drive_power = self.machine.rsh_feedback_flags.index(feedback_data.upper())
+    #             self.machine.drive_power = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+    #             self.synchronizer.fb_drive_power_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[6] == feedback_type:
+    #             # Echo
+    #             # print('got set echo: ' + data_string)
+    #             self.machine.echo = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+    #             self.synchronizer.fb_echo_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[7] == feedback_type:
+    #             # Hello
+    #             print('got hello')
+    #             self.machine.connected = True
+    #             self.synchronizer.fb_connection_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[8] == feedback_type:
+    #             # Enable
+    #             # print('got enable')
+    #             #self.machine.linked = self.machine.rsh_feedback_flags.index(feedback_data[0].upper())
+    #             self.machine.linked = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+    #             self.synchronizer.fb_link_change_event.set()
+    #             self.synchronizer.mvc_connected_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[9] == feedback_type:
+    #             # EStop
+    #             # print('got estop: ' + data_string)
+    #             #self.machine.estop = self.machine.rsh_feedback_flags.index(feedback_data.upper())
+    #             self.machine.estop = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+    #             self.synchronizer.fb_estop_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[10] == feedback_type:
+    #             # Joint homed
+    #             # print('got joint home: ' + data_string)
+    #             home_state = [0]*self.machine.number_of_joints
+    #             for axis in range(0, self.machine.number_of_joints):
+    #                 # self.machine.axis_home_state[axis] = self.machine.rsh_feedback_flags.index(data_string.split()[axis+1].strip().upper()) % 2
+    #                 home_state[axis] = pncLibrary.checkOnOff(self.machine,feedback_data[axis])
+    #                 #print(home_state)
+    #                 #print(pncLibrary.checkOnOff(self.machine,feedback_data[axis]))
+    #                 #self.machine.axis_home_state[axis] = pncLibrary.checkOnOff(self.machine,feedback_data[axis])
+    #                 #print('joint home state is ' + str(self.machine.axis_home_state))
+    #             self.machine.axis_home_state = home_state
+    #             if all(self.machine.axis_home_state):
+    #                 print('all joints homed')
+    #                 self.synchronizer.fb_all_homed_event.set()
+    #                 # self.machine.home_change_event.set()
+    #             self.synchronizer.fb_home_change_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
+    #             # PING
+    #             self.machine.ping_rx_time = rx_received_time
+    #             self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
+    #             self.synchronizer.fb_ping_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
+    #             # Time
+    #             self.machine.last_unix_time = float(feedback_data[0])*self.machine.clock_resolution
+    #             self.machine.clock_sync_received_time = rx_received_time
+    #             self.synchronizer.fb_clock_event.set()
+    #         elif self.machine.ascii_rsh_feedback_strings[13] == feedback_type:
+    #             # Comm mode
+    #             print('got comm_mode')
+    #             self.machine.comm_mode = pncLibrary.checkOnOff(self.machine, feedback_data[0])
+    #             self.synchronizer.fb_comm_mode_change_event.set()
+    #         else:
+    #             print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
+    #     elif feedback_encoding == 'binary':
+    #         #feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
+    #         #print('the feedback type is: ' + feedback_type)
+    #         if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
+    #             if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
+    #                 #Servo position feedback
+    #                 # if len(feedback_data) < 2400:
+    #                 #     print('break')
+    #                 feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
+    #                     self.machine.binary_line_terminator)) / self.machine.size_of_feedback_double), feedback_data)
+    #                 self.processPositionFeedback('binary',rx_received_time,feedback_data)
+    #                 self.machine.servo_feedback_reception_event.set()
+    #             elif self.machine.binary_rsh_feedback_strings[1] == feedback_type:
+    #                 #FIXME unpack binary here
+    #                 self.processBufferLevelFeedback('binary', rx_received_time, feedback_data)
+    #                 self.machine.buffer_level_reception_event.set()
+    #
+    #
+    # def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+    #     print('got buffer_level feedback')
+    #     if feedback_encoding == 'ascii':
+    #         #print('trying to parse buffer level feedback string: ' + data_string)
+    #         #rx_received_time = time.clock()
+    #         #m = re.search(self.machine.rsh_feedback_strings[1] + '(\d+)'+self.machine.rsh_feedback_strings[2]+'([+-]?([0-9]*[.])?[0-9]+)', data_string)
+    #         #BL_data = feedback_data.split()
+    #         rsh_clock_time = float(feedback_data[0])
+    #         rsh_buffer_level = int(feedback_data[1])
+    #     elif feedback_encoding == 'binary':
+    #         feedback_data = struct.unpack('!dI', feedback_data)
+    #         rsh_clock_time = feedback_data[0]
+    #         rsh_buffer_level = feedback_data[1]
+    #
+    #     record = dict()
+    #     record['HIGHRES_TC_QUEUE_LENGTH'] = rsh_buffer_level
+    #     record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = rx_received_time
+    #
+    #     #FIXME major band-aid
+    #     record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
+    #
+    #     #self.data_store.appendMachineFeedbackRecords([record])
+    #     self.machine.data_store_manager_thread_handle.push([record])
+    #
+    # def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+    #     print('got position feedback')
+    #     try:
+    #         #machine_feedback_records = []
+    #         if feedback_encoding == 'ascii':
+    #             #samples = feedback_data.strip('*').strip('|').split('*')
+    #             #Handle error for incomplete last entry, FIXME find root cause
+    #             number_of_feedback_points = len(feedback_data)
+    #             #Check end line terminator
+    #             if not feedback_data[-1][-1] == self.machine.ascii_servo_feedback_terminator or len(feedback_data[-1].split(self.machine.ascii_servo_feedback_terminator)) < self.machine.servo_log_num_axes:
+    #                 print('problem with ascii line terminator in servo feedback, dropping last entry')
+    #                 feedback_data = feedback_data[:-1]
+    #
+    #             feedback_data = [s.strip(self.machine.ascii_servo_feedback_terminator) for s in feedback_data]
+    #
+    #             stepgen_feedback_positions = np.zeros([number_of_feedback_points,self.machine.servo_log_num_axes])
+    #             RTAPI_clock_times = np.zeros([number_of_feedback_points,1])
+    #             received_times_interpolated = np.zeros([number_of_feedback_points, 1])
+    #             RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+    #             lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
+    #
+    #             #rx_received_time = time.clock()
+    #             if len(feedback_data) < 10:
+    #                 print('feedback error with data_string = ' + feedback_data)
+    #
+    #             for sample_number in range(0,number_of_feedback_points):
+    #                 sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
+    #                 RTAPI_feedback_indices[sample_number, :] += float(sample_number)
+    #                 RTAPI_clock_times[sample_number,:] = float(sample_point[0])
+    #                 stepgen_feedback_positions[sample_number,:] = np.asarray([float(s) for s in sample_point[1:]])+np.asarray(self.machine.axis_offsets)
+    #                 ## FIXME use clock delta between samples instead of straight interpolation
+    #                 received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
+    #                 #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
+    #
+    #             # record = dict()
+    #             # record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+    #             # record['RTAPI_clock_times'] = RTAPI_clock_times
+    #             # record['stepgen_feedback_positions'] = stepgen_feedback_positions
+    #             # record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+    #             # # record['lowfreq_ethernet_received_times'] = received_times_interpolated
+    #
+    #         elif feedback_encoding == 'binary':
+    #             number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
+    #             step_size = self.machine.servo_log_num_axes + 1
+    #
+    #             RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
+    #             RTAPI_clock_times = np.zeros([number_of_feedback_points, 1])
+    #             stepgen_feedback_positions = np.zeros([number_of_feedback_points, self.machine.servo_log_num_axes])
+    #             received_times_interpolated = np.zeros([number_of_feedback_points, 1])
+    #             lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
+    #
+    #             for sample_number in range(0,number_of_feedback_points):
+    #                 sample_index = sample_number*step_size
+    #                 sample_point = feedback_data[sample_index:sample_index + step_size]
+    #
+    #                 RTAPI_feedback_indices[sample_number, :] += float(sample_number)
+    #                 RTAPI_clock_times[sample_number, :] = float(sample_point[0])
+    #                 stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
+    #                 received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
+    #
+    #         else:
+    #             return
+    #
+    #         record = dict()
+    #         record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
+    #         record['RTAPI_clock_times'] = RTAPI_clock_times
+    #         record['stepgen_feedback_positions'] = stepgen_feedback_positions
+    #         record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
+    #
+    #         ## FIXME major band-aid
+    #         #machine_time = pncLibrary.lockedPull(self.synchronizer, 'RTAPI_clock_times', None, 1)
+    #
+    #         if self.synchronizer.fb_feedback_data_initialized_event.is_set():
+    #             if not self.synchronizer.mc_xenomai_clock_sync_event.is_set():
+    #                 self.machine.RT_clock_offset = RTAPI_clock_times[0]
+    #                 self.synchronizer.mc_xenomai_clock_sync_event.set()
+    #             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
+    #         else:
+    #             # Throw away first data point because thread counter in RSH should start from thread_periods % servo_log_flush_samples = 0
+    #             self.synchronizer.fb_feedback_data_initialized_event.set()
+    #
+    #         # with self.synchronizer.db_pull_lock:
+    #         #     self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('pull', 'RTAPI_clock_times', (None, 1)))
+    #
+    #         #clock_times = self.synchronizer.q_database_output_queue_proxy.get()
+    #         #if len(self.machine.data_store_manager_thread_handle.data_store.RTAPI_CLOCK_TIMES) == 0:
+    #             #self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
+    #
+    #     except Exception as error:
+    #         print('had error processing feedback string. The data string is: ' + str(feedback_data))
+    #         print('the error is ' + str(error))
+    #         return
+    #
+    #     #self.machine.data_store_manager_thread_handle.push(record)
 
     def handleRSHError(self):
         self.machine.rsh_error = 1
