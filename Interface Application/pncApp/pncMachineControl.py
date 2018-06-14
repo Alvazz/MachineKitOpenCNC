@@ -1,7 +1,7 @@
 import pncLibrary
 import struct, time, socket, select, math, queue, signal, paramiko
 import numpy as np, matplotlib.pyplot as plt
-from multiprocessing import Process, Event, current_process
+from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
 
 class SystemController(Thread):
@@ -15,7 +15,7 @@ class SystemController(Thread):
         self.ssh_client = paramiko.SSHClient()
 
     def run(self):
-        while self._running_thread:
+        while self.p_run_ssh_client.is_set():
             if self._run_ssh_connection:
                 while True:
                     pass
@@ -28,14 +28,8 @@ class MotionController(Thread):
         self.name = "motion_controller"
         self.machine = machine
         self.synchronizer = synchronizer
-        #self.machine_controller = machine_controller
 
-        self._running_motion = False
-        #self._running_thread = True
-        #self._shutdown = False
-
-        self.move_queue = []
-        self.move_queue = queue.Queue()
+        self.move_queue = Queue()
         self.move_in_progress = 0
         self.last_move_serial_number = 0
         self.current_move_serial_number = 0
@@ -47,15 +41,12 @@ class MotionController(Thread):
         self.startup_event = Event()
 
     def run(self):
-        #while self._running:
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
 
         while self.synchronizer.t_run_motion_controller_event.is_set():
-            if self._running_motion:
+            if self.synchronizer.mc_run_motion_event.wait(self.machine.thread_queue_wait_timeout):
                 print('length of move queue is ' + str(self.move_queue.qsize()))
-                #Prepare for direct control
-                #self.machine_controller.waitForSet(self.machine_controller.setCommMode,1,self.machine_controller.getCommMode)
 
                 #There are new moves in the queue, find the one to be executed next
                 while not self.move_queue.empty() and not self.machine.rsh_error:
@@ -87,13 +78,12 @@ class MotionController(Thread):
                     print('dumping move queue')
                     self.move_queue = queue.Queue()
 
-            else:
-                #thread idle, not running motion
-                #print('motion controller thread idling')
-                pass
 
         #Thread signaled to shutdown
-        print('MOTION CONTROLLER: thread shut down')
+        #print('MOTION CONTROLLER: thread shut down')
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
         #self._shutdown = True
 
     def commandPoints(self, servo_points, polylines, blocklength, commands_to_send = -1):
@@ -161,12 +151,13 @@ class MachineController(Process):
         #print('in machine controller init')
         self.machine = machine
         self.synchronizer = synchronizer
+        self.command_queue = synchronizer.q_machine_controller_command_queue
         #self.database_push_queue_proxy = database_push_queue_proxy
         #self.rsh_socket = self.machine.rsh_socket
 
         self.rsh_buffer_level = 0
 
-        #self.command_queue = queue.Queue()
+        #self.machine_command_queue = queue.Queue()
 
         self.getFunctions = [self.getMachineMode, self.getEstop]
         self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
@@ -187,40 +178,38 @@ class MachineController(Process):
         if self.synchronizer.p_enable_machine_controller_event.is_set():
             self.synchronizer.p_run_machine_controller_event.wait()
             while self.synchronizer.p_run_machine_controller_event.is_set():
-                self.checkSculptPrintUI()
+                #self.checkSculptPrintUI()
+                try:
+                    command = self.command_queue.get(True, self.machine.process_queue_wait_timeout)
+                    self.handleCommand(command)
+                except:
+                    pass
+
+                if self.synchronizer.mc_rsh_error_event.is_set():
+                    pncLibrary.waitForErrorReset()
                 #if self.machine.servo_feedback_mode:
                 ## FIXME set up loop for running command queue
                 ## FIXME update state machine every loop?
-                pass
+                #pass
 
         # We are done running, clean up sockets
         #FIXME EStop machine here
-        self.motion_controller._running_thread = False
-        print('MACHINE CONTROLLER: waiting on motion controller shutdown')
-        if self.motion_controller.is_alive():
-            self.motion_controller.join()
+        self.synchronizer.t_run_motion_controller_event.clear()
+        self.motion_controller.join()
 
-        self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
-        self.machine.feedback_listener_thread_handle._running_thread = False
-        print('MACHINE CONTROLLER: waiting on feedback thread shutdown')
-        if self.machine.feedback_listener_thread_handle.is_alive():
-            self.machine.feedback_listener_thread_handle.join()
+        self.prepareMachineForDisconnect()
+        # self.machine.rsh_socket.shutdown(socket.SHUT_RDWR)
+        # self.machine.rsh_socket.close()
+        # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_close_string, self.machine.name, self.machine.ip_address+':'+str(self.machine.tcp_port))
 
-        self.machine.encoder_thread_handle._running_thread = False
-        print('MACHINE CONTROLLER: waiting on encoder thread shutdown')
-        if self.machine.encoder_thread_handle.is_alive():
-            self.machine.encoder_thread_handle.join()
-
-        print('MACHINE CONTROLLER: waiting on database thread shutdown')
-        self.machine.data_store_manager_thread_handle._running_thread = False
-        if self.machine.data_store_manager_thread_handle.is_alive():
-            self.machine.data_store_manager_thread_handle.join()
-
-        self.rsh_socket.shutdown(socket.SHUT_RDWR)
-        self.rsh_socket.close()
-        self._shutdown = True
-        print('MACHINE CONTROLLER: thread shut down')
-
+    def handleCommand(self, command):
+        if command.command_type == 'CONNECT':
+            self.connectAndLink()
+        elif command.command_type == "ENQUEUE":
+            #self.enqueuePointFiles(command.command_data[0], command.data[2])
+            self.enqueuePointFiles(command.command_data[0], command.data[2])
+        elif command.command_type == "EXECUTE":
+            self.synchronizer.mc_run_motion_event.set()
 
     ######################## Motion Controller Interface ########################
     def waitForMotionControllerStart(self):
@@ -258,26 +247,26 @@ class MachineController(Process):
             print('Can\'t find those files, error ' + str(error))
 
     ######################## SculptPrint MVC ########################
-    def checkSculptPrintUI(self):
-        #FIXME this is a waste of CPU, use a stateupdate event from SP interface
-        if self.synchronizer.mvc_connect_event.is_set():
-            self.connectAndLink()
-            self.machine.sculptprint_interface.connected = True
-            self.synchronizer.mvc_connect_event.clear()
+    # def checkSculptPrintUI(self):
+    #     #FIXME this is a waste of CPU, use a stateupdate event from SP interface
+    #     if self.synchronizer.mvc_connect_event.is_set():
+    #         self.connectAndLink()
+    #         self.machine.sculptprint_interface.connected = True
+    #         self.synchronizer.mvc_connect_event.clear()
+    #
+    #     if self.machine.sculptprint_interface.connected:
+    #         if self.synchronizer.mvc_enqueue_moves_event.is_set():
+    #             self.enqueuePointFiles(int(self.machine.sculptprint_interface.start_file),int(self.machine.sculptprint_interface.end_file))
+    #             self.synchronizer.mvc_moves_queued_event.set()
+    #             self.synchronizer.mvc_enqueue_moves_event.clear()
+    #
+    #         if self.synchronizer.mvc_run_motion_event.is_set():
+    #             if self.synchronizer.mvc_moves_queued_event.wait():
+    #                 print('checkSculptPrintInterface running motion')
+    #                 self.motion_controller._running_motion = True
+    #                 self.synchronizer.mvc_moves_queued_event.clear()
 
-        if self.machine.sculptprint_interface.connected:
-            if self.synchronizer.mvc_enqueue_moves_event.is_set():
-                self.enqueuePointFiles(int(self.machine.sculptprint_interface.start_file),int(self.machine.sculptprint_interface.end_file))
-                self.synchronizer.mvc_moves_queued_event.set()
-                self.synchronizer.mvc_enqueue_moves_event.clear()
-
-            if self.synchronizer.mvc_run_motion_event.is_set():
-                if self.synchronizer.mvc_moves_queued_event.wait():
-                    print('checkSculptPrintInterface running motion')
-                    self.motion_controller._running_motion = True
-                    self.synchronizer.mvc_moves_queued_event.clear()
-
-        time.sleep(0.1)
+        #time.sleep(0.1)
 
     ######################## Writing Functions ########################
     def socketLockedWrite(self, data):
@@ -322,6 +311,7 @@ class MachineController(Process):
 
             self.waitForSet(self.setCommMode, 1, self.getCommMode)
 
+        self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: Control initialization successful")
         self.synchronizer.mvc_connected_event.set()
 
     def login(self, timeout = 0.5):
@@ -571,13 +561,18 @@ class MachineController(Process):
         else:
             return False
 
-    def waitForSet(self, set_function, set_params, get_function, timeout = 2):
+    def waitForSet(self, set_function, set_params, get_function, timeout = None):
+        ## FIXME really need to implement this timeout
+        start_time = time.clock()
+        if timeout is None:
+            timeout = np.inf
+
         if set_params is not None:
             set_function(set_params)
         else:
             set_function()
 
-        while not get_function()[0]:
+        while not get_function()[0] and (start_time-time.clock() <= timeout):
             #FIXME check that returned value matches set_params
             print('waiting for ' + str(get_function))
             pass
@@ -592,6 +587,9 @@ class MachineController(Process):
         else:
             print('Machine not ready: isAutoMode returned ' + str(pncLibrary.isAutoMode(self.machine, self.synchronizer)) + ' and machine status is ' + self.machine.status)
             return False
+
+    def prepareMachineForDisconnect(self):
+        return self.waitForSet(self.setEstop, 1, self.getEstop, 1)
 
     def close(self):
         print('in machine controller close')

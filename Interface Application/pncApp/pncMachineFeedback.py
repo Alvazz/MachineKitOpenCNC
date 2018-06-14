@@ -42,7 +42,10 @@ class FeedbackProcessor(Thread):
 
     def run(self):
         self.startup_event.set()
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        #pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_launch_string, current_process().name,
+                                                     self.name)
         while self.synchronizer.t_run_feedback_processor_event.is_set():
             #if not self.process_queue.empty():
             try:
@@ -50,9 +53,15 @@ class FeedbackProcessor(Thread):
                 self.processFeedbackData(*raw_data)
             except:
                 pass
-        while True:
-            #FIXME handle rx_received_time accurately here
-            pass
+
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
+        #FIXME flush the rest to DB before shutdown
+        #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
+        # while True:
+        #     #FIXME handle rx_received_time accurately here
+        #     pass
 
     def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
         if feedback_type.upper() == 'COMMAND ECHO':
@@ -179,6 +188,8 @@ class FeedbackProcessor(Thread):
                     #FIXME unpack binary here
                     self.processBufferLevelFeedback('binary', rx_received_time, feedback_data)
                     self.machine.buffer_level_reception_event.set()
+            else:
+                pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, 'received unrecognized binary string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         print('got buffer_level feedback')
@@ -327,45 +338,55 @@ class MachineFeedbackHandler(Process):
         self.synchronizer.process_start_signal.wait()
         time.clock()
 
-        if self.synchronizer.p_enable_feedback_handler_event.is_set():
-            self.synchronizer.p_run_feedback_handler_event.wait()
-            while self.synchronizer.p_run_feedback_handler_event.is_set():
-                # Process feedback from EMCRSH
-                #FIXME store state in FeedbackState object
-                if select.select([self.machine.rsh_socket], [], [], 0)[0]:
-                    #Clock when these data were received
-                    rx_received_time = time.clock()
-                    #First parse the header
-                    bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
-                    self.byte_string.extend(bytes_received)
-                    print('byte_string length is now ' + str(len(self.byte_string)))
-                    self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log', bytes_received, None, rx_received_time))
+        #if self.synchronizer.p_enable_feedback_handler_event.is_set():
+        self.synchronizer.p_run_feedback_handler_event.wait()
+        while self.synchronizer.p_run_feedback_handler_event.is_set():
+            # Process feedback from EMCRSH
+            #FIXME store state in FeedbackState object
+            if select.select([self.machine.rsh_socket], [], [], 0)[0]:
+                #Clock when these data were received
+                rx_received_time = time.clock()
+                #First parse the header
+                bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
+                self.byte_string.extend(bytes_received)
+                print('byte_string length is now ' + str(len(self.byte_string)))
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log', bytes_received, None, rx_received_time))
 
-                if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
-                    self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index, self.rx_received_time = self.assembleFeedbackHeader(self.byte_string, rx_received_time)
+            if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
+                self.header_processed, self.header_processing_error, self.feedback_encoding, self.feedback_type, self.header_delimiter_index, self.rx_received_time = self.assembleFeedbackHeader(self.byte_string, rx_received_time)
 
-                #FIXME should this handle multiple transmissions in one loop?
-                if self.header_processed and not self.header_processing_error:
-                    #Drop header data, it's already good
-                    old_byte_string_before_header = self.byte_string
-                    self.byte_string = self.byte_string[self.header_delimiter_index:]
-                    self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
-                        self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
+            #FIXME should this handle multiple transmissions in one loop?
+            if self.header_processed and not self.header_processing_error:
+                #Drop header data, it's already good
+                old_byte_string_before_header = self.byte_string
+                self.byte_string = self.byte_string[self.header_delimiter_index:]
+                self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
+                    self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
 
-                    if self.feedback_data_processed and not self.feedback_data_processing_error:
-                        #Now drop the complete command from the buffer and reset flags
-                        old_byte_string = self.byte_string
-                        self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
-                        #FIXME use feedbackstate object instead of individual flags
-                        self.resetFeedbackState()
-                        self.header_processed = False
-                        self.header_processing_error = False
-                        self.feedback_data_processed = False
-                        self.feedback_data_processing_error = False
-                        # self.last_processed_byte_string = self.byte_string
+                if self.feedback_data_processed and not self.feedback_data_processing_error:
+                    #Now drop the complete command from the buffer and reset flags
+                    old_byte_string = self.byte_string
+                    self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
+                    #FIXME use feedbackstate object instead of individual flags
+                    self.resetFeedbackState()
+                    self.header_processed = False
+                    self.header_processing_error = False
+                    self.feedback_data_processed = False
+                    self.feedback_data_processing_error = False
+                    # self.last_processed_byte_string = self.byte_string
 
         #Flag set, shutdown. Handle socket closure in machine_controller
-        print('flagging feedback socket')
+        self.synchronizer.t_run_feedback_processor_event.clear()
+        self.feedback_processor.join()
+
+        print('break')
+        # import sys
+        # def pass_fcn(): pass
+        # sys.stdout.flush = pass_fcn
+        # sys.stderr.flush = pass_fcn
+
+
+        #print('flagging feedback socket')
         #self.machine_controller._running = False
         #self.log_file_handle.close()
         #self._shutdown = True

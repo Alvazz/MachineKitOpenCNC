@@ -14,70 +14,44 @@ class EncoderInterface(Process):
         self.machine = machine
         self.synchronizer = synchronizer
 
-        #self.serial_port = serial_port
-
-        #self._running = True
-        #self._shutdown = False
-
         self.serial_port = serial.Serial()
         self.serial_port.port = self.machine.comm_port
         self.serial_port.baudrate = self.machine.initial_baudrate
+        self.serial_port.timeout = self.machine.serial_read_timeout
 
         self.encoder_reads = 0
         self.encoder_reading_time = 0
         self.encoder_read_time_moving_average = 0
 
-
-        #print('serialInterface started')
-        #time.sleep(0.5)
-        #self._running_process = True
-
     def run(self):
         current_thread().name = self.main_thread_name
-        print('break')
         try:
-            if self.serial_port.isOpen():
-                print('Serial port already open')
+            # If I remember correctly, this is only necessary because opening the port in __init__(...) caused some picklability error
+            if self.serial_port.is_open:
+                pncLibrary.printStringToTerminalMessageQueue('serial port already open')
                 self.serial_port.close()
+                time.sleep(0.5)
                 self.serial_port.open()
             else:
                 self.serial_port.open()
-
             time.sleep(0.5)
 
             if not self.acknowledgeBoot():
-                print('Decoder board not responsive')
-                return
+                print('Decoder board not responsive, terminating process')
+                # FIXME how does this work?
+                raise IOError
             else:
-                pncLibrary.printTerminalString(self.machine.device_boot_string, self.device_name, self.serial_port.name)
-            # serial_port.open()
-            # time.sleep(0.5)
-            #self._running_process = True
-        except Exception as error:
-            print('Could not open serial port, error: ' + str(error))
+                #pncLibrary.printTerminalString(self.machine.device_boot_string, self.device_name, self.serial_port.name)
+                pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.device_boot_string, self.device_name, self.serial_port.name)
 
-        self.synchronizer.ei_startup_event.set()
-        self.synchronizer.process_start_signal.wait()
-        time.clock()
+            self.synchronizer.ei_startup_event.set()
+            self.synchronizer.process_start_signal.wait()
+            time.clock()
 
-        #FIXME this logic is not necessary
-        if self.serial_port.isOpen():
-            #print('Successful launch of encoder interface process, PID: ' + str(self.pid) + ', Process: ' + str(current_process()))
-            #global encoderData, serialLock
-            #self.setEncoderCount(self.machine.encoder_init)
+            if not self.syncEncoderToStepgen(self.machine.event_wait_timeout):
+                raise TimeoutError
 
-            #FIXME uncomment for actual run
-            # if self.synchronizer.mc_initial_position_set_event.wait() or 1:
-            #     self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes,list(map(lambda cp,mz: cp-mz,self.machine.current_position,self.machine.machine_zero))))
-            #     self.machine.encoder_init_event.set()
-            # self.synchronizer.mc_initial_position_set_event.wait()
-            # self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
-            # self.machine.encoder_init_event.set()
-            self.syncEncoderToStepgen()
             self.initializeSerialComm(self.machine.target_baudrate)
-
-            #self.setBaudrate(250000)
-            #self.serial_port.flushInput()
 
             if self.synchronizer.p_enable_encoder_event.is_set():
                 self.synchronizer.p_run_encoder_interface_event.wait()
@@ -99,25 +73,30 @@ class EncoderInterface(Process):
                         #FIXME should probably push packets of data instead of every sample
                         encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])])}
                         self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
-                        #time.sleep(1)
-                        # self.machine.data_store_manager_thread_handle.push(
-                        #     {'ENCODER_FEEDBACK_POSITIONS': np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1])), 'SERIAL_RECEIVED_TIMES': self.machine.estimateMachineClock(rx_received_time)})
 
-            #Flag set, shutdown
-            #print('Closing serial port')
-            self.serial_port.close()
-            print('ENCODER INTERFACE: Serial port closed')
+        except Exception as error:
+            #print('Could not open serial port, error: ' + str(error))
+            self.synchronizer.ei_startup_event.set()
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_failed_string+str(error), self.machine.comm_port)
 
-            #self._shutdown = True
-        else:
-            print('closing serial interface process because port is not open')
-            pncLibrary.printTerminalString(self.machine.process_terminate_string,self.name,self.pid)
+        ## FIXME need to __del__() the port?
+        # try:
+        #     close_flag = self.serial_port.close() if self.serial_port.is_open() else 0
+        # except Exception as error:
+        #     print('had error: ' + str(error))
+        self.serial_port.close()
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_close_string, self.device_name, self.machine.comm_port)
 
-    def syncEncoderToStepgen(self):
-        self.synchronizer.mc_initial_position_set_event.wait()
-        self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(
-            map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
-        self.synchronizer.ei_encoder_init_event.set()
+    def syncEncoderToStepgen(self, timeout = None):
+        try:
+            self.synchronizer.mc_initial_position_set_event.wait(timeout)
+            self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(
+                map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
+            self.synchronizer.ei_encoder_init_event.set()
+            return True
+        except:
+            self.synchronizer.q_print_server_message_queue.put("ENCODER INTERFACE: Wait on stepgen sync timed out")
+            return False
 
     def initializeSerialComm(self, baudrate):
         self.serial_port.flushInput()
@@ -127,15 +106,6 @@ class EncoderInterface(Process):
     ##    def write(self, data):
     ##        line = self.serial_port.readline()
     ##        return line
-
-    # def reset(self):
-    #     global encoderData, serialLock
-    #     #serialLock.acquire()
-    #     self.serial_port.close()
-    #     self.serial_port.open()
-    #     encoderData = np.array([0])
-    #     queueData = np.array([0])
-    #     #serialLock.release()
 
     ########################### UTILITIES ###########################
 
@@ -178,16 +148,10 @@ class EncoderInterface(Process):
             return (False, None)
 
     def waitForString(self, string, timeout = 0.5):
-        # #read_byte_count = 0
-        # read_data = ''
-        # start_time = time.clock()
-        # while string not in read_data and (time.clock() - start_time) < timeout:
-        #     read_data += self.serial_port.readline().decode('utf-8')
-        #     #read_byte_count += 1
-
+        ## FIXME need a timeout here in case sync fails
         start = time.clock()
         read_data = self.serial_port.readline().decode('utf-8')
-        print('read took ' + str(time.clock()-start))
+        self.synchronizer.q_print_server_message_queue.put('read took ' + str(time.clock()-start))
         if string in read_data:
             return (True, read_data)
         else:
@@ -212,11 +176,9 @@ class EncoderInterface(Process):
         return self.waitForString(self.machine.encoder_ack_strings[0])[0]
 
     def setAxisEncoderCount(self, axis, count):
-        #number_of_bytes = math.floor(round(math.log(count, 10),6)) + 1
         command_string = 'S' + str(axis) + str(self.countBytesInTransmission(count)) + str(count)
         self.writeUnicode(command_string)
         if self.waitForString(self.machine.encoder_ack_strings[1]):
-        #if self.waitForBytes(len(self.machine.encoder_ack_strings[0]))[1] == self.machine.encoder_ack_strings[0]:
             return True
         else:
             return False
@@ -225,25 +187,6 @@ class EncoderInterface(Process):
         for axis in axes:
             axis_index = self.machine.axes.index(axis)
             self.setAxisEncoderCount(axis_index+1,counts[axis_index])
-
-    # def setEncoderCount(self, count):
-    #     # self.serial_port.write('R'.encode('utf-8'))
-    #     # Calculate number of characters in set command
-    #     numBytes = math.floor(round(math.log(count, 10),6)) + 1
-    #     commandStr = 'S' + str(numBytes) + str(count) + '\n'
-    #     print('setting' + commandStr)
-    #     self.serial_port.write(commandStr.encode('utf-8'))
-    #
-    #     ack = self.waitForBytes(2)[1]
-    #     if ack == 'S&':
-    #         return True
-    #     else:
-    #         return False
-    #     # readData = ''
-    #     # while 'S&' not in readData:
-    #     #     #print("waiting to read")
-    #     #     readData += self.serial_port.read(1).decode("utf-8").strip()
-    #     # print('Successful set of encoder count to ' + str(count))
 
     def getEncoderCounts(self, request_type):
         #print('requesting encoder count')
@@ -264,29 +207,6 @@ class EncoderInterface(Process):
         if encoder_data[0].decode() == request_string and encoder_data[-1].decode() == ack_string:
             return (True, encoder_data[1:-1], rx_received_time)
         return(False, None)
-
-        # received_counts = self.waitForString(ack_string)
-        #
-        # if received_counts[0]:
-        #     #First character should be G
-        #     counts = received_counts[1].split(' ')
-        #     if counts[0] == request_string and counts[-1] == ack_string:
-        #         if len(counts[1]) < 9:
-        #             print('break')
-        #         return (True, list(map(int,counts[1:-1])))
-        # #else:
-        # return (False, None)
-
-        # if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
-        #
-        # #time.sleep(0.1)
-        # readData = ''
-        # while 'C&' not in readData:
-        #     #print("waiting to read")
-        #     readData += self.serial_port.read(1).decode("utf-8")
-        # #print('Successful get of encoder count')
-        # #print(readData.strip())
-        # return readData.strip()
 
     def setBaudrate(self, baudrate):
         self.writeUnicode(self.machine.encoder_command_strings[3] + str(self.countBytesInTransmission(baudrate)) + str(baudrate))

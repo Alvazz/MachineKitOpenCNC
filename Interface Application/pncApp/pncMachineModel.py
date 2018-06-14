@@ -13,12 +13,12 @@ class MachineModelStatics():
         self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
         self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
         self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+        self.pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
         self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
         self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
         self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
         self.connection_open_string = "CONNECTED to {} on {}"
         self.connection_close_string = "DISCONNECTED from {} on {}"
-        self.sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
 
 class MachineModelState():
     def __init__(self):
@@ -69,7 +69,8 @@ class MachineModel():
         #Thread/Process Parameters
         self.thread_queue_wait_timeout = 0.1
         self.process_queue_wait_timeout = 0.1
-        self.event_wait_timeout = 1
+        self.event_wait_timeout = 5
+        self.join_timeout = 2
 
         #Jokes
         self.machine_name = "PocketVMC"
@@ -81,13 +82,17 @@ class MachineModel():
         self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
         self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
         self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+        self.process_force_terminate_string = "PROCESS FORCE STOPPED: {} PID: {}"
         self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+        self.pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
         self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
         self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
         self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
         self.device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
         self.connection_open_string = "CONNECTED to {} on {}"
         self.connection_close_string = "DISCONNECTED from {} on {}"
+        self.connection_failed_string = "CONNECTION FAILED on {}, error: "
+        self.sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
 
         # self.feedback_listener_thread_handle = None
         # self.machine_controller_thread_handle = None
@@ -230,6 +235,7 @@ class MachineModel():
         self.comm_port = 'COM3'
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
+        self.serial_read_timeout = 0.5
         self.ssh_opts = '-X'
         self.ssh_credentials = 'pocketnc@' + self.ip_address
         self.ssh_hosts_path = 'E:\SculptPrint\PocketNC\OpenCNC\Interface Application\pncApp\Support Files\known_hosts'

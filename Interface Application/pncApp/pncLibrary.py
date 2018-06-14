@@ -3,6 +3,40 @@ from threading import Thread
 from multiprocessing import Event, current_process
 
 ######################## Useful Classes ########################
+class SculptPrintInterface():
+    #MVC for SculptPrint UI
+    def __init__(self):
+        #super(SculptPrintInterface, self).__init__()
+        #self.machine = machine
+        self.connected = False
+
+        #Flags for user events
+        self.enqueue_moves = False
+
+        #UI Data Fields
+        self.start_file = 0
+        self.end_file = 0
+
+        #Events
+        # self.connect_event = threading.Event()
+        # self.enqueue_moves_event = threading.Event()
+        # self.moves_queued_event = threading.Event()
+        # self.run_motion_event = threading.Event()
+
+class SculptPrintFeedbackState():
+    def __init__(self):
+        #Data Handling
+        self.LF_start_time_index = 0
+        self.HF_start_time_index = 0
+        self.serial_start_time_index = 0
+
+        self.last_time_reading = 0
+        self.last_position_reading = 0
+        self.last_buffer_level_reading = 0
+
+        self.machine_feedback_record_id = 0
+        self.encoder_feedback_record_id = 0
+
 class PrintServer(Thread):
     def __init__(self, machine, synchronizer):
         super(PrintServer, self).__init__()
@@ -12,9 +46,9 @@ class PrintServer(Thread):
         self.startup_event = Event()
 
     def run(self):
-        printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        #printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
-        while self.synchronizer.t_run_print_server.is_set():
+        while self.synchronizer.t_run_print_server_event.is_set():
             print(self.synchronizer.q_print_server_message_queue.get())
 
 class Synchronizer():
@@ -63,12 +97,16 @@ class Synchronizer():
         self.mc_restore_mode_event = manager.Event()
         self.mc_clock_sync_event = manager.Event()
         self.mc_xenomai_clock_sync_event = manager.Event()
+        self.mc_run_motion_event = manager.Event()
+        self.mc_motion_complete_event = manager.Event()
+        self.mc_rsh_error_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
         self.ei_startup_event = manager.Event()
         self.db_startup_event = manager.Event()
+        #self.pnc_app_initialized_event = manager.Event()
         self.mc_running_event = manager.Event()
         self.fb_running_event = manager.Event()
         self.ei_running_event = manager.Event()
@@ -77,16 +115,21 @@ class Synchronizer():
         #self.testevent = Event()
 
         #SculptPrint MVC Events
+        self.mvc_pncApp_initialized_event = manager.Event()
+        self.mvc_pncApp_started_event = manager.Event()
         self.mvc_connect_event = manager.Event()
         self.mvc_connected_event = manager.Event()
         self.mvc_enqueue_moves_event = manager.Event()
         self.mvc_moves_queued_event = manager.Event()
         self.mvc_execute_motion_event = manager.Event()
+        self.mvc_run_feedback_event = manager.Event()
+        self.mvc_app_shutdown_event = manager.Event()
 
         # Queues
         self.q_database_command_queue_proxy = manager.Queue()
         self.q_database_output_queue_proxy = manager.Queue()
         self.q_print_server_message_queue = manager.Queue()
+        self.q_machine_controller_command_queue = manager.Queue()
 
         # Locks
         self.db_data_store_lock = manager.Lock()
@@ -117,13 +160,16 @@ class Move():
 
 class MachineCommand():
     #Class for RSH commands, mode switches, etc
-    def __init__(self, control_function, control_function_parameters, ack_function, ack_function_parameters = None):
-        super(MachineCommand, self).__init__()
-        self.control_function = control_function
-        self.control_function_parameters = control_function_parameters
-        self.ack_function = ack_function
-        if ack_function_parameters != None:
-            self.ack_function_parameters = ack_function_parameters
+    def __init__(self, command_type, command_data):
+        #super(MachineCommand, self).__init__()
+        self.command_type = command_type
+        self.command_data = command_data
+
+        # self.control_function = control_function
+        # self.control_function_parameters = control_function_parameters
+        # self.ack_function = ack_function
+        # if ack_function_parameters != None:
+        #     self.ack_function_parameters = ack_function_parameters
 
 class DatabaseCommand():
     def __init__(self, command_type, records, parameters = None, time = None):
@@ -153,6 +199,10 @@ def lockedPull(synchronizer, data_types, start_indices, end_indices):
         synchronizer.q_database_command_queue_proxy.put(DatabaseCommand('pull', data_types, (start_indices, end_indices)))
         return synchronizer.q_database_output_queue_proxy.get()
 
+def waitForErrorReset():
+    #FIXME implement a spinlock or wait for RSH error to be handled and reset, then return to normal operation
+    pass
+
 ######################## State Machine ########################
 def setTaskRunFlags(synchronizer, state = True):
     for attribute in dir(synchronizer):
@@ -163,10 +213,7 @@ def setTaskRunFlags(synchronizer, state = True):
                 getattr(synchronizer, attribute).clear()
 
 def pushState(machine):
-    # save machine state
-    # self.prev_mode = self.mode
     machine.mode_stack += machine.mode
-    # return #saved state structure
 
 def popState(machine):
     return machine.mode_stack.pop()
@@ -296,3 +343,6 @@ def visualizePoints(move_queue):
 ######################## Terminal Interaction ########################
 def printTerminalString(string, *args):
     print(string.format(*args))
+
+def printStringToTerminalMessageQueue(queue, string, *args):
+    queue.put(string.format(*args))

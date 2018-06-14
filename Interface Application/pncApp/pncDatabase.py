@@ -26,20 +26,11 @@ class Record():
         self.timestamp = timestamp
         self.data = data
 
-class ReturnRecord(Record):
-    def __init__(self, record_id, data):
-        super(Record, self).__init__(None, None, None)
-        self.id = record_id
-        self.output_data = data
-        #self.data_type = data_type
-        #self.timestamp = timestamp
-        #self.data = data
-
-# class DatabaseCommand():
-#     def __init__(self, command_type, records, parameters = None):
-#         self.command_type = command_type
-#         self.data = records
-#         self.command_parameters = parameters
+# class ReturnRecord(Record):
+#     def __init__(self, record_id, data):
+#         super(Record, self).__init__(None, None, None)
+#         self.id = record_id
+#         self.output_data = data
 
 class TerminalLoggingServer(Thread):
     def __init__(self, machine, synchronizer):
@@ -83,7 +74,12 @@ class LoggingServer(Thread):
                 self.log_file_handle.flush()
             except:
                 pass
+
         self.log_file_handle.close()
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
+
 
 class Puller(Thread):
     def __init__(self, machine, synchronizer, data_store):
@@ -108,6 +104,10 @@ class Puller(Thread):
                 self.output_queue.put(output_data)
             except:
                 pass
+
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         self.machine.thread_terminate_string, current_process().name,
+                                                         self.name)
             # if not self.pull_queue.empty():
             #     pull_request = self.pull_queue.get()
             #     #with self.data_store_lock:
@@ -192,19 +192,13 @@ class Pusher(Thread):
             except:
                 pass
 
-            # if not self.push_queue.empty():
-            #     push_request = self.push_queue.get()
-            #     self.push(push_request)
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
 
     def push(self, records):
         records = self.formatPushRequest(records)
         self.appendMachineFeedbackRecords(records)
-        # for key, value in records.items():
-        #     records_upper[key.upper()] = value
-        # #records_upper.append(record_upper)
-        # if self.machine.clock_event.isSet():
-        #     #Only push data to DB after clocks have been synced
-        #     self.record_queue.put(Record(records_upper, time.clock()))
 
     def formatPushRequest(self, records):
         records_upper = []
@@ -235,6 +229,7 @@ class StateManipulator(Thread):
         super(StateManipulator, self).__init__()
         self.name = "machine_state_manipulator"
         self.machine = machine
+        self.synchronizer = synchronizer
         self.machine_state_lock = synchronizer.db_machine_state_lock
 
         self.state_change_queue = Queue()
@@ -242,7 +237,7 @@ class StateManipulator(Thread):
 
     def run(self):
         self.startup_event.set()
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
         #while True:
             #pass
 
@@ -284,6 +279,17 @@ class DatabaseServer(Process):
                 #     self.appendMachineFeedbackRecords([records.data])
                 #     self.record_queue.task_done()
                 self.updateMachineState()
+            self.synchronizer.t_run_pusher_event.clear()
+            self.pusher.join()
+
+            self.synchronizer.t_run_puller_event.clear()
+            self.puller.join()
+
+            self.synchronizer.t_run_state_manipulator_event.clear()
+            self.state_manipulator.join()
+
+            self.synchronizer.t_run_logger_event.clear()
+            self.logging_server.join()
                 # position_update = self.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
                 # buffer_level_update = self.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
                 # if position_update[0]:
