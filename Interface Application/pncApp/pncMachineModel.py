@@ -56,6 +56,7 @@ class MachineModelState():
         self.servo_log_num_axes = 5
         self.servo_log_sub_sample_rate = 10
         self.servo_log_buffer_size = 50
+        self.buffer_level_feedback_mode = 0
         self.buffer_level_feedback_period_us = 1e6
 
         self.polylines_per_tx = 1
@@ -71,6 +72,7 @@ class MachineModel():
         self.process_queue_wait_timeout = 0.1
         self.event_wait_timeout = 5
         self.join_timeout = 2
+        self.socket_timeout = 1
 
         #Jokes
         self.machine_name = "PocketVMC"
@@ -78,12 +80,15 @@ class MachineModel():
 
         #Terminal printouts
         self.connection_string = "CONNECTED to {} remote shell at {}:{}"
-        self.failed_connection_string = "Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+        self.failed_connection_string = "CONNECTION FAILED: Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
         self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
         self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
         self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+        self.process_self_terminate_string = "PROCESS STOPPED: {} PID: {} shut itself down"
         self.process_force_terminate_string = "PROCESS FORCE STOPPED: {} PID: {}"
+        self.process_error_string = "PROCESS ERROR: {} encountered error: {}"
         self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+        self.pncApp_launch_failure_string = "FAILURE: pncApp cannot launch, cleaning up..."
         self.pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
         self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
         self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
@@ -168,7 +173,7 @@ class MachineModel():
         self.comm_mode = 0
         self.servo_feedback_mode = 0
         self.buffer_level_feedback_mode = 0
-        self.buffer_level_feedback_period = 1e6
+        self.buffer_level_feedback_period_us = 1e6
         self.units = 'inch'
 
         #self.rsh_error = 0

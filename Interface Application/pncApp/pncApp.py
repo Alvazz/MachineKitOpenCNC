@@ -20,14 +20,25 @@ def registerProxy(name, cls, proxy, manager):
                     lambda s: object.__getattribute__(s, '_callmethod')(attr))
     manager.register(name, cls, proxy)
 
-def openNetworkConnection(machine, control_client_ip, control_client_port):
+def openNetworkConnection(machine, synchronizer, control_client_ip, control_client_port):
     try:
-        machine.rsh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        machine.rsh_socket.connect((control_client_ip, control_client_port))
-        pncLibrary.printTerminalString(machine.connection_string, machine.name, control_client_ip, control_client_port)
+        #machine.rsh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        rsh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        rsh_socket.settimeout(machine.socket_timeout)
+        #machine.rsh_socket = rsh_socket
+        #FIXME put in a timeout here
+        #machine.rsh_socket.settimeout(machine.socket_timeout)
+        rsh_socket.connect((control_client_ip, control_client_port))
+        #machine.rsh_socket.connect((control_client_ip, control_client_port))
+        #machine.rsh_socket.settimeout(None)
+        rsh_socket.settimeout(None)
+        machine.rsh_socket = rsh_socket
+        pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue, machine.connection_string, machine.name, control_client_ip, control_client_port)
         return True
     except socket.error:
-        pncLibrary.printTerminalString(machine.failed_connection_string, machine.name, control_client_ip, control_client_port)
+        #Set up dummy socket to not crash other processes
+        machine.rsh_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue, machine.failed_connection_string, machine.name, control_client_ip, control_client_port)
         return False
 
 def appInit():
@@ -53,6 +64,7 @@ def appInit():
     return pnc_app_manager, machine, synchronizer
 
 def appStart(type, pnc_app_manager, machine, synchronizer):
+    pncLibrary.setTaskRunFlags(synchronizer)
     synchronizer.mvc_run_feedback_event.set()
     #global pnc_app_manager, machine, synchronizer
     # #FIXME ignore SIGINT?
@@ -87,16 +99,28 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
     machine_controller.start()
     pncLibrary.printTerminalString(machine.process_launch_string, machine_controller.name, machine_controller.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
 
-    openNetworkConnection(machine, control_client_ip, control_client_port)
-    waitForAppStart(synchronizer)
-
     pnc_app_manager.machine = machine
     pnc_app_manager.database = database
     pnc_app_manager.encoder_interface = encoder_interface
     pnc_app_manager.machine_controller = machine_controller
     pnc_app_manager.feedback_handler = feedback_handler
 
-    signalProcessWake(synchronizer)
+    if openNetworkConnection(machine, synchronizer, control_client_ip, control_client_port):
+        waitForAppStart(synchronizer)
+        #pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
+        synchronizer.mc_socket_connected.set()
+        signalProcessWake(synchronizer)
+        if checkSuccessfulStart(synchronizer):
+            pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
+        else:
+            pncLibrary.printTerminalString(machine.pncApp_launch_failure_string, multiprocessing.cpu_count())
+            return appClose(pnc_app_manager, synchronizer)
+    else:
+        waitForAppStart(synchronizer)
+        pncLibrary.printTerminalString(machine.pncApp_launch_failure_string, multiprocessing.cpu_count())
+        signalProcessWake(synchronizer)
+        return appClose(pnc_app_manager, synchronizer)
+
     pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
     synchronizer.mvc_pncApp_started_event.set()
 
@@ -111,51 +135,26 @@ def appStop(pnc_app_manager):
 
 def appClose(pnc_app_manager, synchronizer):
     #FIXME need timeout and force terminate
-    #print('pnc_app_manager is ' + str(pnc_app_manager))
-    #pnc_app_manager.machine.run_machine_controller = False
-
-    # synchronizer.p_run_encoder_interface_event.clear()
-    # try:
-    #     pnc_app_manager.encoder_interface.join(pnc_app_manager.machine.join_timeout)
-    #     pncLibrary.printTerminalString(pnc_app_manager.machine.process_terminate_string,
-    #                                pnc_app_manager.encoder_interface.name, pnc_app_manager.encoder_interface.pid)
-    # except:
-    #     pnc_app_manager.encoder_interface.terminate()
-    #     pncLibrary.printTerminalString(pnc_app_manager.machine.process_force_terminate_string,
-    #                                    pnc_app_manager.encoder_interface.name, pnc_app_manager.encoder_interface.pid)
-
     closeProcess(pnc_app_manager, synchronizer, "encoder_interface")
     closeProcess(pnc_app_manager, synchronizer, "machine_controller")
     closeProcess(pnc_app_manager, synchronizer, "feedback_handler")
     closeProcess(pnc_app_manager, synchronizer, "database")
     closeRSHSocket(pnc_app_manager, synchronizer)
-
-    # synchronizer.p_run_machine_controller_event.clear()
-    # synchronizer.p_enable_machine_controller_event.clear()
-    # pnc_app_manager.machine_controller.join()
-    # pncLibrary.printTerminalString(pnc_app_manager.machine.process_terminate_string,
-    #                                pnc_app_manager.machine_controller.name, pnc_app_manager.machine_controller.pid)
-    #
-    # synchronizer.p_run_feedback_handler_event.clear()
-    # pnc_app_manager.feedback_handler.join()
-    # pncLibrary.printTerminalString(pnc_app_manager.machine.process_terminate_string,
-    #                                pnc_app_manager.feedback_handler.name, pnc_app_manager.feedback_handler.pid)
-    #
-    # pnc_app_manager.machine.rsh_socket.shutdown(socket.SHUT_RDWR)
-    # pnc_app_manager.machine.rsh_socket.close()
-    # pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue,
-    #                                              pnc_app_manager.machine.connection_close_string, pnc_app_manager.machine.name,
-    #                                              pnc_app_manager.machine.ip_address + ':' + str(pnc_app_manager.machine.tcp_port))
-    #
-    # synchronizer.p_run_database_event.clear()
-    # pnc_app_manager.database.join()
-    # pncLibrary.printTerminalString(pnc_app_manager.machine.process_terminate_string,
-    #                                pnc_app_manager.database.name, pnc_app_manager.database.pid)
-
-
-    pncLibrary.printTerminalString(pnc_app_manager.machine.pncApp_terminate_string, multiprocessing.cpu_count())
+    #FIXME close app manager
+    pncLibrary.printTerminalString(pnc_app_manager.machine.pncApp_terminate_string)
     synchronizer.mvc_app_shutdown_event.set()
+    #pnc_app_manager.shutdown()
     #pnc_app_manager.machine_controller.join()
+
+def checkSuccessfulStart(pnc_app_manager, synchronizer):
+    try:
+        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        return True
+    except:
+        return False
 
 def waitForAppStart(synchronizer):
     synchronizer.db_startup_event.wait()
@@ -174,12 +173,15 @@ def closeProcess(pnc_app_manager, synchronizer, process):
                                        getattr(pnc_app_manager, process).name, getattr(pnc_app_manager, process).pid)
     except:
         getattr(pnc_app_manager, process).terminate()
+        getattr(pnc_app_manager, process).join()
         pncLibrary.printTerminalString(pnc_app_manager.machine.process_force_terminate_string,
                                        getattr(pnc_app_manager, process).name, getattr(pnc_app_manager, process).pid)
 
 def closeRSHSocket(pnc_app_manager, synchronizer):
-    pnc_app_manager.machine.rsh_socket.shutdown(socket.SHUT_RDWR)
+    if synchronizer.mc_socket_connected_event.is_set():
+        pnc_app_manager.machine.rsh_socket.shutdown(socket.SHUT_RDWR)
     pnc_app_manager.machine.rsh_socket.close()
+    synchronizer.mc_socket_connected_event.clear()
     pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue,
                                                  pnc_app_manager.machine.connection_close_string,
                                                  pnc_app_manager.machine.name,

@@ -1,4 +1,5 @@
 import pncTrajectoryGeneration as tp
+import sys
 from threading import Thread
 from multiprocessing import Event, current_process
 
@@ -49,7 +50,8 @@ class PrintServer(Thread):
         #printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
         while self.synchronizer.t_run_print_server_event.is_set():
-            print(self.synchronizer.q_print_server_message_queue.get())
+            print(self.synchronizer.q_print_server_message_queue.get(0.5))
+            sys.stdout.flush()
 
 class Synchronizer():
     def __init__(self, manager):
@@ -69,6 +71,7 @@ class Synchronizer():
         self.t_run_pusher_event = manager.Event()
         self.t_run_state_manipulator_event = manager.Event()
         self.t_run_print_server_event = manager.Event()
+        self.t_run_cloud_trajectory_planner = manager.Event()
 
         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
         self.fb_connection_change_event = manager.Event()
@@ -100,12 +103,17 @@ class Synchronizer():
         self.mc_run_motion_event = manager.Event()
         self.mc_motion_complete_event = manager.Event()
         self.mc_rsh_error_event = manager.Event()
+        self.mc_socket_connected_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
         self.ei_startup_event = manager.Event()
         self.db_startup_event = manager.Event()
+        self.mc_successful_start_event = manager.Event()
+        self.fb_successful_start_event = manager.Event()
+        self.ei_successful_start_event = manager.Event()
+        self.db_successful_start_event = manager.Event()
         #self.pnc_app_initialized_event = manager.Event()
         self.mc_running_event = manager.Event()
         self.fb_running_event = manager.Event()
@@ -178,7 +186,16 @@ class DatabaseCommand():
         self.command_parameters = parameters
         self.time = time
 
-######################## Multitank Management ########################
+class RSHError(Exception):
+    def __init__(self, message, errors):
+        super().__init__(message)
+        self.errors = errors
+
+class WebsocketError(Exception):
+    def __init__(self, message):
+        self.message = message
+
+######################## Multitask Management ########################
 def startPrintServer(machine, synchronizer):
     print_server = PrintServer(machine, synchronizer)
     print_server.start()
@@ -293,6 +310,10 @@ def countTerminatorsToGobble(byte_string, terminator):
             else:
                 break
     return terminator_count
+
+def socketLockedWrite(machine, synchronizer, data):
+    with synchronizer.mc_socket_lock:
+        machine.rsh_socket.send(data)
 
 ######################## Data Handling ########################
 import struct, numpy as np, csv

@@ -196,21 +196,19 @@ class Pusher(Thread):
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
 
-    def push(self, records):
-        records = self.formatPushRequest(records)
-        self.appendMachineFeedbackRecords(records)
+    def push(self, push_request):
+        records = self.formatPushRequest(push_request[0])
+        if push_request[1] == 'numpy':
+            self.appendMachineFeedbackRecords(records)
+        elif push_request[1] == 'object':
+            self.appendObjects(records)
 
     def formatPushRequest(self, records):
         records_upper = []
         for record in records:
             record_upper = {}
             for key, value in record.items():
-                # if type(value) != np.ndarray:
-                #     value = np.array([[value]])
-                #if len(np.shape(value)) < 2
                 record_upper[key.upper()] = value
-                # if key == 'ENCODER_FEEDBACK_POSITIONS':
-                #     print('break')
             records_upper.append(record_upper)
         return records_upper
 
@@ -222,7 +220,18 @@ class Pusher(Thread):
                         #FIXME this is going to get very slow
                         setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
                     except Exception as error:
-                        print("Feedback pusher could not append data with type ID: " + str(key) + ', had error: ' + str(error))
+                        print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
+
+    def appendObjects(self, records):
+        with self.data_store_lock:
+            for record in records:
+                for key, value in record.items():
+                    try:
+                        #FIXME this is going to get very slow
+                        #setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
+                        getattr(self.data_store, key).append(value)
+                    except Exception as error:
+                        print("Feedback pusher could not append object with type ID: " + str(key) + ', had error: ' + str(error))
 
 class StateManipulator(Thread):
     def __init__(self, machine, synchronizer):
@@ -266,6 +275,7 @@ class DatabaseServer(Process):
         time.clock()
 
         if self.synchronizer.p_enable_database_event.is_set():
+            self.synchronizer.db_successful_start_event.set()
             self.synchronizer.p_run_database_event.wait()
             while self.synchronizer.p_run_database_event.is_set():
                 #First handle incoming commands
@@ -337,13 +347,16 @@ class DatabaseServer(Process):
             # records_upper = {}
             # for key, value in command.data.items():
             #     records_upper[key.upper()] = value
-            self.pusher.push_queue.put(command.data)
+            self.pusher.push_queue.put((command.data, 'numpy'))
 
             #FIXME this is a band-aid, perhaps the database should only be started once clocks are synced
             # if self.synchronizer.mc_clock_sync_event.is_set() or 1:
             #     # Only push data to DB after clocks have been synced
             #     self.appendMachineFeedbackRecords([records_upper])
             #     #self.record_queue.put(Record(records_upper, time.clock()))
+
+        elif command.command_type == 'push_object':
+            self.pusher.push_queue.put((command.data, 'object'))
 
         elif command.command_type == 'pull':
             data_types = command.data
@@ -371,147 +384,6 @@ class DatabaseServer(Process):
         if buffer_level_update[0]:
             self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
-#     def push(self, records):
-#         #FIXME implement type to log to file
-#         #Upper all keys
-#         records_upper = {}
-#         #for record_key in records:
-# #            record_upper = {}
-#         for key, value in records.items():
-#             records_upper[key.upper()] = value
-#         #records_upper.append(record_upper)
-#         if self.machine.clock_event.isSet():
-#             #Only push data to DB after clocks have been synced
-#             self.record_queue.put(Record(records_upper, time.clock()))
-
-    # def pull(self, data_types, start_indices, end_indices):
-    #     #FIXME return a success flag for each data item returned
-    #     if type(data_types) is not list:
-    #         data_types, start_indices, end_indices = [[d] for d in [data_types, start_indices, end_indices]]
-    #
-    #     return_data = []
-    #     success_flag = True
-    #     #self.synchronizer.db_data_store_lock.acquire()
-    #     with self.synchronizer.db_data_store_lock:
-    #         for k in range(0,len(data_types)):
-    #             data_type = data_types[k]
-    #             data_array = self.data_store.lookupDataType(data_type.upper())
-    #             start_index = start_indices[k]
-    #             end_index = end_indices[k]
-    #             if np.shape(data_array)[0] == 0:
-    #                 #print('the shape is ' + str(np.shape(data_array)))
-    #                 #print('data array for type ' + str(data_type) + ' is empty')
-    #                 if self.machine.rsh_buffer_level > 0:
-    #                     print('pull break')
-    #                 #return_data.append(None)
-    #                 return_data.append(np.empty((0,data_array.shape[1])))
-    #
-    #                 success_flag = success_flag and False
-    #             elif (start_index or 0) >= np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
-    #                 #print('data index for type ' + str(data_type) + ' out of range')
-    #                 #return_data.append(None)
-    #                 return_data.append(np.empty((0, data_array.shape[1])))
-    #                 success_flag = success_flag and False
-    #             else:
-    #                 return_data.append(data_array[start_index:end_index,:])
-    #                 if len(data_array[start_index:end_index,:]) == 0:
-    #                     print('break')
-    #                 success_flag = success_flag and True
-    #
-    #
-    #     #if None in return_data:
-    #     try:
-    #         if any([d is None for d in return_data]):
-    #             if success_flag is True:
-    #                 print('break')
-    #     except:
-    #         print('break')
-    #     return (success_flag, return_data)
-
-        # elif type(data_types) is str:
-        #     #FIXME will this work?
-        #     data_array = self.data_store.lookupDataType(data_types.upper())
-        #     if start_indices > np.shape(data_array)[0] or end_indices > np.shape(data_array)[0]:
-        #         print('data indices out of range')
-        #         return None
-        #
-        #     self.db_data_store_lock.acquire()
-        #     data = data_array[start_index:end_index,:]
-        #     self.db_data_store_lock.release()
-        #     return data
-
-    # def appendMachineFeedbackRecords(self, records):
-    #     self.synchronizer.db_data_store_lock.acquire()
-    #     for record in records:
-    #         if 'RTAPI_FEEDBACK_INDICES' in record:
-    #             self.data_store.RTAPI_FEEDBACK_INDICES = np.vstack(
-    #                 (self.data_store.RTAPI_FEEDBACK_INDICES, record['RTAPI_FEEDBACK_INDICES']+len(self.data_store.RTAPI_FEEDBACK_INDICES)))
-    #
-    #         if 'commanded_joint_positions' in record:
-    #             self.data_store.commanded_joint_positions = np.vstack(
-    #                 (self.data_store.commanded_joint_positions, record['commanded_joint_positions']))
-    #             ## FIXME increment machine feedback number of records if ANY of these, except encoder data, is provided
-    #             #self.data_store.machine_feedback_num_records += 1
-    #
-    #         if 'STEPGEN_FEEDBACK_POSITIONS' in record:
-    #             self.data_store.STEPGEN_FEEDBACK_POSITIONS = np.vstack(
-    #                 (self.data_store.STEPGEN_FEEDBACK_POSITIONS, record['STEPGEN_FEEDBACK_POSITIONS']))
-    #
-    #         if 'ENCODER_FEEDBACK_POSITIONS' in record:
-    #             self.data_store.ENCODER_FEEDBACK_POSITIONS = np.vstack(
-    #                 (self.data_store.ENCODER_FEEDBACK_POSITIONS, record['ENCODER_FEEDBACK_POSITIONS']))
-    #             #print('current encoder record is ' + str(self.data_store.encoder_feedback_num_records))
-    #             #self.data_store.encoder_feedback_num_records += 1
-    #
-    #         if 'HIGHRES_TC_QUEUE_LENGTH' in record:
-    #             self.data_store.HIGHRES_TC_QUEUE_LENGTH = np.vstack(
-    #                 (self.data_store.HIGHRES_TC_QUEUE_LENGTH, record['HIGHRES_TC_QUEUE_LENGTH']))
-    #
-    #         if 'machine_clock_times' in record:
-    #             self.data_store.machine_clock_times = np.vstack((self.data_store.machine_clock_times, record['machine_clock_times']))
-    #
-    #         if 'machine_time_delta' in record:
-    #             self.data_store.machine_time_delta = np.append(self.data_store.machine_time_delta, record['machine_time_delta'])
-    #
-    #         if 'MACHINE_TIMES_INTERPOLATED' in record:
-    #             self.data_store.MACHINE_TIMES_INTERPOLATED = np.append(self.data_store.MACHINE_TIMES_INTERPOLATED,
-    #                                                                    record['MACHINE_TIMES_INTERPOLATED'])
-    #
-    #         if 'machine_tcq_length' in record:
-    #             self.data_store.machine_tc_queue_length = np.append(self.data_store.machine_tc_queue_length, record['machine_tcq_length'])
-    #
-    #         if 'rt_thread_num_executions_delta' in record:
-    #             self.data_store.rt_thread_num_executions_delta = np.append(self.data_store.rt_thread_num_executions_delta,
-    #                                                             record['rt_thread_num_executions_delta'])
-    #
-    #         if 'machine_time_delta' in record:
-    #             self.data_store.machine_running_time += record['machine_time_delta']
-    #
-    #         if 'LOWFREQ_ETHERNET_RECEIVED_TIMES' in record:
-    #             self.data_store.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.vstack(
-    #                 (self.data_store.LOWFREQ_ETHERNET_RECEIVED_TIMES, record['LOWFREQ_ETHERNET_RECEIVED_TIMES']))
-    #
-    #         if 'RTAPI_CLOCK_TIMES' in record:
-    #             #print('inserting RTAPI_clock_times')
-    #             self.data_store.RTAPI_CLOCK_TIMES = np.vstack((self.data_store.RTAPI_CLOCK_TIMES, record['RTAPI_CLOCK_TIMES']))
-    #
-    #         if 'HIGHFREQ_ETHERNET_RECEIVED_TIMES' in record:
-    #             self.data_store.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.vstack(
-    #                 (self.data_store.HIGHFREQ_ETHERNET_RECEIVED_TIMES, record['HIGHFREQ_ETHERNET_RECEIVED_TIMES']))
-    #
-    #         if 'RSH_CLOCK_TIMES' in record:
-    #             self.data_store.RSH_CLOCK_TIMES = np.vstack((self.data_store.RSH_CLOCK_TIMES, record['RSH_CLOCK_TIMES']))
-    #
-    #         if 'SERIAL_RECEIVED_TIMES' in record:
-    #             self.data_store.SERIAL_RECEIVED_TIMES = np.vstack(
-    #                 (self.data_store.SERIAL_RECEIVED_TIMES, record['SERIAL_RECEIVED_TIMES']))
-    #
-    #         if 'NETWORK_PID_DELAY' in record:
-    #             self.data_store.network_PID_delays = np.vstack((self.data_store.network_PID_delays, record['NETWORK_PID_DELAY']))
-    #
-    #     self.synchronizer.db_data_store_lock.release()
-
-
 class DataStore():
     def __init__(self):
         #Timers for each data source
@@ -525,10 +397,7 @@ class DataStore():
         self.encoder_feedback_written_record_id = -1
 
         ### DATA STORES ###
-        #Timers -- time_delta - 1 for each record, times_interpolated 
-        #self.machine_time_delta = np.zeros(1,dtype=float)
-        #self.machine_clock_times = np.zeros(1,dtype=float)
-        #self.machine_times_interpolated = np.zeros(1,dtype=float)
+        #Timers -- time_delta - 1 for each record, times_interpolated
         self.machine_time_delta = np.empty((0,1), float)
         self.machine_clock_times = np.empty((0,1), float)
         self.MACHINE_TIMES_INTERPOLATED = np.empty((0, 1), float)
@@ -550,7 +419,7 @@ class DataStore():
 
         #Positions from stepgen and encoders
         #self.commanded_joint_positions = np.zeros([1,5],dtype=float)
-        self.commanded_joint_positions = np.empty((0,5), float)
+        self.COMMANDED_SERVO_POLYLINES = np.empty((0,5), float)
         self.sent_servo_commands = []
 
         #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
@@ -569,22 +438,13 @@ class DataStore():
         self.imported_axes_points = []
 
         #Successfully executed moves
-        self.completed_moves = []
-
-
-        # self.data_descriptors = ['RTAPI_feedback_indices', 'commanded_joint_positions', 'stepgen_feedback_postitions',
-        #                          'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH',
-        #                          'lowfreq_ethernet_received_times', 'highfreq_ethernet_received_times']
+        self.NETWORK_PID_DELAYS = np.empty((0,1), float)
+        self.EXECUTED_MOVES = []
 
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
-                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS']
-
-        # self.data_handles = [self.RTAPI_FEEDBACK_INDICES, self.commanded_joint_positions,
-        #                      self.STEPGEN_FEEDBACK_POSITIONS, self.ENCODER_FEEDBACK_POSITIONS,
-        #                      self.HIGHRES_TC_QUEUE_LENGTH, self.RTAPI_CLOCK_TIMES, self.LOWFREQ_ETHERNET_RECEIVED_TIMES,
-        #                      self.HIGHFREQ_ETHERNET_RECEIVED_TIMES]
+                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINES', 'NETWORK_PID_DELAYS']
 
     def lookupDataType(self, data_type):
         data_type = data_type.upper()

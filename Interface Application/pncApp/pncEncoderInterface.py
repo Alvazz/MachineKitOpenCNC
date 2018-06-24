@@ -54,6 +54,7 @@ class EncoderInterface(Process):
             self.initializeSerialComm(self.machine.target_baudrate)
 
             if self.synchronizer.p_enable_encoder_event.is_set():
+                self.synchronizer.ei_successful_start_event.set()
                 self.synchronizer.p_run_encoder_interface_event.wait()
                 pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name, self.name)
                 while self.synchronizer.p_run_encoder_interface_event.is_set():
@@ -71,13 +72,27 @@ class EncoderInterface(Process):
                         self.machine.average_encoder_read_frequency = 1.0/self.encoder_read_time_moving_average
 
                         #FIXME should probably push packets of data instead of every sample
-                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])])}
+                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
                         self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
 
-        except Exception as error:
+        except serial.SerialException as error:
             #print('Could not open serial port, error: ' + str(error))
             self.synchronizer.ei_startup_event.set()
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_failed_string+str(error), self.machine.comm_port)
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         self.machine.process_self_terminate_string,
+                                                         self.name,
+                                                         self.pid)
+        except Exception as error:
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.process_error_string, self.name, str(error))
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         self.machine.process_self_terminate_string,
+                                                         self.machine.name,
+                                                         self.machine.comm_port)
+        else:
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         self.machine.connection_close_string, self.device_name,
+                                                         self.machine.comm_port)
 
         ## FIXME need to __del__() the port?
         # try:
@@ -85,7 +100,7 @@ class EncoderInterface(Process):
         # except Exception as error:
         #     print('had error: ' + str(error))
         self.serial_port.close()
-        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_close_string, self.device_name, self.machine.comm_port)
+        #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_close_string, self.device_name, self.machine.comm_port)
 
     def syncEncoderToStepgen(self, timeout = None):
         try:

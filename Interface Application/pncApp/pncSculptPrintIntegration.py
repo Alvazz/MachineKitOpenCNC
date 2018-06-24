@@ -1,13 +1,13 @@
-import multiprocessing, inspect, os, sys, numpy as np
+import pncLibrary, multiprocessing, os, sys, logging, numpy as np
+from pncCamUserInterface import CAM_MVC
+
 print('Current PYTHONPATH is ' + str(sys.path))
 project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
 if project_path not in sys.path:
     sys.path.append('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\')
-from pncApp import appInit, appStart, appStop, appClose
-from pncCamUserInterface import CAM_MVC
-import pncLibrary
 
-import pncMachineModel
+#Globals
+sculptprint_MVC = None
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 axis_sensor_id = [0, 1]
@@ -84,11 +84,12 @@ def startMVC():
 
 def start():
     global sculptprint_MVC, machine, synchronizer, terminal_printer, feedback_state
-    sculptprint_MVC = startMVC()
-    machine = sculptprint_MVC.machine
-    synchronizer = sculptprint_MVC.synchronizer
-    terminal_printer = sculptprint_MVC.terminal_printer
-    feedback_state = sculptprint_MVC.feedback_state
+    if sculptprint_MVC is None:
+        sculptprint_MVC = startMVC()
+        machine = sculptprint_MVC.machine
+        synchronizer = sculptprint_MVC.synchronizer
+        terminal_printer = sculptprint_MVC.terminal_printer
+        feedback_state = sculptprint_MVC.feedback_state
 
     sculptprint_MVC.command_queue.put('START')
     #pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
@@ -395,10 +396,13 @@ def testMonitoring():
 # print('here')
 # if __name__ == '__main__':
 #     start()
+
 multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
+
 print('main name is ' + str(__name__))
 if __name__ == '__main__':
-    multiprocessing.freeze_support()
+    #multiprocessing.freeze_support()
+    #multiprocessing.log_to_stderr(logging.ERROR)
     start()
     #connectToMachine()
     userPythonFunction1(0,0,0,0,0)

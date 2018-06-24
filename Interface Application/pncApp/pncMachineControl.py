@@ -1,8 +1,62 @@
-import pncLibrary
-import struct, time, socket, select, math, queue, signal, paramiko
-import numpy as np, matplotlib.pyplot as plt
+import pncLibrary, struct, time, paramiko, websocket, json, asyncio, numpy as np#, matplotlib.pyplot as plt
+import websockets
 from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
+from queue import Empty
+from io import StringIO
+
+class CloudPathPlanner(Thread):
+    def __init__(self, synchronizer):
+        self.name = "cloud_trajectory_planner"
+        self.synchronizer = synchronizer
+        self.tp_websocket = websocket.WebSocket()
+        self.client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
+        self.server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
+
+        self.path_serial_number = 0
+        self.raw_point_queue = Queue()
+        self.planned_point_queue = Queue()
+
+        self.startup_event = Event()
+
+    def run(self):
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_launch_string, current_process().name,
+                                                     self.name)
+        try:
+            #with websockets.connect("wss://node2.wsninja.io")
+            self.tp_websocket.connect("wss://node2.wsninja.io")
+            self.tp_websocket.send(json.dumps({'guid': self.client_GUID}))
+            ack_message = json.loads(self.tp_websocket.recv())
+            if not ack_message['accepted']:
+                raise pncLibrary.WebsocketError('Websocket connection failed')
+
+            while self.synchronizer.t_run_cloud_trajectory_planner.is_set():
+                points_to_plan = self.raw_point_queue.get()
+                self.path_serial_number += 1
+                self.tp_websocket.send(json.dumps({'serial_number': str(self.path_serial_number), 'points': self.stringifyPoints(points_to_plan)}))
+
+                planned_points = json.loads(self.tp_websocket.recv())
+                if not planned_points['serial_number'] == self.path_serial_number:
+                    raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
+                self.planned_point_queue.put(self.unStringifyPoints(planned_points))
+
+        except Exception as error:
+            self.synchronizer.q_print_server_message_queue.put("Webcosket error: " + str(error))
+
+        self.tp_websocket.close()
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
+
+    def stringifyPoints(self, point_array):
+        #FIXME there is no way this can be this clunky
+        points_fh = StringIO()
+        np.savetxt(points_fh, point_array)
+        return points_fh.getvalue().strip()
+
+    def unStringifyPoints(self, point_string):
+        return np.loadtxt(StringIO(point_string))
 
 class SystemController(Thread):
     def __init__(self, machine):
@@ -46,37 +100,30 @@ class MotionController(Thread):
 
         while self.synchronizer.t_run_motion_controller_event.is_set():
             if self.synchronizer.mc_run_motion_event.wait(self.machine.thread_queue_wait_timeout):
-                print('length of move queue is ' + str(self.move_queue.qsize()))
+                #print('length of move queue is ' + str(self.move_queue.qsize()))
 
                 #There are new moves in the queue, find the one to be executed next
                 while not self.move_queue.empty() and not self.machine.rsh_error:
-                #for move_queue_position in range(self.last_move_serial_number,current_queue_length):
                     move_to_execute = self.move_queue.get()
                     self.current_move_serial_number += 1
                     move_to_execute.serial_number = self.current_move_serial_number
 
                     #move_to_execute = self.move_queue[self.last_move_serial_number + 1 - 1]
-                    print('executing move ' + str(move_to_execute.serial_number))
-                    self.move_in_progress = move_to_execute
-                    while not self.commandPoints(move_to_execute.servo_tx_array,self.polylines,self.blocklength):
-                        if self.machine.rsh_error or not self._running_motion or not self._running_thread:
-                            print('MOTION CONTROLLER: Exiting motion execution')
-                            break
-                        else:
-                            pass
+                    #print('executing move ' + str(move_to_execute.serial_number))
+                    #self.move_in_progress = move_to_execute
+
+                    self.synchronizer.q_database_command_queue_proxy.put(
+                        pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOVES": move_to_execute}]))
+
+                    try:
+                        self.commandPoints(move_to_execute.servo_tx_array, self.polylines, self.blocklength)
+                    except pncLibrary.RSHError:
+                        self.synchronizer.q_print_server_message_queue.put("MOTION CONTROLLER: Detected RSH error, aborting motion")
+                        self.move_queue = Queue()
+                        break
+
                     self.last_move_serial_number = move_to_execute.serial_number
                     self.move_queue.task_done()
-                    #FIXME use data_store_manager thread
-                    self.parent.database_push_queue.put({"EXECUTED_MOVES": move_to_execute})
-                    print('done. last_move_serial_number is now ' + str(self.last_move_serial_number))
-
-                #self.machine_controller.setBinaryMode(0)
-                self._running_motion = False
-
-                if self.machine.rsh_error:
-                    #Clear out move queue
-                    print('dumping move queue')
-                    self.move_queue = queue.Queue()
 
 
         #Thread signaled to shutdown
@@ -87,14 +134,8 @@ class MotionController(Thread):
         #self._shutdown = True
 
     def commandPoints(self, servo_points, polylines, blocklength, commands_to_send = -1):
-        # Store imported axis points in data repository
-        #FIXME use DB manager
-        #self.machine_controller.database_push_queue_proxy.current_servo_points = servo_points
-
         if commands_to_send == -1:
-            print("sending all points")
             commands_to_send = int(servo_points.shape[0] / polylines)
-            print(commands_to_send)
 
         #Form binary command string
         for command in range(0, commands_to_send):
@@ -110,32 +151,25 @@ class MotionController(Thread):
                         commanded_points.append(servo_points[(command * polylines) + polyline, point, axis])
 
             binary_command += self.machine.binary_line_terminator
+
             if self.machine.rsh_error:
-                print('commandPoints detected RSH error after ' + str(command) + ' commands')
+                raise pncLibrary.RSHError("Detected RSH error after " + str(command) + " commands")
                 return
 
-            self.machine.buffer_level_reception_event.clear()
-            #FIXME do this better insertion into data_store
-            #self.machine_controller.data_store.sent_servo_commands.append(commanded_points)
-            self.parent.database_push_queue_proxy.put({'commanded_servo_points': commanded_points})
-            self.machine_controller.rsh_socket.send(binary_command)
+            pncLibrary.socketLockedWrite(self.machine, self.synchronizer, binary_command)
+
             #FIXME check buffer was flushed
-
-            ## FIXME store current position from feedback thread
-            #self.machine_controller.machine.current_position = np.reshape(axis_coords[-1, -1, :], [1, self.machine.number_of_joints])[0]
-
             sleep_time = self.runNetworkPID(self.machine.rsh_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
+            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'COMMANDED_SERVO_POLYLINES': commanded_points, 'NETWORK_PID_DELAYS': sleep_time}]))
             time.sleep(sleep_time)
 
         #self.machine_controller.setBinaryMode(0)
-        return True
+        #return True
 
     def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.03, Ki=0,
                       Kd=0):
-        # sleepTime = (blockLength*polyLines)/1000 - (Kp*((1000-self.rshQueueData[-1])))/1000
         if (self.machine.max_buffer_level - current_buffer_length) < 100:
             print('WARNING: Buffer finna overflow')
-        #print(current_buffer_length)
         sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_length - current_buffer_length))) / 1000,0)
         return sleep_time
 
@@ -148,16 +182,9 @@ class MachineController(Process):
         super(MachineController, self).__init__()
         self.name = "machine_controller"
         self.main_thread_name = self.name + ".MainThread"
-        #print('in machine controller init')
         self.machine = machine
         self.synchronizer = synchronizer
         self.command_queue = synchronizer.q_machine_controller_command_queue
-        #self.database_push_queue_proxy = database_push_queue_proxy
-        #self.rsh_socket = self.machine.rsh_socket
-
-        self.rsh_buffer_level = 0
-
-        #self.machine_command_queue = queue.Queue()
 
         self.getFunctions = [self.getMachineMode, self.getEstop]
         self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
@@ -167,55 +194,56 @@ class MachineController(Process):
     def run(self):
         current_thread().name = self.main_thread_name
         #self.socket_mutex = threadLock()
-        self.waitForMotionControllerStart()
+        self.waitForThreadStart()
 
-        #FIXME wait on start signal
         self.synchronizer.mc_startup_event.set()
-
         self.synchronizer.process_start_signal.wait()
         time.clock()
 
+        #FIXME protect with try...except to print errors to terminalprintserver
         if self.synchronizer.p_enable_machine_controller_event.is_set():
-            self.synchronizer.p_run_machine_controller_event.wait()
+            self.synchronizer.mc_successful_start_event.set()
+            #self.synchronizer.p_run_machine_controller_event.wait()
             while self.synchronizer.p_run_machine_controller_event.is_set():
                 #self.checkSculptPrintUI()
                 try:
                     command = self.command_queue.get(True, self.machine.process_queue_wait_timeout)
                     self.handleCommand(command)
-                except:
+                except Empty:
                     pass
+                except not Empty as error:
+                    self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: Had error: " + str(error))
+                #     pass
 
                 if self.synchronizer.mc_rsh_error_event.is_set():
                     pncLibrary.waitForErrorReset()
-                #if self.machine.servo_feedback_mode:
-                ## FIXME set up loop for running command queue
-                ## FIXME update state machine every loop?
-                #pass
 
-        # We are done running, clean up sockets
-        #FIXME EStop machine here
         self.synchronizer.t_run_motion_controller_event.clear()
         self.motion_controller.join()
 
-        self.prepareMachineForDisconnect()
-        # self.machine.rsh_socket.shutdown(socket.SHUT_RDWR)
-        # self.machine.rsh_socket.close()
-        # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_close_string, self.machine.name, self.machine.ip_address+':'+str(self.machine.tcp_port))
+        #FIXME only do this if machine is connected
+        if self.synchronizer.mvc_connected_event.is_set():
+            self.prepareMachineForDisconnect()
 
     def handleCommand(self, command):
         if command.command_type == 'CONNECT':
             self.connectAndLink()
         elif command.command_type == "ENQUEUE":
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
-            self.enqueuePointFiles(command.command_data[0], command.data[2])
+            self.enqueuePointFiles(command.command_data[0], command.data[1])
         elif command.command_type == "EXECUTE":
             self.synchronizer.mc_run_motion_event.set()
 
     ######################## Motion Controller Interface ########################
-    def waitForMotionControllerStart(self):
+    def waitForThreadStart(self):
         self.motion_controller = MotionController(self.machine, self.synchronizer)
+        self.cloud_trajectory_planner = CloudPathPlanner(self.synchronizer)
         self.motion_controller.start()
+        self.cloud_trajectory_planner.start()
         self.motion_controller.startup_event.wait()
+        self.cloud_trajectory_planner.startup_event.wait()
+
+
 
     def insertMove(self, move):
         # Populate parameters of the move
@@ -275,18 +303,18 @@ class MachineController(Process):
 
     def writeLineUTF(self,data):
         #FIXME protect with mutex?
-        self.machine.rsh_socket.send((data+'\r\n').encode('utf-8'))
+        self.socketLockedWrite((data+'\r\n').encode('utf-8'))
 
-    def writeLineBin(self,data):
-        data.extend(struct.pack('!f',np.inf))
-        self.rsh_socket.send(data)
+    # def writeLineBin(self,data):
+    #     data.extend(struct.pack('!f',np.inf))
+    #     self.rsh_socket.send(data)
 
     ######################## Setup Functions ########################
     ##FIXME implement heartbeat!
     def connectAndLink(self):
         #self.waitForSet(self.login,None,self.getLoginStatus)
         if not self.login()[0]:
-            print('No response from RSH or state machine synchronization failure, assume crash. Please investigate')
+            self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: No response from RSH or state machine synchronization failure, assume crash. Please investigate')
             ##FIXME ssh to machine and restart process - major bandaid
             return False
         else:
@@ -296,9 +324,9 @@ class MachineController(Process):
 
             #FIXME do this a number of times and average
             if self.getLatencyEstimate()[0]:
-                print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
             else:
-                print('failed to get network latency')
+                self.synchronizer.q_print_server_message_queue.put('MACHINE_CONTROLLER: Failed to get network latency')
 
 
             while not self.syncMachineClock():# and self.machine.servo_feedback_mode:
@@ -330,9 +358,10 @@ class MachineController(Process):
         #self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
         if not pncLibrary.isHomed(self.machine, self.synchronizer):
             self.waitForSet(self.setHomeAll,None,self.getAllHomed)
-        print('ready machine done homing')
+        self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
         self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
+        self.waitForSet(self.setBufferLevelFeedbackMode, 1, self.getBufferLevelFeedbackMode)
 
     ############################# GETs #############################
     def getLatencyEstimate(self, timeout = 0.5):
@@ -426,7 +455,7 @@ class MachineController(Process):
     def getBufferLevelFeedbackMode(self, timeout = None):
         if timeout is None:
             timeout = self.machine.event_wait_timeout
-        self.synchronizer.fb_buffer_level_feedback_change_event.clear()
+        self.synchronizer.fb_buffer_level_feedback_mode_change_event.clear()
         self.writeLineUTF('get buffer_level_feedback')
         return (self.synchronizer.fb_buffer_level_feedback_mode_change_event.wait(timeout), self.machine.buff)
 
@@ -591,10 +620,10 @@ class MachineController(Process):
     def prepareMachineForDisconnect(self):
         return self.waitForSet(self.setEstop, 1, self.getEstop, 1)
 
-    def close(self):
-        print('in machine controller close')
-        #self._running_thread = False
-        #self.exit()
-        #sys.exit()
+    # def close(self):
+    #     print('in machine controller close')
+    #     #self._running_thread = False
+    #     #self.exit()
+    #     #sys.exit()
 
 
