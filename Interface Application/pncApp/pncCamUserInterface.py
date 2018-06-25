@@ -58,8 +58,8 @@ class CAM_MVC(Thread):
                 print("SCULPTPRINT MVC: Connection problem, error " + str(error))
         elif command[0] == 'ENQUEUE':
             self.synchronizer.mvc_connect_event.wait()
-            #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', (int(command[1]), int(command[2]))))
-            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', None))
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', (int(command[1]), int(command[2]))))
+            #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', None))
         elif command[0] == 'EXECUTE':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))

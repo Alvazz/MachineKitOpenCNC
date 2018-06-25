@@ -73,6 +73,7 @@ class MachineModel():
         self.event_wait_timeout = 5
         self.join_timeout = 2
         self.socket_timeout = 1
+        self.max_mvc_startup_wait_time = 10
 
         #Jokes
         self.machine_name = "PocketVMC"
@@ -115,7 +116,7 @@ class MachineModel():
         self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
         self.rsh_error_string = 'NAK'
         self.rsh_echo_strings = ['SET', 'GET', 'DM']
-        self.ascii_rsh_feedback_strings = ['*', 'bTbL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'BUFFER_LEVEL_FEEDBACK', 'NAK']
+        self.ascii_rsh_feedback_strings = ['*', 'BTBL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'BUFFER_LEVEL_FEEDBACK', 'NAK']
         self.binary_rsh_feedback_strings = ['SF', 'BL']
         self.minimum_header_length = 3
         self.ascii_header_delimiter = ' '
@@ -129,7 +130,7 @@ class MachineModel():
         self.binary_line_terminator = b'\x7f'
         self.ascii_header_delimiter_bytes = self.ascii_header_delimiter.encode('utf-8')
 
-        self.rsh_feedback_flags = ['OFF', 'ON', 'NO', 'YES', 'ASCII', 'BINARY']
+        self.rsh_feedback_flags = ['OFF', 'ON', 'NO', 'YES', 'ASCII', 'BINARY', '0', '1']
         self.axes = ['X','Y','Z','A','B']
 
         #Stepgen calibration

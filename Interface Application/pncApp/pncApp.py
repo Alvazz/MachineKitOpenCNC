@@ -82,22 +82,35 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
 
     #main_process_name = str(multiprocessing.current_process().name)
     #main_process_pid = str(multiprocessing.current_process().pid)
+    #test = testProcess(machine, synchronizer)
+    #test.start()
 
-    database = DatabaseServer(machine, synchronizer)
-    database.start()
-    pncLibrary.printTerminalString(machine.process_launch_string, database.name, database.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
 
-    encoder_interface = EncoderInterface(machine, synchronizer)
-    encoder_interface.start()
-    pncLibrary.printTerminalString(machine.process_launch_string, encoder_interface.name, encoder_interface.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
+    # db_pipe_sender, db_pipe_receiver = multiprocessing.Pipe()
+    # database = DatabaseServer(machine, db_pipe_receiver)
+    # print('at db: ' + str(synchronizer.q_print_server_message_queue.empty()))
+    # database.start()
+    # pncLibrary.setSynchronizer(db_pipe_sender, synchronizer)
+    # #database.setSynchronizer(synchronizer)
+    # pncLibrary.printTerminalString(machine.process_launch_string, database.name, database.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
+    database, db_pipe_sender = startProcess(machine, synchronizer, DatabaseServer)
+    encoder_interface, ei_pipe_sender = startProcess(machine, synchronizer, EncoderInterface)
+    feedback_handler, fb_pipe_sender = startProcess(machine, synchronizer, MachineFeedbackHandler)
+    machine_controller, mc_pipe_sender = startProcess(machine, synchronizer, MachineController)
 
-    feedback_handler = MachineFeedbackHandler(machine, synchronizer)
-    feedback_handler.start()
-    pncLibrary.printTerminalString(machine.process_launch_string, feedback_handler.name, feedback_handler.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
+    # encoder_interface = EncoderInterface(machine)
+    # encoder_interface.start()
+    # pncLibrary.setSynchronizer(encoder_interface, synchronizer)
+    # pncLibrary.printTerminalString(machine.process_launch_string, encoder_interface.name, encoder_interface.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
 
-    machine_controller = MachineController(machine, synchronizer)
-    machine_controller.start()
-    pncLibrary.printTerminalString(machine.process_launch_string, machine_controller.name, machine_controller.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
+    # feedback_handler = MachineFeedbackHandler(machine, synchronizer)
+    # feedback_handler.start()
+    # pncLibrary.setSynchronizer(feedback_handler, synchronizer)
+    # pncLibrary.printTerminalString(machine.process_launch_string, feedback_handler.name, feedback_handler.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
+    #
+    # machine_controller = MachineController(machine, synchronizer)
+    # machine_controller.start()
+    # pncLibrary.printTerminalString(machine.process_launch_string, machine_controller.name, machine_controller.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
 
     pnc_app_manager.machine = machine
     pnc_app_manager.database = database
@@ -108,9 +121,9 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
     if openNetworkConnection(machine, synchronizer, control_client_ip, control_client_port):
         waitForAppStart(synchronizer)
         #pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
-        synchronizer.mc_socket_connected.set()
+        synchronizer.mc_socket_connected_event.set()
         signalProcessWake(synchronizer)
-        if checkSuccessfulStart(synchronizer):
+        if checkSuccessfulStart(pnc_app_manager, synchronizer):
             pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
         else:
             pncLibrary.printTerminalString(machine.pncApp_launch_failure_string, multiprocessing.cpu_count())
@@ -121,8 +134,9 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
         signalProcessWake(synchronizer)
         return appClose(pnc_app_manager, synchronizer)
 
-    pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
+    #pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
     synchronizer.mvc_pncApp_started_event.set()
+    closePipes(db_pipe_sender, ei_pipe_sender, mc_pipe_sender, fb_pipe_sender)
 
     return database, encoder_interface, feedback_handler, machine_controller
 
@@ -148,9 +162,9 @@ def appClose(pnc_app_manager, synchronizer):
 
 def checkSuccessfulStart(pnc_app_manager, synchronizer):
     try:
-        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
-        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
-        synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.db_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.ei_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.fb_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
         synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
         return True
     except:
@@ -165,6 +179,15 @@ def waitForAppStart(synchronizer):
 def signalProcessWake(synchronizer):
     synchronizer.process_start_signal.set()
 
+def startProcess(machine, synchronizer, process_class):
+    pipe_sender, pipe_receiver = multiprocessing.Pipe()
+    process = process_class(machine, pipe_receiver)
+    process.start()
+    pncLibrary.setSynchronizer(pipe_sender, synchronizer)
+    pncLibrary.printTerminalString(machine.process_launch_string, process.name, process.pid,
+                                   synchronizer.main_process_name, synchronizer.main_process_pid)
+    return process, pipe_sender
+
 def closeProcess(pnc_app_manager, synchronizer, process):
     getattr(synchronizer, "p_run_"+process+"_event").clear()
     try:
@@ -176,6 +199,10 @@ def closeProcess(pnc_app_manager, synchronizer, process):
         getattr(pnc_app_manager, process).join()
         pncLibrary.printTerminalString(pnc_app_manager.machine.process_force_terminate_string,
                                        getattr(pnc_app_manager, process).name, getattr(pnc_app_manager, process).pid)
+
+def closePipes(*args):
+    for pipe in args:
+        pipe.close()
 
 def closeRSHSocket(pnc_app_manager, synchronizer):
     if synchronizer.mc_socket_connected_event.is_set():
@@ -199,8 +226,11 @@ def closeRSHSocket(pnc_app_manager, synchronizer):
 
     #print('active threads are ' + str(threading.enumerate()))
 
-# if __name__ == '__main__':
-#     appInit()
+if __name__ == '__main__' and 0:
+    pnc_app_manager, machine, synchronizer = appInit()
+    database, encoder_interface, feedback_handler, machine_controller = appStart('pocketnc',pnc_app_manager,machine,synchronizer)
+
+    #appStart('pocketnc')
 #     appStart()
 #     pnc_app_manager, machine, database, encoder_interface, machine_controller, feedback_handler, synchronizer = appInit('pocketnc')
 #     #Store process handles in pnc_app_manager?

@@ -1,4 +1,4 @@
-import pncLibrary, struct, time, paramiko, websocket, json, asyncio, numpy as np#, matplotlib.pyplot as plt
+import pncLibrary, struct, time, paramiko, websocket, json, asyncio, numpy as np
 import websockets
 from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
@@ -6,9 +6,11 @@ from queue import Empty
 from io import StringIO
 
 class CloudPathPlanner(Thread):
-    def __init__(self, synchronizer):
+    def __init__(self, parent):
+        super(CloudPathPlanner, self).__init__()
         self.name = "cloud_trajectory_planner"
-        self.synchronizer = synchronizer
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
         self.tp_websocket = websocket.WebSocket()
         self.client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
         self.server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
@@ -23,31 +25,51 @@ class CloudPathPlanner(Thread):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_launch_string, current_process().name,
                                                      self.name)
-        try:
-            #with websockets.connect("wss://node2.wsninja.io")
-            self.tp_websocket.connect("wss://node2.wsninja.io")
-            self.tp_websocket.send(json.dumps({'guid': self.client_GUID}))
-            ack_message = json.loads(self.tp_websocket.recv())
-            if not ack_message['accepted']:
-                raise pncLibrary.WebsocketError('Websocket connection failed')
 
-            while self.synchronizer.t_run_cloud_trajectory_planner.is_set():
-                points_to_plan = self.raw_point_queue.get()
-                self.path_serial_number += 1
-                self.tp_websocket.send(json.dumps({'serial_number': str(self.path_serial_number), 'points': self.stringifyPoints(points_to_plan)}))
+        self.startup_event.set()
+        #with websockets.connect("wss://node2.wsninja.io") as self.tp_websocket:
+        self.openConnection()
+        while self.synchronizer.t_run_cloud_trajectory_planner.is_set():
+            #FIXME use asynchronous receive so can send multiple point sets in one shot
+            self.sendPoints()
+            self.receivePoints()
+            # planned_points = json.loads(self.tp_websocket.recv())
+            # if not planned_points['serial_number'] == self.path_serial_number:
+            #     raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
+            # self.planned_point_queue.put(self.unStringifyPoints(planned_points))
 
-                planned_points = json.loads(self.tp_websocket.recv())
-                if not planned_points['serial_number'] == self.path_serial_number:
-                    raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
-                self.planned_point_queue.put(self.unStringifyPoints(planned_points))
-
-        except Exception as error:
-            self.synchronizer.q_print_server_message_queue.put("Webcosket error: " + str(error))
+        # try:
+        #     #with websockets.connect("wss://node2.wsninja.io")
+        #     self.tp_websocket.connect("wss://node2.wsninja.io")
+        #     self.tp_websocket.send(json.dumps({'guid': self.client_GUID}))
+        #     ack_message = json.loads(self.tp_websocket.recv())
+        #     if not ack_message['accepted']:
+        #         raise pncLibrary.WebsocketError('Websocket connection failed')
+        #
+        #     while self.synchronizer.t_run_cloud_trajectory_planner.is_set():
+        #         points_to_plan = self.raw_point_queue.get()
+        #         self.path_serial_number += 1
+        #         self.tp_websocket.send(json.dumps({'serial_number': str(self.path_serial_number), 'points': self.stringifyPoints(points_to_plan)}))
+        #
+        #         planned_points = json.loads(self.tp_websocket.recv())
+        #         if not planned_points['serial_number'] == self.path_serial_number:
+        #             raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
+        #         self.planned_point_queue.put(self.unStringifyPoints(planned_points))
+        #
+        # except Exception as error:
+        #     self.synchronizer.q_print_server_message_queue.put("Websocket error: " + str(error))
 
         self.tp_websocket.close()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
+
+    def openConnection(self):
+        self.tp_websocket.connect("wss://node2.wsninja.io")
+        self.tp_websocket.send(json.dumps({'guid': self.client_GUID}))
+        ack_message = json.loads(self.tp_websocket.recv())
+        if not ack_message['accepted']:
+            raise pncLibrary.WebsocketError('Websocket connection failed')
 
     def stringifyPoints(self, point_array):
         #FIXME there is no way this can be this clunky
@@ -58,11 +80,24 @@ class CloudPathPlanner(Thread):
     def unStringifyPoints(self, point_string):
         return np.loadtxt(StringIO(point_string))
 
+    def sendPoints(self):
+        points_to_plan = self.raw_point_queue.get()
+        self.path_serial_number += 1
+        self.tp_websocket.send(
+            json.dumps({'serial_number': str(self.path_serial_number), 'points': self.stringifyPoints(points_to_plan)}))
+
+    def receivePoints(self):
+        planned_points = json.loads(self.tp_websocket.recv())
+        if not planned_points['serial_number'] == self.path_serial_number:
+            raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
+        self.planned_point_queue.put(self.unStringifyPoints(planned_points))
+
+
 class SystemController(Thread):
-    def __init__(self, machine):
+    def __init__(self, parent):
         super(SystemController, self).__init__()
         #FIXME set up SSH session here
-        self.machine = machine
+        self.machine = parent.machine
         self._running_thread = True
         self._run_ssh_connection = False
 
@@ -76,12 +111,12 @@ class SystemController(Thread):
         self.ssh_client.close()
 
 class MotionController(Thread):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, parent):
         super(MotionController, self).__init__()
         #self.parent = current_thread()
         self.name = "motion_controller"
-        self.machine = machine
-        self.synchronizer = synchronizer
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
 
         self.move_queue = Queue()
         self.move_in_progress = 0
@@ -126,12 +161,9 @@ class MotionController(Thread):
                     self.move_queue.task_done()
 
 
-        #Thread signaled to shutdown
-        #print('MOTION CONTROLLER: thread shut down')
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
-        #self._shutdown = True
 
     def commandPoints(self, servo_points, polylines, blocklength, commands_to_send = -1):
         if commands_to_send == -1:
@@ -163,9 +195,6 @@ class MotionController(Thread):
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'COMMANDED_SERVO_POLYLINES': commanded_points, 'NETWORK_PID_DELAYS': sleep_time}]))
             time.sleep(sleep_time)
 
-        #self.machine_controller.setBinaryMode(0)
-        #return True
-
     def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.03, Ki=0,
                       Kd=0):
         if (self.machine.max_buffer_level - current_buffer_length) < 100:
@@ -178,13 +207,13 @@ class MotionController(Thread):
 
 
 class MachineController(Process):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, machine, pipe):
         super(MachineController, self).__init__()
         self.name = "machine_controller"
         self.main_thread_name = self.name + ".MainThread"
         self.machine = machine
-        self.synchronizer = synchronizer
-        self.command_queue = synchronizer.q_machine_controller_command_queue
+        self.feed_pipe = pipe
+        #self.command_queue = synchronizer.q_machine_controller_command_queue
 
         self.getFunctions = [self.getMachineMode, self.getEstop]
         self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
@@ -193,8 +222,10 @@ class MachineController(Process):
 
     def run(self):
         current_thread().name = self.main_thread_name
+        pncLibrary.getSynchronizer(self, self.feed_pipe)
         #self.socket_mutex = threadLock()
-        self.waitForThreadStart()
+        #self.waitForThreadStart()
+        pncLibrary.waitForThreadStart(self, MotionController, CloudPathPlanner)
 
         self.synchronizer.mc_startup_event.set()
         self.synchronizer.process_start_signal.wait()
@@ -207,13 +238,12 @@ class MachineController(Process):
             while self.synchronizer.p_run_machine_controller_event.is_set():
                 #self.checkSculptPrintUI()
                 try:
-                    command = self.command_queue.get(True, self.machine.process_queue_wait_timeout)
+                    command = self.synchronizer.q_machine_controller_command_queue.get(True, self.machine.process_queue_wait_timeout)
                     self.handleCommand(command)
                 except Empty:
                     pass
-                except not Empty as error:
+                except Exception as error:
                     self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: Had error: " + str(error))
-                #     pass
 
                 if self.synchronizer.mc_rsh_error_event.is_set():
                     pncLibrary.waitForErrorReset()
@@ -228,22 +258,23 @@ class MachineController(Process):
     def handleCommand(self, command):
         if command.command_type == 'CONNECT':
             self.connectAndLink()
+            self.synchronizer.mvc_connect_event.set()
         elif command.command_type == "ENQUEUE":
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
-            self.enqueuePointFiles(command.command_data[0], command.data[1])
+            self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "EXECUTE":
             self.synchronizer.mc_run_motion_event.set()
 
+
+    # def waitForThreadStart(self):
+    #     self.motion_controller = MotionController(self.machine, self.synchronizer)
+    #     self.cloud_trajectory_planner = CloudPathPlanner(self.machine, self.synchronizer)
+    #     self.motion_controller.start()
+    #     self.cloud_trajectory_planner.start()
+    #     self.motion_controller.startup_event.wait()
+    #     self.cloud_trajectory_planner.startup_event.wait()
+
     ######################## Motion Controller Interface ########################
-    def waitForThreadStart(self):
-        self.motion_controller = MotionController(self.machine, self.synchronizer)
-        self.cloud_trajectory_planner = CloudPathPlanner(self.synchronizer)
-        self.motion_controller.start()
-        self.cloud_trajectory_planner.start()
-        self.motion_controller.startup_event.wait()
-        self.cloud_trajectory_planner.startup_event.wait()
-
-
 
     def insertMove(self, move):
         # Populate parameters of the move
@@ -319,7 +350,11 @@ class MachineController(Process):
             return False
         else:
             self.waitForSet(self.setEcho, 0, self.getEcho)
-            self.readyMachine()
+            try:
+                self.readyMachine()
+            except pncLibrary.MachineControllerError:
+                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Homing timeout')
+                return False
             #self.setBinaryMode(1)
 
             #FIXME do this a number of times and average
@@ -356,8 +391,11 @@ class MachineController(Process):
         self.waitForSet(self.setEstop, 0, self.getEstop)
         self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
         #self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
+
         if not pncLibrary.isHomed(self.machine, self.synchronizer):
-            self.waitForSet(self.setHomeAll,None,self.getAllHomed)
+            self.waitForSet(self.setHomeAll,None,self.getAllHomed, 10)
+            self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
+
         self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
         self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
@@ -457,7 +495,7 @@ class MachineController(Process):
             timeout = self.machine.event_wait_timeout
         self.synchronizer.fb_buffer_level_feedback_mode_change_event.clear()
         self.writeLineUTF('get buffer_level_feedback')
-        return (self.synchronizer.fb_buffer_level_feedback_mode_change_event.wait(timeout), self.machine.buff)
+        return (self.synchronizer.fb_buffer_level_feedback_mode_change_event.wait(timeout), self.machine.buffer_level_feedback_mode)
 
     def getCommMode(self, timeout = 0.5):
         self.writeLineUTF('get comm_mode')
@@ -592,9 +630,10 @@ class MachineController(Process):
 
     def waitForSet(self, set_function, set_params, get_function, timeout = None):
         ## FIXME really need to implement this timeout
-        start_time = time.clock()
         if timeout is None:
             timeout = np.inf
+
+        start_time = time.clock()
 
         if set_params is not None:
             set_function(set_params)
@@ -604,9 +643,13 @@ class MachineController(Process):
         while not get_function()[0] and (start_time-time.clock() <= timeout):
             #FIXME check that returned value matches set_params
             print('waiting for ' + str(get_function))
-            pass
+
+        if (start_time-time.clock()) > timeout:
+            raise pncLibrary.MachineControllerError('Timeout with ' + str(get_function))
+        else:
+            print('success: ' + str(get_function) + ' returned True')
+
         ## FIXME call set again after some time?
-        print('success: ' + str(get_function) + ' returned True')
         ## FIXME set up timeout here
         #print('logging mode is ' + str(self.machine.servo_feedback_mode))
 

@@ -1,18 +1,19 @@
 import serial, time, struct, math
 import numpy as np
 from pncDatabase import Record
-from multiprocessing import Process, current_process
+from multiprocessing import Process, Event, current_process
 from threading import current_thread
 import pncLibrary
 
 class EncoderInterface(Process):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, machine, pipe):
         super(EncoderInterface, self).__init__()
         self.name = "encoder_interface"
         self.main_thread_name = self.name + ".MainThread"
         self.device_name = "Quadrature Decoder Rev.2"
         self.machine = machine
-        self.synchronizer = synchronizer
+        self.feed_pipe = pipe
+        #self.synchronizer = synchronizer
 
         self.serial_port = serial.Serial()
         self.serial_port.port = self.machine.comm_port
@@ -23,8 +24,13 @@ class EncoderInterface(Process):
         self.encoder_reading_time = 0
         self.encoder_read_time_moving_average = 0
 
+        #self.synchronizer_set_event = Event()
+
+
     def run(self):
         current_thread().name = self.main_thread_name
+        pncLibrary.getSynchronizer(self, self.feed_pipe)
+
         try:
             # If I remember correctly, this is only necessary because opening the port in __init__(...) caused some picklability error
             if self.serial_port.is_open:

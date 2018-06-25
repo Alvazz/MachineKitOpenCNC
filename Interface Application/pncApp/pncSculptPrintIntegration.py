@@ -1,7 +1,8 @@
-import pncLibrary, multiprocessing, os, sys, logging, numpy as np
+import pncLibrary
+import multiprocessing, os, sys, time, logging, numpy as np
 from pncCamUserInterface import CAM_MVC
 
-print('Current PYTHONPATH is ' + str(sys.path))
+#print('Current PYTHONPATH is ' + str(sys.path))
 project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
 if project_path not in sys.path:
     sys.path.append('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\')
@@ -74,26 +75,33 @@ def startMVC():
     sculptprint_MVC.start()
     sculptprint_MVC.startup_event.wait()
 
-    sculptprint_MVC.command_queue.put('INIT')
-    sculptprint_MVC.pncApp_initialized_event.wait()
     #sculptprint_MVC.synchronizer.mvc_pncApp_initialized_event.wait()
     #sculptprint_MVC.terminal_printer = pncLibrary.PrintServer(sculptprint_MVC.machine, sculptprint_MVC.synchronizer)
     #sculptprint_MVC.synchronizer.q_print_server_message_queue.put('test printing')
     return sculptprint_MVC
 
-
 def start():
+    return startPncApp()
+
+def startPncApp():
     global sculptprint_MVC, machine, synchronizer, terminal_printer, feedback_state
     if sculptprint_MVC is None:
         sculptprint_MVC = startMVC()
+
+        sculptprint_MVC.command_queue.put('INIT')
+        sculptprint_MVC.pncApp_initialized_event.wait()
+
         machine = sculptprint_MVC.machine
         synchronizer = sculptprint_MVC.synchronizer
         terminal_printer = sculptprint_MVC.terminal_printer
         feedback_state = sculptprint_MVC.feedback_state
 
+
     sculptprint_MVC.command_queue.put('START')
     #pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
-    pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue, machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
+    pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
+    print('SCULPTPRINT MVC: Waiting for startup...')
+    synchronizer.mvc_pncApp_started_event.wait(machine.max_mvc_startup_wait_time)
     return True
 
 # def read():
@@ -266,11 +274,6 @@ def readMachine(axis_sensor_id):
                                                   [feedback_state.HF_start_time_index,feedback_state.HF_start_time_index,feedback_state.LF_start_time_index,feedback_state.LF_start_time_index],
                                                   4*[None])
 
-            # DB_query_data = machine.data_store_manager_thread_handle.pull(
-            #     ['RSH_CLOCK_TIMES','HIGHRES_TC_QUEUE_LENGTH','RTAPI_CLOCK_TIMES','STEPGEN_FEEDBACK_POSITIONS'],
-            #     [HF_start_time_index,HF_start_time_index,LF_start_time_index,LF_start_time_index],
-            #     [None,None,None,None])
-            #if DB_query_data[0]:
             #Data were gotten from DB
             HF_ethernet_time_slice, HF_ethernet_data_slice, LF_ethernet_time_slice, LF_ethernet_data_slice = DB_query_data[1]
 
@@ -345,8 +348,8 @@ def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
     sculptprint_MVC.command_queue.put('EXECUTE')
     return True;
 
-def connectToMachine():
-    sculptprint_MVC.command_queue.put('CONNECT')
+# def connectToMachine():
+#     sculptprint_MVC.command_queue.put('CONNECT')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
@@ -397,16 +400,27 @@ def testMonitoring():
 # if __name__ == '__main__':
 #     start()
 
-multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
-
-print('main name is ' + str(__name__))
+#multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
+#multiprocessing.set_start_method('spawn')
+#print('main name is ' + str(__name__))
 if __name__ == '__main__':
     #multiprocessing.freeze_support()
     #multiprocessing.log_to_stderr(logging.ERROR)
+    #start()
     start()
+
+    # sculptprint_MVC = startMVC()
+    # machine = sculptprint_MVC.machine
+    # synchronizer = sculptprint_MVC.synchronizer
+    # terminal_printer = sculptprint_MVC.terminal_printer
+    # feedback_state = sculptprint_MVC.feedback_state
+    # sculptprint_MVC.init_pncApp()
+    # sculptprint_MVC.start_pncApp()
+
     #connectToMachine()
     userPythonFunction1(0,0,0,0,0)
     userPythonFunction2(1,5,0,0,0)
+    userPythonFunction3(0,0,0,0,0)
 
     while True:
         print(eval(input("command: ")))

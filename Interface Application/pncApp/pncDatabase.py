@@ -32,26 +32,26 @@ class Record():
 #         self.id = record_id
 #         self.output_data = data
 
-class TerminalLoggingServer(Thread):
-    def __init__(self, machine, synchronizer):
-        super(TerminalLoggingServer, self).__init__()
-        self.name = "logging_server"
-        self.machine = machine
-        self.synchronizer = synchronizer
-        self.output_directory = self.machine.log_file_output_directory
-
-        self.log_queue = Queue()
-        self.startup_event = Event()
-
-    def run(self):
-        self.startup_event.set()
+# class TerminalLoggingServer(Thread):
+#     def __init__(self, machine, synchronizer):
+#         super(TerminalLoggingServer, self).__init__()
+#         self.name = "logging_server"
+#         self.machine = machine
+#         self.synchronizer = synchronizer
+#         self.output_directory = self.machine.log_file_output_directory
+#
+#         self.log_queue = Queue()
+#         self.startup_event = Event()
+#
+#     def run(self):
+#         self.startup_event.set()
 
 class LoggingServer(Thread):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, parent):
         super(LoggingServer, self).__init__()
         self.name = "logging_server"
-        self.machine = machine
-        self.synchronizer = synchronizer
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
         self.output_directory = self.machine.log_file_output_directory
 
         self.log_queue = Queue()
@@ -82,14 +82,14 @@ class LoggingServer(Thread):
 
 
 class Puller(Thread):
-    def __init__(self, machine, synchronizer, data_store):
+    def __init__(self, parent):
         super(Puller, self).__init__()
         self.name = "database_puller"
-        self.machine = machine
-        self.synchronizer = synchronizer
-        self.data_store = data_store
-        self.output_queue = synchronizer.q_database_output_queue_proxy
-        self.data_store_lock = synchronizer.db_data_store_lock
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
+        self.data_store = parent.data_store
+        self.output_queue = self.synchronizer.q_database_output_queue_proxy
+        self.data_store_lock = self.synchronizer.db_data_store_lock
 
         self.pull_queue = Queue()
         self.startup_event = Event()
@@ -169,13 +169,13 @@ class Puller(Thread):
         return data_types, start_indices, end_indices
 
 class Pusher(Thread):
-    def __init__(self, machine, synchronizer, data_store):
+    def __init__(self, parent):
         super(Pusher, self).__init__()
         self.name = "database_pusher"
-        self.machine = machine
-        self.synchronizer = synchronizer
-        self.data_store = data_store
-        self.data_store_lock = synchronizer.db_data_store_lock
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
+        self.data_store = parent.data_store
+        self.data_store_lock = self.synchronizer.db_data_store_lock
 
         self.push_queue = Queue()
         self.startup_event = Event()
@@ -234,12 +234,12 @@ class Pusher(Thread):
                         print("Feedback pusher could not append object with type ID: " + str(key) + ', had error: ' + str(error))
 
 class StateManipulator(Thread):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, parent):
         super(StateManipulator, self).__init__()
         self.name = "machine_state_manipulator"
-        self.machine = machine
-        self.synchronizer = synchronizer
-        self.machine_state_lock = synchronizer.db_machine_state_lock
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
+        self.machine_state_lock = self.synchronizer.db_machine_state_lock
 
         self.state_change_queue = Queue()
         self.startup_event = Event()
@@ -250,25 +250,57 @@ class StateManipulator(Thread):
         #while True:
             #pass
 
+# class testProcess(Process):
+#     def __init__(self, machine, synchronizer):
+#         super(testProcess, self).__init__()
+#         self.name = "databasetest"
+#         self.main_thread_name = self.name + ".MainThread"
+#         self.machine = machine
+#         self.synchronizer = synchronizer
+#         self.q1 = self.synchronizer.q_print_server_message_queue
+#         self.q2 = self.synchronizer.q_database_command_queue_proxy
+#         self.q3 = self.synchronizer.q_machine_controller_command_queue
+#         self.q4 = self.synchronizer.q_database_output_queue_proxy
+#
+#     def run(self):
+#         print('running')
+
 class DatabaseServer(Process):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, machine, pipe):
         super(DatabaseServer, self).__init__()
         self.name = "database"
         self.main_thread_name = self.name + ".MainThread"
         self.machine = machine
-        self.synchronizer = synchronizer
+        self.feed_pipe = pipe
 
-        self.command_queue = self.synchronizer.q_database_command_queue_proxy
-        self.output_queue = self.synchronizer.q_database_output_queue_proxy
-        self.data_store_lock = self.synchronizer.db_data_store_lock
+        #self.command_queue = self.synchronizer.q_database_command_queue_proxy
+        #self.output_queue = self.synchronizer.q_database_output_queue_proxy
+
+        #Only needed to prevent deadlock?
+        #self.machine_controller_queue = self.synchronizer.q_machine_controller_command_queue
+        #self.print_server_message_queue = self.synchronizer.q_print_server_message_queue
+
+        #self.data_store_lock = self.synchronizer.db_data_store_lock
         #self.output_buffer = output_value_proxy
 
         #self.synchronizers = Synchronizers(self.machine._manager)
         self.data_store = DataStore()
+        #self.synchronizer_set_event = Event()
+
+    # def setSynchronizer(self, synchronizer):
+    #     self.synchronizer = synchronizer
+    #     self.command_queue = self.synchronizer.q_database_command_queue_proxy
+    #     self.output_queue = self.synchronizer.q_database_output_queue_proxy
+    #     self.data_store_lock = self.synchronizer.db_data_store_lock
+    #     self.synchronizer_set_event.set()
 
     def run(self):
         current_thread().name = self.main_thread_name
-        self.waitForDatabaseHelperThreads()
+        #self.synchronizer = pncLibrary.getSynchronizer(self.feed_pipe)
+        pncLibrary.getSynchronizer(self, self.feed_pipe)
+
+        #self.waitForDatabaseHelperThreads()
+        pncLibrary.waitForThreadStart(self, Pusher, Puller, StateManipulator, LoggingServer)
         self.synchronizer.db_startup_event.set()
 
         self.synchronizer.process_start_signal.wait()
@@ -279,8 +311,8 @@ class DatabaseServer(Process):
             self.synchronizer.p_run_database_event.wait()
             while self.synchronizer.p_run_database_event.is_set():
                 #First handle incoming commands
-                if not self.command_queue.empty():
-                    command = self.command_queue.get()
+                if not self.synchronizer.q_database_command_queue_proxy.empty():
+                    command = self.synchronizer.q_database_command_queue_proxy.get()
                     self.handleCommand(command)
 
                 # if not self.push_queue.empty:
@@ -289,6 +321,7 @@ class DatabaseServer(Process):
                 #     self.appendMachineFeedbackRecords([records.data])
                 #     self.record_queue.task_done()
                 self.updateMachineState()
+
             self.synchronizer.t_run_pusher_event.clear()
             self.pusher.join()
 
@@ -325,21 +358,21 @@ class DatabaseServer(Process):
         #     if buffer_level_update[0]:
         #         self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
 
-    def waitForDatabaseHelperThreads(self):
-        self.pusher = Pusher(self.machine, self.synchronizer, self.data_store)
-        self.puller = Puller(self.machine, self.synchronizer, self.data_store)
-        self.state_manipulator = StateManipulator(self.machine, self.synchronizer)
-        self.logging_server = LoggingServer(self.machine, self.synchronizer)
-
-        self.state_manipulator.start()
-        self.pusher.start()
-        self.puller.start()
-        self.logging_server.start()
-
-        self.state_manipulator.startup_event.wait()
-        self.pusher.startup_event.wait()
-        self.puller.startup_event.wait()
-        self.logging_server.startup_event.wait()
+    # def waitForDatabaseHelperThreads(self):
+    #     self.pusher = Pusher(self.machine, self.synchronizer, self.data_store)
+    #     self.puller = Puller(self.machine, self.synchronizer, self.data_store)
+    #     self.state_manipulator = StateManipulator(self.machine, self.synchronizer)
+    #     self.logging_server = LoggingServer(self.machine, self.synchronizer)
+    #
+    #     self.state_manipulator.start()
+    #     self.pusher.start()
+    #     self.puller.start()
+    #     self.logging_server.start()
+    #
+    #     self.state_manipulator.startup_event.wait()
+    #     self.pusher.startup_event.wait()
+    #     self.puller.startup_event.wait()
+    #     self.logging_server.startup_event.wait()
 
     def handleCommand(self, command):
         #FIXME do I need separate pusher/puller threads?
@@ -347,7 +380,7 @@ class DatabaseServer(Process):
             # records_upper = {}
             # for key, value in command.data.items():
             #     records_upper[key.upper()] = value
-            self.pusher.push_queue.put((command.data, 'numpy'))
+            self.database_pusher.push_queue.put((command.data, 'numpy'))
 
             #FIXME this is a band-aid, perhaps the database should only be started once clocks are synced
             # if self.synchronizer.mc_clock_sync_event.is_set() or 1:
@@ -356,12 +389,12 @@ class DatabaseServer(Process):
             #     #self.record_queue.put(Record(records_upper, time.clock()))
 
         elif command.command_type == 'push_object':
-            self.pusher.push_queue.put((command.data, 'object'))
+            self.database_pusher.push_queue.put((command.data, 'object'))
 
         elif command.command_type == 'pull':
             data_types = command.data
             start_indices, end_indices = command.command_parameters
-            self.puller.pull_queue.put((data_types, start_indices, end_indices))
+            self.database_puller.pull_queue.put((data_types, start_indices, end_indices))
             #self.synchronizer.database_output_queue_proxy.put(self.pull(data_types, start_indices, end_indices))
 
         elif command.command_type == "machine_model_update":
@@ -376,8 +409,8 @@ class DatabaseServer(Process):
     #         return self.puller.pull(data_types, start_indices, end_indices)
 
     def updateMachineState(self):
-        position_update = self.puller.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
-        buffer_level_update = self.puller.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
+        position_update = self.database_puller.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
+        buffer_level_update = self.database_puller.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
         if position_update[0]:
             self.machine.current_position = position_update[1][0][0].tolist()
             self.synchronizer.mc_initial_position_set_event.set()

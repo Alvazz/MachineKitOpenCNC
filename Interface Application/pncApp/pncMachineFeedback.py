@@ -29,12 +29,12 @@ class FeedbackData():
         self.data = None
 
 class FeedbackProcessor(Thread):
-    def __init__(self, machine, synchronizer):
+    def __init__(self, parent):
         super(FeedbackProcessor, self).__init__()
         self.name = "feedback_processor"
-        self.machine = machine
-        self.synchronizer = synchronizer
-        self.queue_wait_timeout = machine.thread_queue_wait_timeout
+        self.machine = parent.machine
+        self.synchronizer = parent.synchronizer
+        self.queue_wait_timeout = self.machine.thread_queue_wait_timeout
 
         self.process_queue = Queue()
         #self.processed_queue = Queue()
@@ -159,9 +159,9 @@ class FeedbackProcessor(Thread):
                 self.synchronizer.fb_comm_mode_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[14] == feedback_type:
                 # BL feedback mode
-                print('got BL feedback params')
+                #print('got BL feedback params')
                 self.machine.buffer_level_feedback_mode = pncLibrary.checkOnOff(self.machine, feedback_data[0])
-                self.machine.buffer_level_feedback_period = feedback_data[1]
+                self.machine.buffer_level_feedback_period = int(feedback_data[1])
                 self.synchronizer.fb_buffer_level_feedback_mode_change_event.set()
             else:
                 print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
@@ -196,7 +196,7 @@ class FeedbackProcessor(Thread):
         record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time]])
 
         #FIXME major band-aid
-        record['RSH_CLOCK_TIMES'] = rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset
+        record['RSH_CLOCK_TIMES'] = np.array([[rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset]])
 
         self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
 
@@ -279,14 +279,15 @@ class FeedbackProcessor(Thread):
 
 class MachineFeedbackHandler(Process):
     #global machine
-    def __init__(self, machine, synchronizer):
+    def __init__(self, machine, pipe):
         super(MachineFeedbackHandler, self).__init__()
         self.name = "feedback_handler"
         self.main_thread_name = self.name + ".MainThread"
 
         # Args
         self.machine = machine
-        self.synchronizer = synchronizer
+        self.feed_pipe = pipe
+        #self.synchronizer = synchronizer
 
         # Feedback State
         self.byte_string = bytearray()
@@ -307,9 +308,14 @@ class MachineFeedbackHandler(Process):
 
         #self._running_process = True
 
+        #self.synchronizer_set_event = Event()
+
     def run(self):
         current_thread().name = self.name + '.MainThread'
-        self.waitForThreadLaunch()
+        pncLibrary.getSynchronizer(self, self.feed_pipe)
+
+        #self.waitForThreadLaunch()
+        pncLibrary.waitForThreadStart(self, FeedbackProcessor)
         self.synchronizer.fb_startup_event.set()
 
         self.synchronizer.process_start_signal.wait()
@@ -376,10 +382,10 @@ class MachineFeedbackHandler(Process):
         self.feedback_data_processing_error = False
         self.last_processed_byte_string = self.byte_string
 
-    def waitForThreadLaunch(self):
-        self.feedback_processor = FeedbackProcessor(self.machine, self.synchronizer)
-        self.feedback_processor.start()
-        self.feedback_processor.startup_event.wait()
+    # def waitForThreadLaunch(self):
+    #     self.feedback_processor = FeedbackProcessor(self.machine, self.synchronizer)
+    #     self.feedback_processor.start()
+    #     self.feedback_processor.startup_event.wait()
 
     def assembleFeedbackHeader(self, byte_string, rx_received_time):
         #Return data as header processed flag, error flag, encoding, feedback type, header delimiter index

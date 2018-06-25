@@ -51,7 +51,7 @@ class PrintServer(Thread):
         self.startup_event.set()
         while self.synchronizer.t_run_print_server_event.is_set():
             print(self.synchronizer.q_print_server_message_queue.get(0.5))
-            sys.stdout.flush()
+            #sys.stdout.flush()
 
 class Synchronizer():
     def __init__(self, manager):
@@ -186,12 +186,16 @@ class DatabaseCommand():
         self.command_parameters = parameters
         self.time = time
 
-class RSHError(Exception):
+class RSHError(BaseException):
     def __init__(self, message, errors):
         super().__init__(message)
         self.errors = errors
 
-class WebsocketError(Exception):
+class WebsocketError(BaseException):
+    def __init__(self, message):
+        self.message = message
+
+class MachineControllerError(BaseException):
     def __init__(self, message):
         self.message = message
 
@@ -220,6 +224,23 @@ def waitForErrorReset():
     #FIXME implement a spinlock or wait for RSH error to be handled and reset, then return to normal operation
     pass
 
+def setSynchronizer(pipe, synchronizer):
+    pipe.send(synchronizer)
+
+def getSynchronizer(caller, pipe):
+    caller.synchronizer = pipe.recv()
+
+def waitForThreadStart(caller, *args):
+    started_threads = []
+    for thread_class in args:
+        thread = thread_class(caller)
+        setattr(caller, getattr(thread, 'name'), thread)
+        thread.start()
+        started_threads.append(thread)
+
+    for thread in started_threads:
+        thread.startup_event.wait()
+
 ######################## State Machine ########################
 def setTaskRunFlags(synchronizer, state = True):
     for attribute in dir(synchronizer):
@@ -236,7 +257,7 @@ def popState(machine):
     return machine.mode_stack.pop()
     # return prev_mode
 
-def restoreState(machine):
+def restoreState():
     print("IMPLEMENT RESTORE STATE IF NEEDED")
 
 def resetRSHError(machine):
