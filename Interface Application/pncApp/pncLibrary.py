@@ -1,7 +1,54 @@
-import pncTrajectoryGeneration as tp
-import sys
+import pncTrajectoryGeneration as TP, pncSculptPrintIntegration as SP
+import sys, pickle, time, select
 from threading import Thread
 from multiprocessing import Event, current_process
+
+######################## Statics ########################
+localhost = '127.0.0.1'
+mvc_socket_port = 666
+# mvc_outbound_port = 42069
+# mvc_inbound_port = 666
+# mvc_socket_read_length = 65536
+sculptprint_ipc_pipe_name = 'pncApp_ipc_pipe'
+#sculptprint_inbound_ipc_pipe_name = 'pncApp_inbound_ipc_pipe'
+#sculptprint_outbound_ipc_pipe_name = 'pncApp_outbound_ipc_pipe'
+pipe_wait_timeout = 1
+pipe_wait_interval = 0.01
+
+#Terminal printouts
+connection_string = "CONNECTED to {} remote shell at {}:{}"
+failed_connection_string = "CONNECTION FAILED: Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
+process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
+process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+process_self_terminate_string = "PROCESS STOPPED: {} PID: {} shut itself down"
+process_force_terminate_string = "PROCESS FORCE STOPPED: {} PID: {}"
+process_error_string = "PROCESS ERROR: {} encountered error: {}"
+pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+pncApp_launch_failure_string = "FAILURE: pncApp cannot launch, cleaning up..."
+pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
+thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
+connection_open_string = "CONNECTED to {} on {}"
+connection_close_string = "DISCONNECTED from {} on {}"
+connection_failed_string = "CONNECTION FAILED on {}, error: "
+sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
+trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
+trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
+ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
+ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {}"
+ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
+
+######################## Directories ########################
+parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
+point_sample_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples'
+pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+
+def updatePath():
+    if pncApp_project_path not in sys.path:
+        sys.path.append(pncApp_project_path)
 
 ######################## Useful Classes ########################
 class SculptPrintInterface():
@@ -32,7 +79,8 @@ class SculptPrintFeedbackState():
         self.serial_start_time_index = 0
 
         self.last_time_reading = 0
-        self.last_position_reading = 0
+        #FIXME set this up parametrically
+        self.last_position_reading = [0]*5
         self.last_buffer_level_reading = 0
 
         self.machine_feedback_record_id = 0
@@ -66,12 +114,13 @@ class Synchronizer():
         self.p_run_feedback_handler_event = manager.Event()
         self.t_run_motion_controller_event = manager.Event()
         self.t_run_feedback_processor_event = manager.Event()
-        self.t_run_logger_event = manager.Event()
-        self.t_run_puller_event = manager.Event()
-        self.t_run_pusher_event = manager.Event()
-        self.t_run_state_manipulator_event = manager.Event()
+        self.t_run_logging_server_event = manager.Event()
+        self.t_run_database_puller_event = manager.Event()
+        self.t_run_database_pusher_event = manager.Event()
+        self.t_run_machine_state_manipulator_event = manager.Event()
         self.t_run_print_server_event = manager.Event()
-        self.t_run_cloud_trajectory_planner = manager.Event()
+        self.t_run_cloud_trajectory_planner_event = manager.Event()
+        self.t_run_operating_system_controller = manager.Event()
 
         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
         self.fb_connection_change_event = manager.Event()
@@ -120,6 +169,9 @@ class Synchronizer():
         self.ei_running_event = manager.Event()
         self.db_running_event = manager.Event()
 
+        self.os_linuxcnc_running_event = manager.Event()
+        self.os_linuxcncrsh_running_event = manager.Event()
+
         #self.testevent = Event()
 
         #SculptPrint MVC Events
@@ -149,12 +201,12 @@ class Synchronizer():
         self.process_start_signal = manager.Event()
 
 class Move():
-    def __init__(self,point_samples,move_type = None, filename = None):
+    def __init__(self,point_samples,move_type = None, sequence_id = None):
         super(Move, self).__init__()
         self.serial_number = -1
-        self.filename = ''
         self.point_samples = point_samples
         self.move_type = move_type
+        self.sequence_id = sequence_id
 
         ## To be populated when move is inserted into MotionController queue
         self.servo_tx_array = -1
@@ -186,6 +238,16 @@ class DatabaseCommand():
         self.command_parameters = parameters
         self.time = time
 
+class OSCommand():
+    def __init__(self, command_type, command_string = None, time = None):
+        self.command_type = command_type
+        self.command_string = command_string
+        self.time = time
+
+class MVCPacket():
+    def __init__(self, data):
+        self.data = data
+
 class RSHError(BaseException):
     def __init__(self, message, errors):
         super().__init__(message)
@@ -207,13 +269,126 @@ def startPrintServer(machine, synchronizer):
     printTerminalString(machine.thread_launch_string, current_process().name, print_server.name)
     return print_server
 
-def waitForThreadStart(args):
-    # FIXME implement this
-    pass
+def waitForThreadStart(caller, *args):
+    started_threads = []
+    for thread_class in args:
+        thread = thread_class(caller)
+        setattr(caller, getattr(thread, 'name'), thread)
+        thread.start()
+        started_threads.append(thread)
+
+    for thread in started_threads:
+        thread.startup_event.wait()
+
+def waitForThreadStop(caller, *args):
+    stopped_threads = []
+    for thread in args:
+        getattr(caller.synchronizer, 't_run_' + thread.name + '_event').clear()
+        stopped_threads.append(thread)
+
+    for thread in stopped_threads:
+        thread.join()
 
 ######################## IPC ########################
-def getEventStatus(event, database_command_queue_proxy, database_output_queue_proxy):
-    database_command_queue_proxy.put('get_event_status')
+# def getEventStatus(event, database_command_queue_proxy, database_output_queue_proxy):
+#     database_command_queue_proxy.put('get_event_status')
+
+def sendIPCData(type, connection, data):
+    if type == 'pipe':
+        connection.write(pickle.dumps(MVCPacket(data)))
+    elif type == 'socket':
+        connection.send(pickle.dumps(MVCPacket(data)))
+
+def receiveIPCData(type, connection, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
+    received_data = waitForIPCDataTransfer(type, connection, timeout, interval)
+    if received_data is None:
+        raise ConnectionAbortedError
+    else:
+        return pickle.loads(received_data)
+
+# def receiveOverSocket(socket, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
+#     received_data = waitForIPCDataTransfer('socket', socket, timeout, interval)
+#     if received_data is None:
+#         raise ConnectionAbortedError
+#     else:
+#         return pickle.loads(received_data)
+
+# def receiveFromMVC(type, conn):
+#     if type == 'udp':
+#         return pickle.loads(conn.recv(mvc_socket_read_length))
+#         # try:
+#         #
+#         # except socketerror:
+#         #     return None
+#     elif type == 'pipe':
+#         return waitForPipeData(conn, pipe_wait_timeout, pipe_wait_interval)
+#         # if pollPipe(conn, pipe_wait_timeout, pipe_wait_interval):
+#         #     return conn.recv()
+#         # else:
+#         #     return None
+#
+# def receiveFromSP(type, conn):
+#     if type == 'udp':
+#         return conn.recv(mvc_socket_read_length).decode()
+#     elif type == 'pipe':
+#         received_data = conn.waitfordata(pipe_wait_timeout, pipe_wait_interval)
+#         if received_data is False:
+#             raise TimeoutError
+#         else:
+#             return pickle.loads(conn.clients[0].read())
+#         #return waitForPipeData(conn, pipe_wait_timeout, pipe_wait_interval)
+
+def waitForIPCDataTransfer(type, connection, timeout = None, wait_interval = None):
+    if timeout is None:
+        timeout = np.inf
+
+    if type == 'pipe':
+        start_time = time.clock()
+        while (time.clock() - start_time) < timeout and not connection.canread():
+            time.sleep(wait_interval or 0)
+
+        if (time.clock() - start_time) > timeout:
+            raise TimeoutError
+        else:
+            return connection.read()
+
+    elif type == 'socket':
+        if select.select([connection], [], [], timeout)[0]:
+            socket_data = bytearray()
+            while select.select([connection], [], [], 0)[0]:
+                socket_data += connection.recv(4096)
+            return socket_data
+        else:
+            raise TimeoutError
+
+    # start_time = time.clock()
+    # while (time.clock() - start_time) < timeout and not select.select(socket, [], [], timeout):
+    #     time.sleep(wait_interval or 0)
+    #
+    # if (time.clock() - start_time) > timeout:
+    #     raise TimeoutError
+    # else:
+    #     return pipe.read()
+
+# def waitForPipeData(pipe, timeout = None, wait_interval = None):
+#     if timeout is None:
+#         timeout = np.inf
+#
+#     start_time = time.clock()
+#     while (time.clock() - start_time) < timeout and not pipe.canread():
+#         time.sleep(wait_interval or 0)
+#
+#     if (time.clock() - start_time) > timeout:
+#         raise TimeoutError
+#     else:
+#         return pipe.read()
+
+def MVCHandshake(type, connection, message):
+    sendIPCData(type, connection, message)
+    received_message = receiveIPCData(type, connection)
+    if not received_message.data == message + '_ACK':
+        print('handshake doesnt match, received: ' + received_message.data)
+    return received_message.data == message + '_ACK'
 
 def lockedPull(synchronizer, data_types, start_indices, end_indices):
     with synchronizer.db_pull_lock:
@@ -229,17 +404,6 @@ def setSynchronizer(pipe, synchronizer):
 
 def getSynchronizer(caller, pipe):
     caller.synchronizer = pipe.recv()
-
-def waitForThreadStart(caller, *args):
-    started_threads = []
-    for thread_class in args:
-        thread = thread_class(caller)
-        setattr(caller, getattr(thread, 'name'), thread)
-        thread.start()
-        started_threads.append(thread)
-
-    for thread in started_threads:
-        thread.startup_event.wait()
 
 ######################## State Machine ########################
 def setTaskRunFlags(synchronizer, state = True):
@@ -296,7 +460,6 @@ def isIdle(machine, synchronizer):
         return False
 
 ######################## Clocking ########################
-import time
 def estimateMachineClock(machine, time_to_estimate=-1):
     # if not machine.clock_event.isSet():
     #     print('WARNING: missing clock synchronization flag')
@@ -350,28 +513,28 @@ def convertInt2Bin(num):
 def formatBinaryLine(axisCoords, polyLines, blockLength, positionInFile):
     return #position in file#
 
-def padAndFormatAxisPoints(points, polylines, blocklength):
-    pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
-                            constant_values=points[-1])
-    shape_points = pad_points.reshape((-1, blocklength), order='C')
-    return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
-                  constant_values=shape_points[-1, -1])
+# def padAndFormatAxisPoints(points, polylines, blocklength):
+#     pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
+#                             constant_values=points[-1])
+#     shape_points = pad_points.reshape((-1, blocklength), order='C')
+#     return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
+#                   constant_values=shape_points[-1, -1])
 
-def importAxisPoints(file, polylines, blocklength):
-    points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
-    return padAndFormatAxisPoints(points, polylines, blocklength)
-
-def importAxesPoints(file, machine):
-    ##FIXME check for overtravel
-    points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints]
-    return points
-
-def formatPoints(points, polylines, block_length):
-    axis_coords = []
-    #FIXME fix if not divisible by polylines*blocklength
-    for axis in range(points.shape[1]):
-        axis_coords.append(padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
-    return np.asarray(axis_coords).transpose(1, 2, 0)
+# def importAxisPoints(file, polylines, blocklength):
+#     points = np.array(list(csv.reader(open(file, "rt"), delimiter=","))).astype("float")
+#     return padAndFormatAxisPoints(points, polylines, blocklength)
+#
+# def importAxesPoints(file, machine):
+#     ##FIXME check for overtravel
+#     points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints]
+#     return points
+#
+# def formatPoints(points, polylines, block_length):
+#     axis_coords = []
+#     #FIXME fix if not divisible by polylines*blocklength
+#     for axis in range(points.shape[1]):
+#         axis_coords.append(padAndFormatAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
+#     return np.asarray(axis_coords).transpose(1, 2, 0)
 
 ######################## Visualization ########################
 import matplotlib.pyplot as plt

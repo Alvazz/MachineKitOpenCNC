@@ -1,8 +1,26 @@
 ######################## Trajectory Generation ########################
-import math, numpy as np
-## FIXME only allow movement generation when logging is enabled?
+import math, csv, numpy as np
 
-def generateHoldPositionPoints(machine, hold_time=1,position = [np.nan]):
+def importPoints(machine, file):
+    ##FIXME check for overtravel
+    points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints]
+    return points
+
+def padAndShapeAxisPoints(points, polylines, blocklength):
+    pad_points = np.lib.pad(points, ((0, blocklength - (np.size(points, 0) % blocklength)), (0, 0)), 'constant',
+                            constant_values=points[-1])
+    shape_points = pad_points.reshape((-1, blocklength), order='C')
+    return np.pad(shape_points, ((0, polylines - (np.size(shape_points, 0) % polylines)), (0, 0)), 'constant',
+                  constant_values=shape_points[-1, -1])
+
+def formatPoints(points, polylines, block_length):
+    axis_coords = []
+    #FIXME fix if not divisible by polylines*blocklength
+    for axis in range(points.shape[1]):
+        axis_coords.append(padAndShapeAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
+    return np.asarray(axis_coords).transpose(1, 2, 0)
+
+def generateHoldPositionPoints(machine, hold_time=1, position = [np.nan]):
     if any(np.isnan(position)):
         position_to_hold = machine.current_position
     else:
@@ -12,7 +30,7 @@ def generateHoldPositionPoints(machine, hold_time=1,position = [np.nan]):
     return joint_position_samples
 
 def generateMovePoints(machine, end_points, start_points = [np.nan], move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
-    fallthrough_points = generateHoldPositionPoints(0,start_points)
+    fallthrough_points = generateHoldPositionPoints(machine, 0, start_points)
     #FIXME check for out of limit move generation
     if any(end_points[k] < machine.limits[k][0] for k in range(0,len(end_points))) or any(end_points[k] > machine.limits[k][1] for k in range(0,len(end_points))):
         print('move exceeds bounds')

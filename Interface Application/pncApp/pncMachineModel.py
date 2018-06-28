@@ -99,6 +99,11 @@ class MachineModel():
         self.connection_close_string = "DISCONNECTED from {} on {}"
         self.connection_failed_string = "CONNECTION FAILED on {}, error: "
         self.sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
+        self.trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
+        self.trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
+        self.ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
+        self.ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {}"
+        self.ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
 
         # self.feedback_listener_thread_handle = None
         # self.machine_controller_thread_handle = None
@@ -174,7 +179,7 @@ class MachineModel():
         self.comm_mode = 0
         self.servo_feedback_mode = 0
         self.buffer_level_feedback_mode = 0
-        self.buffer_level_feedback_period_us = 1e6
+        self.buffer_level_feedback_period_us = 1e6/20
         self.units = 'inch'
 
         #self.rsh_error = 0
@@ -183,29 +188,6 @@ class MachineModel():
         self.connected = 0
         self.axis_home_state = [0]*self.number_of_joints
         self.current_move_serial_number = -1
-
-        #State Switch Events
-        # self.connection_change_event = Event()
-        # self.link_change_event = Event()
-        # self.echo_change_event = Event()
-        # self.estop_change_event = Event()
-        # self.drive_power_change_event = Event()
-        # self.status_change_event = Event()
-        # #self.status_change_event.clear()
-        # self.mode_change_event = Event()
-        # self.logging_mode_change_event = Event()
-        # self.comm_mode_change_event = Event()
-        # self.home_change_event = Event()
-        # self.all_homed_event = Event()
-        # self.restore_mode_event = Event()
-        # self.ping_event = Event()
-        # self.clock_event = Event()
-        # self.buffer_level_reception_event = Event()
-        # self.servo_feedback_reception_event = Event()
-        # #FIXME implement this
-        # self.position_change_event = Event()
-        # self.initial_position_set_event = Event()
-        # self.encoder_init_event = Event()
 
         #Timing parameters
         self.clock_resolution = 1e6
@@ -242,9 +224,13 @@ class MachineModel():
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
         self.serial_read_timeout = 0.5
+        self.websocket_timeout = 0.5
+        self.websocket_client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
+        self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
+        self.ssh_port = 22
+        self.ssh_credentials = ('pocketnc', 'pocketnc')
         self.ssh_opts = '-X'
-        self.ssh_credentials = 'pocketnc@' + self.ip_address
-        self.ssh_hosts_path = 'E:\SculptPrint\PocketNC\OpenCNC\Interface Application\pncApp\Support Files\known_hosts'
+        self.ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
         #TCP Control Parameters
         self.polylines_per_tx = 1
@@ -265,110 +251,6 @@ class MachineModel():
         self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\'
         self.point_file_prefix = 'opt_code'
         self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
-        #self.log_file_handle = open('E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Logs\\' + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
-
-    # def setRSHError(self, error = 5):
-    #     print(self)
-    #     self.rsh_error = error
-    #     print('rsh error is ' + str(self.rsh_error))
-    #
-    # def resetRSHError(self):
-    #     print('before ' + str(self.rsh_error))
-    #     print(self)
-    #     print(super())
-    #     # super(MachineModel, self).rsh_error = 0
-    #     self.rsh_error = 0
-    #     print('after ' + str(self.rsh_error))
-    #     # self.machine.rsh_error.value = 0
-    #
-    # def getSelf(self):
-    #     return self
-
-# class MachineModelMethods():
-#     def __init__(self, machine):
-#         self.machine = machine
-#
-#     ######################## State Machine ########################
-#     def pushState(self):
-#         # save machine state
-#         # self.prev_mode = self.mode
-#         self.machine.mode_stack += self.machine.mode
-#         # return #saved state structure
-#
-#     def popState(self):
-#         # prev_mode = self.machine.mode_stack[-1]
-#         # mode_stack = self.machine.mode_stack[0:-1]
-#         return self.machine.mode_stack.pop()
-#         # return prev_mode
-#
-#     # def restoreState(self):
-#     #     #machine_controller.modeSwitchWait(self.machine.prev_mode)
-#     #     if len(self.machine.mode_stack):
-#     #         mode_to_restore = self.machine.popState()
-#     #         self.machine.machine_controller_thread_handle.waitForSet(self.machine.machine_controller_thread_handle.setMachineMode,mode_to_restore,self.machine.machine_controller_thread_handle.getMachineMode)
-#     #     else:
-#     #         print('mode stack empty, leaving mode unchanged')
-#     #     self.machine.restore_mode_event.set()
-#     #     #Restore state to prev state after op
-#     #     #return
-#
-#     ###################################################################
-#     # def setLoggingMode(self, mode):
-#     #     self.machine.servo_feedback_mode = mode
-#     #     self.machine.logging_mode_changed_callback(mode)
-#
-#     def resetRSHError(self):
-#         print('before ' + str(self.machine.rsh_error))
-#         print(self)
-#         print(super())
-#         # super(MachineModel, self).rsh_error = 0
-#         self.machine.rsh_error = 0
-#         print('after ' + str(self.machine.machine.rsh_error))
-#         # self.machine.rsh_error.value = 0
-#
-#     def checkOnOff(self, flag):
-#         return self.machine.rsh_feedback_flags.index(flag.strip().upper()) % 2
-#
-#     def isAutoMode(self):
-#         if self.machine.mode.upper() == 'AUTO' and self.machine.mode_change_event.isSet():
-#             return True
-#         else:
-#             return False
-#
-#     def isManualMode(self):
-#         if self.machine.mode.upper() == 'MANUAL' and self.machine.mode_change_event.isSet():
-#             return True
-#         else:
-#             return False
-#
-#     def isHomed(self):
-#         return (all(self.machine.axis_home_state) and self.machine.home_change_event.isSet())
-#         # if all(self.machine.axis_home_state) and self.machine.home_change_event.isSet():
-#         #     return True
-#         # else:
-#         #     return False
-#
-#     def isIdle(self):
-#         if self.machine.status.upper() == 'IDLE' and self.machine.status_change_event.isSet():
-#             return True
-#         else:
-#             return False
-#
-#     ######################## Clocking ########################
-#     def estimateMachineClock(self, time_to_estimate=-1):
-#         if not self.machine.clock_event.isSet():
-#             print('WARNING: missing clock synchronization flag')
-#
-#         if time_to_estimate == -1:
-#             time_to_estimate = time.clock()
-#
-#         return self.machine.RT_clock_offset + (time_to_estimate - self.machine.estimated_network_latency) * self.machine.clock_resolution
-#
-#     ######################## Comms ########################
-#     def calculateBinaryTransmissionLength(self):
-#         self.machine.binary_transmission_length = 2 + (
-#                     self.machine.servo_log_num_axes * self.machine.servo_log_buffer_size + self.machine.servo_log_buffer_size) * self.machine.size_of_feedback_double + 1
-#         return self.machine.binary_transmission_length
 
 class MachineModelProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

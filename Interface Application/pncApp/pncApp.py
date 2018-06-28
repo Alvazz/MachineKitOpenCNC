@@ -54,7 +54,7 @@ def appInit():
     synchronizer.main_process_name = str(multiprocessing.current_process().name)
     synchronizer.main_process_pid = str(multiprocessing.current_process().pid)
     pncLibrary.setTaskRunFlags(synchronizer)
-    machine.sculptprint_interface = pncLibrary.SculptPrintInterface()
+    #machine.sculptprint_interface = pncLibrary.SculptPrintInterface()
     machine.local_epoch = time.clock()
 
     pncLibrary.printTerminalString(machine.process_launch_string, pnc_app_manager.name, pnc_app_manager._process.pid,
@@ -85,32 +85,10 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
     #test = testProcess(machine, synchronizer)
     #test.start()
 
-
-    # db_pipe_sender, db_pipe_receiver = multiprocessing.Pipe()
-    # database = DatabaseServer(machine, db_pipe_receiver)
-    # print('at db: ' + str(synchronizer.q_print_server_message_queue.empty()))
-    # database.start()
-    # pncLibrary.setSynchronizer(db_pipe_sender, synchronizer)
-    # #database.setSynchronizer(synchronizer)
-    # pncLibrary.printTerminalString(machine.process_launch_string, database.name, database.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
     database, db_pipe_sender = startProcess(machine, synchronizer, DatabaseServer)
     encoder_interface, ei_pipe_sender = startProcess(machine, synchronizer, EncoderInterface)
     feedback_handler, fb_pipe_sender = startProcess(machine, synchronizer, MachineFeedbackHandler)
     machine_controller, mc_pipe_sender = startProcess(machine, synchronizer, MachineController)
-
-    # encoder_interface = EncoderInterface(machine)
-    # encoder_interface.start()
-    # pncLibrary.setSynchronizer(encoder_interface, synchronizer)
-    # pncLibrary.printTerminalString(machine.process_launch_string, encoder_interface.name, encoder_interface.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
-
-    # feedback_handler = MachineFeedbackHandler(machine, synchronizer)
-    # feedback_handler.start()
-    # pncLibrary.setSynchronizer(feedback_handler, synchronizer)
-    # pncLibrary.printTerminalString(machine.process_launch_string, feedback_handler.name, feedback_handler.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
-    #
-    # machine_controller = MachineController(machine, synchronizer)
-    # machine_controller.start()
-    # pncLibrary.printTerminalString(machine.process_launch_string, machine_controller.name, machine_controller.pid, synchronizer.main_process_name, synchronizer.main_process_pid)
 
     pnc_app_manager.machine = machine
     pnc_app_manager.database = database

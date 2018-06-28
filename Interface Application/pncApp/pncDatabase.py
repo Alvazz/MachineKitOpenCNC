@@ -61,12 +61,14 @@ class LoggingServer(Thread):
         try:
             self.log_file_handle = open(self.output_directory + datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S") + '.txt', 'w')
             self.startup_event.set()
-            pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         self.machine.thread_launch_string, current_process().name,
+                                                         self.name)
         except Exception as log_open_error:
             print('Log file open error: ' + str(log_open_error))
             return
 
-        while self.synchronizer.t_run_logger_event.is_set():
+        while self.synchronizer.t_run_logging_server_event.is_set():
             #FIXME don't use spinlock
             try:
                 log_time, log_message = self.log_queue.get(True, self.machine.thread_queue_wait_timeout)
@@ -96,8 +98,8 @@ class Puller(Thread):
 
     def run(self):
         self.startup_event.set()
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
-        while self.synchronizer.t_run_puller_event.is_set():
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
+        while self.synchronizer.t_run_database_puller_event.is_set():
             try:
                 pull_request = self.pull_queue.get(True, self.machine.thread_queue_wait_timeout)
                 output_data = self.pull(pull_request[0], pull_request[1], pull_request[2])
@@ -108,12 +110,6 @@ class Puller(Thread):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          self.machine.thread_terminate_string, current_process().name,
                                                          self.name)
-            # if not self.pull_queue.empty():
-            #     pull_request = self.pull_queue.get()
-            #     #with self.data_store_lock:
-            #     output_data = self.pull(pull_request[0], pull_request[1], pull_request[2])
-            #     self.output_queue.put(output_data)
-            #     #self.pull_queue.task_done()
 
     def pull(self, data_types, start_indices, end_indices):
         #FIXME return a success flag for each data item returned, also this is gross
@@ -182,8 +178,10 @@ class Pusher(Thread):
 
     def run(self):
         self.startup_event.set()
-        pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
-        while self.synchronizer.t_run_pusher_event.is_set():
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_launch_string, current_process().name,
+                                                     self.name)
+        while self.synchronizer.t_run_database_pusher_event.is_set():
             try:
                 push_request = self.push_queue.get(True, self.machine.thread_queue_wait_timeout)
                 # if 'ENCODER_FEEDBACK_POSITIONS' in push_request[0]:
@@ -249,6 +247,9 @@ class StateManipulator(Thread):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
         #while True:
             #pass
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     self.name)
 
 # class testProcess(Process):
 #     def __init__(self, machine, synchronizer):
@@ -273,33 +274,13 @@ class DatabaseServer(Process):
         self.machine = machine
         self.feed_pipe = pipe
 
-        #self.command_queue = self.synchronizer.q_database_command_queue_proxy
-        #self.output_queue = self.synchronizer.q_database_output_queue_proxy
-
-        #Only needed to prevent deadlock?
-        #self.machine_controller_queue = self.synchronizer.q_machine_controller_command_queue
-        #self.print_server_message_queue = self.synchronizer.q_print_server_message_queue
-
-        #self.data_store_lock = self.synchronizer.db_data_store_lock
-        #self.output_buffer = output_value_proxy
-
-        #self.synchronizers = Synchronizers(self.machine._manager)
         self.data_store = DataStore()
-        #self.synchronizer_set_event = Event()
-
-    # def setSynchronizer(self, synchronizer):
-    #     self.synchronizer = synchronizer
-    #     self.command_queue = self.synchronizer.q_database_command_queue_proxy
-    #     self.output_queue = self.synchronizer.q_database_output_queue_proxy
-    #     self.data_store_lock = self.synchronizer.db_data_store_lock
-    #     self.synchronizer_set_event.set()
 
     def run(self):
         current_thread().name = self.main_thread_name
         #self.synchronizer = pncLibrary.getSynchronizer(self.feed_pipe)
         pncLibrary.getSynchronizer(self, self.feed_pipe)
 
-        #self.waitForDatabaseHelperThreads()
         pncLibrary.waitForThreadStart(self, Pusher, Puller, StateManipulator, LoggingServer)
         self.synchronizer.db_startup_event.set()
 
@@ -322,17 +303,19 @@ class DatabaseServer(Process):
                 #     self.record_queue.task_done()
                 self.updateMachineState()
 
-            self.synchronizer.t_run_pusher_event.clear()
-            self.pusher.join()
 
-            self.synchronizer.t_run_puller_event.clear()
-            self.puller.join()
-
-            self.synchronizer.t_run_state_manipulator_event.clear()
-            self.state_manipulator.join()
-
-            self.synchronizer.t_run_logger_event.clear()
-            self.logging_server.join()
+            pncLibrary.waitForThreadStop(self, self.database_pusher, self.database_puller, self.machine_state_manipulator, self.logging_server)
+            # self.synchronizer.t_run_pusher_event.clear()
+            # self.pusher.join()
+            #
+            # self.synchronizer.t_run_puller_event.clear()
+            # self.puller.join()
+            #
+            # self.synchronizer.t_run_state_manipulator_event.clear()
+            # self.state_manipulator.join()
+            #
+            # self.synchronizer.t_run_logger_event.clear()
+            # self.logging_server.join()
                 # position_update = self.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
                 # buffer_level_update = self.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
                 # if position_update[0]:
@@ -452,7 +435,7 @@ class DataStore():
 
         #Positions from stepgen and encoders
         #self.commanded_joint_positions = np.zeros([1,5],dtype=float)
-        self.COMMANDED_SERVO_POLYLINES = np.empty((0,5), float)
+        self.COMMANDED_SERVO_POLYLINES = []#np.empty((0,5), float)
         self.sent_servo_commands = []
 
         #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
@@ -472,12 +455,14 @@ class DataStore():
 
         #Successfully executed moves
         self.NETWORK_PID_DELAYS = np.empty((0,1), float)
+        self.POLYLINE_TRANSMISSION_TIMES = np.empty((0, 1), float)
         self.EXECUTED_MOVES = []
 
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
-                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINES', 'NETWORK_PID_DELAYS']
+                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINES',
+                                 'NETWORK_PID_DELAYS', 'POLYLINE_TRANSMISSION_TIMES']
 
     def lookupDataType(self, data_type):
         data_type = data_type.upper()

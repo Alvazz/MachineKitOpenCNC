@@ -182,7 +182,7 @@ class FeedbackProcessor(Thread):
                 pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, 'received unrecognized binary string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
-        print('got buffer_level feedback')
+        #print('got buffer_level feedback')
         if feedback_encoding == 'ascii':
             rsh_clock_time = float(feedback_data[0])
             rsh_buffer_level = int(feedback_data[1])
@@ -193,6 +193,7 @@ class FeedbackProcessor(Thread):
 
         record = dict()
         record['HIGHRES_TC_QUEUE_LENGTH'] = np.array([[rsh_buffer_level]])
+        #print('buffer level is ' + str(rsh_buffer_level))
         record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time]])
 
         #FIXME major band-aid
@@ -204,8 +205,6 @@ class FeedbackProcessor(Thread):
         try:
             #machine_feedback_records = []
             if feedback_encoding == 'ascii':
-                #samples = feedback_data.strip('*').strip('|').split('*')
-                #Handle error for incomplete last entry, FIXME find root cause
                 number_of_feedback_points = len(feedback_data)
                 #Check end line terminator
                 if not feedback_data[-1][-1] == self.machine.ascii_servo_feedback_terminator or len(feedback_data[-1].split(self.machine.ascii_servo_feedback_terminator)) < self.machine.servo_log_num_axes:
@@ -220,9 +219,8 @@ class FeedbackProcessor(Thread):
                 RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
                 lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
 
-                #rx_received_time = time.clock()
-                if len(feedback_data) < 10:
-                    print('feedback error with data_string = ' + feedback_data)
+                # if len(feedback_data) < 10:
+                #     print('feedback error with data_string = ' + feedback_data)
 
                 for sample_number in range(0,number_of_feedback_points):
                     sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
@@ -258,6 +256,8 @@ class FeedbackProcessor(Thread):
             record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
             record['RTAPI_clock_times'] = RTAPI_clock_times
             record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            if type(stepgen_feedback_positions[0]) == int:
+                print('break')
             record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
 
             ## FIXME major band-aid
@@ -306,10 +306,6 @@ class MachineFeedbackHandler(Process):
         self.feedback_data_processing_error = False
         self.rsh_error_check = False
 
-        #self._running_process = True
-
-        #self.synchronizer_set_event = Event()
-
     def run(self):
         current_thread().name = self.name + '.MainThread'
         pncLibrary.getSynchronizer(self, self.feed_pipe)
@@ -334,7 +330,7 @@ class MachineFeedbackHandler(Process):
                 #First parse the header
                 bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
-                print('byte_string length is now ' + str(len(self.byte_string)))
+                #print('byte_string length is now ' + str(len(self.byte_string)))
                 self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log', bytes_received, None, rx_received_time))
 
             if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
@@ -361,14 +357,9 @@ class MachineFeedbackHandler(Process):
                     # self.last_processed_byte_string = self.byte_string
 
         #Flag set, shutdown. Handle socket closure in machine_controller
-        self.synchronizer.t_run_feedback_processor_event.clear()
-        self.feedback_processor.join()
-
-        #print('break')
-        # import sys
-        # def pass_fcn(): pass
-        # sys.stdout.flush = pass_fcn
-        # sys.stderr.flush = pass_fcn
+        pncLibrary.waitForThreadStop(self, self.feedback_processor)
+        # self.synchronizer.t_run_feedback_processor_event.clear()
+        # self.feedback_processor.join()
 
         #print('flagging feedback socket')
         #self.machine_controller._running = False
@@ -448,13 +439,7 @@ class MachineFeedbackHandler(Process):
                 self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time))
 
                 # Drop this command from the buffer and gobble remaining terminators
-                # remaining_byte_string = self.gobbleTerminators(byte_string[line_terminator_index:],
-                #                                                self.machine.ascii_line_terminator.encode('utf-8'))
-
-                #complete_transmission_delimiter_index = line_terminator_index + byte_string[line_terminator_index:].index(self.gobbleTerminators(byte_string[line_terminator_index:],self.machine.ascii_line_terminator.encode('utf-8'))[:])
-                #complete_transmission_delimiter_index = line_terminator_index + self.countTerminatorsToGobble(byte_string[line_terminator_index:]*len(line_terminator),line_terminator)
                 complete_transmission_delimiter_index = line_terminator_index + pncLibrary.countTerminatorsToGobble(byte_string[line_terminator_index:], line_terminator)*len(line_terminator)
-                # self.gobbleTerminators()
                 return True, False, feedback_data, complete_transmission_delimiter_index
             else:
                 #No line terminator, go for another pass
@@ -477,9 +462,6 @@ class MachineFeedbackHandler(Process):
                     if byte_string[-len(self.machine.binary_line_terminator)] == ord(self.machine.binary_line_terminator):
                         feedback_data = byte_string[:-len(self.machine.binary_line_terminator)]
 
-                        #feedback_data = byte_string[:-1]
-                        # FIXME send to feedback_processor thread
-                        #self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length)
                         self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length))
                         complete_transmission_delimiter_index = self.machine.size_of_feedback_int+transmission_length
                         return True, False, feedback_data, complete_transmission_delimiter_index

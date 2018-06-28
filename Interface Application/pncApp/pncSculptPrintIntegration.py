@@ -1,14 +1,13 @@
 import pncLibrary
 import multiprocessing, os, sys, time, logging, numpy as np
-from pncCamUserInterface import CAM_MVC
+#from pncCamUserInterface import CAM_MVC
 
 #print('Current PYTHONPATH is ' + str(sys.path))
-project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
-if project_path not in sys.path:
-    sys.path.append('C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\')
+#pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+
 
 #Globals
-sculptprint_MVC = None
+#sculptprint_MVC = None
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 axis_sensor_id = [0, 1]
@@ -57,85 +56,6 @@ def setupUserFunctionNames():
     stringArray = [r'Initialize Control',r'Enqueue Movements',r'Execute Motion']
     return stringArray
 
-# class PNCAppManager(multiprocessing.managers.SyncManager): pass
-#
-# def registerProxy(name, cls, proxy, manager):
-#     for attr in dir(cls):
-#         if inspect.ismethod(getattr(cls, attr)) and not attr.startswith("__"):
-#             proxy._exposed_ += (attr,)
-#             setattr(proxy, attr,
-#                     lambda s: object.__getattribute__(s, '_callmethod')(attr))
-#     manager.register(name, cls, proxy)
-
-######################## Operation ########################
-def startMVC():
-    sculptprint_MVC = CAM_MVC()
-    sculptprint_MVC.feedback_state = pncLibrary.SculptPrintFeedbackState()
-    sculptprint_MVC.t_run_CAM_MVC_thread.set()
-    sculptprint_MVC.start()
-    sculptprint_MVC.startup_event.wait()
-
-    #sculptprint_MVC.synchronizer.mvc_pncApp_initialized_event.wait()
-    #sculptprint_MVC.terminal_printer = pncLibrary.PrintServer(sculptprint_MVC.machine, sculptprint_MVC.synchronizer)
-    #sculptprint_MVC.synchronizer.q_print_server_message_queue.put('test printing')
-    return sculptprint_MVC
-
-def start():
-    return startPncApp()
-
-def startPncApp():
-    global sculptprint_MVC, machine, synchronizer, terminal_printer, feedback_state
-    if sculptprint_MVC is None:
-        sculptprint_MVC = startMVC()
-
-        sculptprint_MVC.command_queue.put('INIT')
-        sculptprint_MVC.pncApp_initialized_event.wait()
-
-        machine = sculptprint_MVC.machine
-        synchronizer = sculptprint_MVC.synchronizer
-        terminal_printer = sculptprint_MVC.terminal_printer
-        feedback_state = sculptprint_MVC.feedback_state
-
-
-    sculptprint_MVC.command_queue.put('START')
-    #pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
-    pncLibrary.printTerminalString(machine.sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
-    print('SCULPTPRINT MVC: Waiting for startup...')
-    synchronizer.mvc_pncApp_started_event.wait(machine.max_mvc_startup_wait_time)
-    return True
-
-# def read():
-#     global feedback_listener, machine_controller, encoder_interface, data_store
-#     #If appInit was successful
-#     if not machine_controller == []:
-#         #print('machine controller is ' + machine_controller)
-#         #return feedbackData[-1]
-#         #return [[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]]
-#
-#         #Format data from data store in format requested by SP
-#         #fb_data = [machine_controller.data_store.stepgen_feedback_positions[-1][np.array([0,2])].tolist(),[-90.], machine_controller.data_store.stepgen_feedback_positions[-1][np.array([1,3,4])].tolist(),[0.,0.]]
-#         fb_data = [machine_controller.data_store.ENCODER_FEEDBACK_POSITIONS[-1][np.array([0, 2])].tolist(), [-90.],
-#                    machine_controller.data_store.ENCODER_FEEDBACK_POSITIONS[-1][np.array([1, 3, 4])].tolist(), [0., 0.],
-#                    [float(machine_controller.data_store.HIGHRES_TC_QUEUE_LENGTH[-1])]]
-#         print(machine_controller.data_store.encoder_feedback_num_records)
-#         print([[item for sublist in fb_data for item in sublist]])
-#         print(machine_controller.data_store.ENCODER_FEEDBACK_POSITIONS[-1])
-#         print('encoder feedback id is ' + str(machine_controller.machine.encoder_feedback_written_record_id))
-#
-#         #Return only new data and don't skip any due to thread sync
-#         ##FIXME need mutex?
-#         #if machine_controller.data_store.machine_feedback_num_records - machine_feedback_record_id:
-#         current_record = machine_controller.data_store.encoder_feedback_num_records
-#         if current_record - machine_controller.machine.encoder_feedback_written_record_id:
-#             print('returning values')
-#             machine_controller.machine.encoder_feedback_written_record_id = current_record
-#             return [[data for sublist in fb_data for data in sublist]]
-#         else:
-#             print('returning no values')
-#             print(str(machine_controller.data_store.encoder_feedback_num_records))
-#             return []
-#     return []
-
 ############################# Data Handling #############################
 
 def findNextClosestTimeIndex(sample_time,data_time_array):
@@ -152,7 +72,7 @@ def findNextClosestTimeIndex(sample_time,data_time_array):
     return time_index
 
 
-def formatFeedbackDataForSP(sensor_type, times, positions, auxes=[]):
+def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
     #SP_formatted_data = len(times) * [[0] * len(SP_data_format)]
     SP_formatted_data = []
     for data_point_index in range(0,len(times)):
@@ -174,7 +94,7 @@ def formatFeedbackDataForSP(sensor_type, times, positions, auxes=[]):
             elif label_text == 'B':
                 data_point[label] = float(position[4])
             elif label_text == 'T':
-                data_point[label] = float((time-machine.RT_clock_offset)/machine.clock_resolution)
+                data_point[label] = float(time)
             elif label_text == 'BL':
                 data_point[label] = float(aux)
             elif label_text == 'S':
@@ -184,7 +104,7 @@ def formatFeedbackDataForSP(sensor_type, times, positions, auxes=[]):
         SP_formatted_data.append(data_point)
     return SP_formatted_data
 
-def mergeSortByIndex(times_LF, times_HF, data_LF, data_HF):
+def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_HF):
     LF_index, HF_index = (0, 0)
     #output_data = []
     output_times, output_positions, output_auxes = [], [], []
@@ -242,7 +162,8 @@ def mergeSortByIndex(times_LF, times_HF, data_LF, data_HF):
         data_time = times_HF[HF_index]
         if LF_index - 1 < 0:
             #data_position = machine.current_position
-            data_position = machine.sculptprint_interface.last_position_reading
+            #data_position = machine.sculptprint_interface.last_position_reading
+            data_position = feedback_state.last_position_reading
         else:
             data_position = data_LF[LF_index - 1]
         data_aux = data_HF[HF_index]
@@ -261,7 +182,7 @@ def mergeSortByIndex(times_LF, times_HF, data_LF, data_HF):
     #     return output_times, output_positions, output_auxes, LF_index, HF_index
     # return None, None, None, 0, 0
 
-def readMachine(axis_sensor_id):
+def readMachine(machine, synchronizer, feedback_state, axis_sensor_id):
     #global machine
     #global feedback_listener, machine_controller, encoder_interface, data_store
     #global LF_start_time_index, HF_start_time_index#, highfreq_rx_time, lowfreq_rx_time
@@ -282,7 +203,7 @@ def readMachine(axis_sensor_id):
 
             #BBB_feedback, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(LF_ethernet_time_slice,HF_ethernet_time_slice,LF_ethernet_data_slice,HF_ethernet_data_slice)
             times, positions, auxes, LF_start_time_index_increment, HF_start_time_index_increment = mergeSortByIndex(
-                LF_ethernet_time_slice, HF_ethernet_time_slice, LF_ethernet_data_slice, HF_ethernet_data_slice)
+                machine, feedback_state, LF_ethernet_time_slice, HF_ethernet_time_slice, LF_ethernet_data_slice, HF_ethernet_data_slice)
 
             feedback_state.LF_start_time_index += LF_start_time_index_increment
             feedback_state.HF_start_time_index += HF_start_time_index_increment
@@ -296,7 +217,7 @@ def readMachine(axis_sensor_id):
             #BBB_feedback = formatFeedbackDataForSP(axis_sensor_id, times, positions, auxes)
             #print('HF ethernet data slice is ' + str(HF_ethernet_data_slice))
 
-            return formatFeedbackDataForSP(axis_sensor_id, times, positions, auxes)
+            return formatFeedbackDataForSP(machine, axis_sensor_id, times, positions, auxes)
 
         elif axis_sensor_id == 1:
             DB_query_data = pncLibrary.lockedPull(synchronizer, ['SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS'],
@@ -306,14 +227,14 @@ def readMachine(axis_sensor_id):
             serial_time_slice, serial_data_slice = DB_query_data[1]
             feedback_state.serial_start_time_index += len(serial_data_slice)
 
-            return formatFeedbackDataForSP(axis_sensor_id, serial_time_slice, serial_data_slice)
+            return formatFeedbackDataForSP(machine, axis_sensor_id, serial_time_slice, serial_data_slice)
     return []
 
     # else:
     #     return np.asarray([[0, 1, 1, 1, 1, 1, 1, 1, 1]], dtype=float).tolist()
 
 # Returns true if monitoring is currently happening.
-def isMonitoring():
+def isMonitoring(synchronizer):
     try:
         monitoring_flag = synchronizer.process_start_signal.is_set() and synchronizer.mvc_run_feedback_event.is_set()
     except NameError:
@@ -353,7 +274,7 @@ def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
-def stop():
+def stop(synchronizer):
     #print('closing')
     #appClose()
     sculptprint_MVC.command_queue.put('CLOSE')
@@ -403,25 +324,3 @@ def testMonitoring():
 #multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
 #multiprocessing.set_start_method('spawn')
 #print('main name is ' + str(__name__))
-if __name__ == '__main__':
-    #multiprocessing.freeze_support()
-    #multiprocessing.log_to_stderr(logging.ERROR)
-    #start()
-    start()
-
-    # sculptprint_MVC = startMVC()
-    # machine = sculptprint_MVC.machine
-    # synchronizer = sculptprint_MVC.synchronizer
-    # terminal_printer = sculptprint_MVC.terminal_printer
-    # feedback_state = sculptprint_MVC.feedback_state
-    # sculptprint_MVC.init_pncApp()
-    # sculptprint_MVC.start_pncApp()
-
-    #connectToMachine()
-    userPythonFunction1(0,0,0,0,0)
-    userPythonFunction2(1,5,0,0,0)
-    userPythonFunction3(0,0,0,0,0)
-
-    while True:
-        print(eval(input("command: ")))
-        print('looping')
