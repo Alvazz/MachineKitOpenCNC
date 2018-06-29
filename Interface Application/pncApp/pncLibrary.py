@@ -5,15 +5,19 @@ from multiprocessing import Event, current_process
 
 ######################## Statics ########################
 localhost = '127.0.0.1'
-mvc_socket_port = 666
+interface_socket_port = 666
 # mvc_outbound_port = 42069
 # mvc_inbound_port = 666
 # mvc_socket_read_length = 65536
 sculptprint_ipc_pipe_name = 'pncApp_ipc_pipe'
 #sculptprint_inbound_ipc_pipe_name = 'pncApp_inbound_ipc_pipe'
 #sculptprint_outbound_ipc_pipe_name = 'pncApp_outbound_ipc_pipe'
-pipe_wait_timeout = 1
+
+#IPC Parameters
+pipe_wait_timeout_initial = 100
+pipe_wait_timeout = 2
 pipe_wait_interval = 0.01
+ssh_wait_timeout = 1
 
 #Terminal printouts
 connection_string = "CONNECTED to {} remote shell at {}:{}"
@@ -38,8 +42,12 @@ sculptprint_interface_initialization_string = "SculptPrint embedded python proce
 trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
 trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
 ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
-ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {}"
+ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
 ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
+interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
+
+#Queue operations
+queue_wait_timeout = 1
 
 ######################## Directories ########################
 parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
@@ -85,6 +93,27 @@ class SculptPrintFeedbackState():
 
         self.machine_feedback_record_id = 0
         self.encoder_feedback_record_id = 0
+
+class InternalFeedbackState():
+    def __init__(self, machine):
+        # Feedback State
+        self.byte_string = bytearray()
+        self.binary_transmission_length = calculateBinaryTransmissionLength(machine)
+        self.incoming_transmission_length = None
+        self.feedback_encoding = None
+        self.feedback_type = None
+        self.header_delimiter_index = None
+        self.socket_passes = 0
+
+        # Flags
+        self.transmission_received = False
+        self.terminator_received = False
+        self.header_processed = False
+        self.header_processing_error = False
+        self.feedback_data_processed = False
+        self.feedback_data_processing_error = False
+        self.rsh_error_check = False
+
 
 class PrintServer(Thread):
     def __init__(self, machine, synchronizer):
@@ -171,6 +200,7 @@ class Synchronizer():
 
         self.os_linuxcnc_running_event = manager.Event()
         self.os_linuxcncrsh_running_event = manager.Event()
+        self.os_ssh_connected_event = manager.Event()
 
         #self.testevent = Event()
 
@@ -244,7 +274,20 @@ class OSCommand():
         self.command_string = command_string
         self.time = time
 
-class MVCPacket():
+# class MVCPacket():
+#     def __init__(self, command, data):
+#         self.command = command
+#         self.data = data
+
+class PNCAppCommand():
+    def __init__(self, command, data, connection, connection_type, connection_format):
+        self.command = command
+        self.data = data
+        self.connection = connection
+        self.connection_type = connection_type
+        self.connection_format = connection_format
+
+class IPCDataWrapper():
     def __init__(self, data):
         self.data = data
 
@@ -293,56 +336,41 @@ def waitForThreadStop(caller, *args):
 # def getEventStatus(event, database_command_queue_proxy, database_output_queue_proxy):
 #     database_command_queue_proxy.put('get_event_status')
 
-def sendIPCData(type, connection, data):
-    if type == 'pipe':
-        connection.write(pickle.dumps(MVCPacket(data)))
-    elif type == 'socket':
-        connection.send(pickle.dumps(MVCPacket(data)))
+def sendIPCData(connection_type, data_type, connection, message):
+    if connection_type == 'pipe':
+        if data_type == 'binary':
+            connection.write(pickle.dumps(IPCDataWrapper(message)))
+        elif data_type == 'string':
+            connection.write((message).encode())
+        elif data_type == 'internal':
+            pass
+    elif connection_type == 'socket':
+        if data_type == 'binary':
+            connection.send(pickle.dumps(IPCDataWrapper(message)))
+        elif data_type == 'string':
+            connection.send((str(message)+'\n').encode())
+        elif data_type == 'internal':
+            pass
 
-def receiveIPCData(type, connection, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
-    received_data = waitForIPCDataTransfer(type, connection, timeout, interval)
+def receiveIPCData(connection_type, connection_format, connection, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
+    received_data = waitForIPCDataTransfer(connection_type, connection, timeout, interval)
     if received_data is None:
         raise ConnectionAbortedError
     else:
-        return pickle.loads(received_data)
+        print('pickled size is: ' + str(len(received_data)))
+        if connection_format == 'binary':
+            try:
+                return pickle.loads(received_data)
+            except Exception as error:
+                print('break in receive, error: ' + str(error))
+        elif connection_format == 'string':
+            return received_data.decode()
 
-# def receiveOverSocket(socket, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
-#     received_data = waitForIPCDataTransfer('socket', socket, timeout, interval)
-#     if received_data is None:
-#         raise ConnectionAbortedError
-#     else:
-#         return pickle.loads(received_data)
-
-# def receiveFromMVC(type, conn):
-#     if type == 'udp':
-#         return pickle.loads(conn.recv(mvc_socket_read_length))
-#         # try:
-#         #
-#         # except socketerror:
-#         #     return None
-#     elif type == 'pipe':
-#         return waitForPipeData(conn, pipe_wait_timeout, pipe_wait_interval)
-#         # if pollPipe(conn, pipe_wait_timeout, pipe_wait_interval):
-#         #     return conn.recv()
-#         # else:
-#         #     return None
-#
-# def receiveFromSP(type, conn):
-#     if type == 'udp':
-#         return conn.recv(mvc_socket_read_length).decode()
-#     elif type == 'pipe':
-#         received_data = conn.waitfordata(pipe_wait_timeout, pipe_wait_interval)
-#         if received_data is False:
-#             raise TimeoutError
-#         else:
-#             return pickle.loads(conn.clients[0].read())
-#         #return waitForPipeData(conn, pipe_wait_timeout, pipe_wait_interval)
-
-def waitForIPCDataTransfer(type, connection, timeout = None, wait_interval = None):
+def waitForIPCDataTransfer(connection_type, connection, timeout = None, wait_interval = None):
     if timeout is None:
         timeout = np.inf
 
-    if type == 'pipe':
+    if connection_type == 'pipe':
         start_time = time.clock()
         while (time.clock() - start_time) < timeout and not connection.canread():
             time.sleep(wait_interval or 0)
@@ -352,43 +380,27 @@ def waitForIPCDataTransfer(type, connection, timeout = None, wait_interval = Non
         else:
             return connection.read()
 
-    elif type == 'socket':
+    elif connection_type == 'socket':
         if select.select([connection], [], [], timeout)[0]:
             socket_data = bytearray()
-            while select.select([connection], [], [], 0)[0]:
+            while select.select([connection], [], [], 0.1)[0]:
                 socket_data += connection.recv(4096)
             return socket_data
         else:
             raise TimeoutError
 
-    # start_time = time.clock()
-    # while (time.clock() - start_time) < timeout and not select.select(socket, [], [], timeout):
-    #     time.sleep(wait_interval or 0)
-    #
-    # if (time.clock() - start_time) > timeout:
-    #     raise TimeoutError
-    # else:
-    #     return pipe.read()
+def MVCHandshake(connection_type, connection, message):
+    sendIPCData(connection_type, 'string', connection, message)
+    received_message = receiveIPCData(connection_type, 'string', connection).strip()
+    if not received_message == message + '_ACK':
+        print('handshake doesnt match, received: ' + received_message)
+    return received_message == message + '_ACK'
+    # if connection_format == 'binary':
+    #     if not received_message.data == message + '_ACK':
+    #         print('handshake doesnt match, received: ' + received_message.data)
+    #     return received_message.data == message + '_ACK'
+    # elif connection_format == 'string':
 
-# def waitForPipeData(pipe, timeout = None, wait_interval = None):
-#     if timeout is None:
-#         timeout = np.inf
-#
-#     start_time = time.clock()
-#     while (time.clock() - start_time) < timeout and not pipe.canread():
-#         time.sleep(wait_interval or 0)
-#
-#     if (time.clock() - start_time) > timeout:
-#         raise TimeoutError
-#     else:
-#         return pipe.read()
-
-def MVCHandshake(type, connection, message):
-    sendIPCData(type, connection, message)
-    received_message = receiveIPCData(type, connection)
-    if not received_message.data == message + '_ACK':
-        print('handshake doesnt match, received: ' + received_message.data)
-    return received_message.data == message + '_ACK'
 
 def lockedPull(synchronizer, data_types, start_indices, end_indices):
     with synchronizer.db_pull_lock:
@@ -467,7 +479,8 @@ def estimateMachineClock(machine, time_to_estimate=-1):
     if time_to_estimate == -1:
         time_to_estimate = time.clock()
 
-    return machine.RT_clock_offset + (time_to_estimate - machine.estimated_network_latency) * machine.clock_resolution
+    return (time_to_estimate - machine.pncApp_clock_offset) * machine.clock_resolution
+    #return machine.RT_clock_offset + (time_to_estimate - machine.estimated_network_latency) * machine.clock_resolution
 
 ######################## Comms ########################
 def calculateBinaryTransmissionLength(machine):

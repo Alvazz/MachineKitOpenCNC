@@ -118,7 +118,6 @@ class Puller(Thread):
         data_types, start_indices, end_indices = self.formatPullRequest(data_types, start_indices, end_indices)
         return_data = []
         success_flag = True
-        #self.synchronizer.db_data_store_lock.acquire()
         with self.data_store_lock:
             for k in range(0,len(data_types)):
                 data_type = data_types[k]
@@ -126,8 +125,7 @@ class Puller(Thread):
                 start_index = start_indices[k]
                 end_index = end_indices[k]
                 if np.shape(data_array)[0] == 0:
-                    #print('the shape is ' + str(np.shape(data_array)))
-                    #print('data array for type ' + str(data_type) + ' is empty')
+
                     if self.machine.rsh_buffer_level > 0:
                         print('pull break')
                     #return_data.append(None)

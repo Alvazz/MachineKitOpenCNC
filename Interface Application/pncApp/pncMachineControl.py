@@ -4,6 +4,7 @@ from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
 from queue import Empty
 from io import StringIO, BytesIO
+from socket import timeout as SocketTimeout
 
 class CloudTrajectoryPlanner(Thread):
     def __init__(self, parent):
@@ -109,11 +110,6 @@ class CloudTrajectoryPlanner(Thread):
         sequence_id = planned_point_payload['sid']
         planned_points = planned_point_payload['planned']
 
-        # planned_points = json.loads(self.tp_websocket.recv())
-        # if not planned_points['serial_number'] == self.path_serial_number:
-        #     raise pncLibrary.WebsocketError('Websocket point serial numbers didn\'t match')
-        # self.planned_point_output_queue.put(self.unStringifyPoints(planned_points))
-
     def sortAndOutputPoints(self):
         for p in range(0,len(self.planned_point_payload_buffer)):
             planned_point_payload = self.planned_point_payload_buffer[p]
@@ -149,8 +145,8 @@ class OperatingSystemController(Thread):
                                                      self.machine.thread_launch_string, current_process().name,
                                                      self.name)
         self.startup_event.set()
-        self.connectToMachine()
-        while self.synchronizer.t_run_operating_system_controller.is_set():
+        self.connectToOperatingSystem(pncLibrary.ssh_wait_timeout)
+        while self.synchronizer.t_run_operating_system_controller.is_set() and self.synchronizer.os_ssh_connected_event.is_set():
             try:
                 command = self.command_queue.get(True, self.machine.process_queue_wait_timeout)
                 self.handleCommand(command)
@@ -172,19 +168,34 @@ class OperatingSystemController(Thread):
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
 
-    def connectToMachine(self):
+    def connectToOperatingSystem(self, timeout):
         #FIXME raise exception if this doesn't work
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        if self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, self.machine.ssh_credentials[0], self.machine.ssh_credentials[1]):
+        try:
+            self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, self.machine.ssh_credentials[0],
+                                    self.machine.ssh_credentials[1], timeout=timeout)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         self.machine.ssh_connection_success_string, self.machine.ssh_credentials[0],
-                                                         self.machine.ip_address)
-            return True
-        else:
+                                                         self.machine.ssh_connection_success_string,
+                                                         self.machine.ssh_credentials[0], self.machine.ip_address)
+            self.synchronizer.os_ssh_connected_event.set()
+        except (TimeoutError, SocketTimeout) as error:
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         self.machine.ssh_connection_failure_string, self.machine.ssh_credentials[0],
-                                                         self.machine.ip_address)
-            return False
+                                                         pncLibrary.ssh_connection_failure_string,
+                                                         self.machine.ssh_credentials[0],
+                                                         self.machine.ip_address, str(error))
+
+
+        # if self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, self.machine.ssh_credentials[0], self.machine.ssh_credentials[1], timeout=timeout):
+        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #                                                  self.machine.ssh_connection_success_string, self.machine.ssh_credentials[0],
+        #                                                  self.machine.ip_address)
+        #     self.synchronizer.os_ssh_connected_event.set()
+        #     return True
+        # else:
+        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #                                                  self.machine.ssh_connection_failure_string, self.machine.ssh_credentials[0],
+        #                                                  self.machine.ip_address)
+        #     return False
 
     def handleCommand(self, command):
         if command.command_type == 'RUN_CNC':
@@ -316,6 +327,7 @@ class MachineController(Process):
         #self.command_queue = synchronizer.q_machine_controller_command_queue
 
         self.planned_point_buffer = []
+        self.support_threads = [OperatingSystemController, MotionController]
 
         self.getFunctions = [self.getMachineMode, self.getEstop]
         self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
@@ -326,7 +338,7 @@ class MachineController(Process):
         current_thread().name = self.main_thread_name
         pncLibrary.getSynchronizer(self, self.feed_pipe)
         #FIXME detect thread launch failure
-        pncLibrary.waitForThreadStart(self, OperatingSystemController, MotionController)#, CloudTrajectoryPlanner)
+        pncLibrary.waitForThreadStart(self, MotionController)#, CloudTrajectoryPlanner)
 
         self.synchronizer.mc_startup_event.set()
         self.synchronizer.process_start_signal.wait()

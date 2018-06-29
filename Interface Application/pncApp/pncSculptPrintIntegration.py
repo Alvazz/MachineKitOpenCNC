@@ -94,7 +94,8 @@ def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
             elif label_text == 'B':
                 data_point[label] = float(position[4])
             elif label_text == 'T':
-                data_point[label] = float(time)
+                #Convert us to s
+                data_point[label] = float(time)/machine.clock_resolution
             elif label_text == 'BL':
                 data_point[label] = float(aux)
             elif label_text == 'S':
@@ -281,14 +282,14 @@ def stop(synchronizer):
     synchronizer.mvc_app_shutdown_event.wait()
     return True
 
-def testMonitoring():
-    while True:
-        z = readMachine(0)
-        if z == []:
-            print('returning nothing')
-        else:
-            print('returning good data')
-        print('read machine')
+# def testMonitoring():
+#     while True:
+#         z = readMachine(0)
+#         if z == []:
+#             print('returning nothing')
+#         else:
+#             print('returning good data')
+#         print('read machine')
 
 # if False:
 #     read_data0 = []
