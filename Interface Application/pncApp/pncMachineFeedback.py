@@ -145,7 +145,7 @@ class FeedbackProcessor(Thread):
             elif self.machine.ascii_rsh_feedback_strings[11] == feedback_type:
                 # PING
                 self.machine.ping_rx_time = rx_received_time
-                self.machine.estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
+                self.machine.current_estimated_network_latency = (self.machine.ping_rx_time - self.machine.ping_tx_time) / 2
                 self.synchronizer.fb_ping_event.set()
             elif self.machine.ascii_rsh_feedback_strings[12] == feedback_type:
                 # Time
@@ -457,14 +457,15 @@ class MachineFeedbackHandler(Process):
                 self.old_transmission_length = self.incoming_transmission_length
                 if not self.feedback_state.multiple_socket_passes_required:
                     self.incoming_transmission_length = transmission_length
-                byte_string = byte_string[self.machine.size_of_feedback_int:]
+                    byte_string = byte_string[self.machine.size_of_feedback_int:]
                 if len(byte_string) >= self.incoming_transmission_length:
                 #if len(byte_string) >= transmission_length:
                     if transmission_length <= len(self.machine.binary_line_terminator):
                         print('break')
                     #Now we have a full transmission and can process it
                     #byte_string = byte_string[:transmission_length+len(self.machine.binary_line_terminator)]
-                    byte_string = byte_string[:transmission_length]
+                    #byte_string = byte_string[:transmission_length]
+                    byte_string = byte_string[:self.incoming_transmission_length]
                     #Check for complete transmission with terminator
                     try:
                         if byte_string[-len(self.machine.binary_line_terminator)] == ord(self.machine.binary_line_terminator):
@@ -483,6 +484,7 @@ class MachineFeedbackHandler(Process):
                 else:
                     #Wait for complete transmission
                     print('waiting for complete transmission')
+                    self.feedback_state.multiple_socket_passes_required = True
                     self.socket_passes += 1
                     self.last_byte_string = byte_string
                     if self.socket_passes >= 2:

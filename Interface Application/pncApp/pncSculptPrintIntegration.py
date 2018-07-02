@@ -277,7 +277,7 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
         #FIXME add clock offset
         #if axis_sensor_id == 0 or 1:
         time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateInterfaceData('pull', synchronizer, feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, [axis_sensor_id])
-        merged_data = mergeSort(feedback_state, time_slice, data_slice, pncLibrary.getFallbackDataPoints(feedback_state, data_stream_names, data_stream_sizes), [], [])
+        merged_data = mergeSort(feedback_state, time_slice[0], data_slice[0], pncLibrary.getFallbackDataPoints(feedback_state.last_values_read, data_stream_names, data_stream_sizes), [], [])
 
         #FIXME this iteration here is probably not good
         return formatFeedbackData(axis_sensor_id, data_format, [[merged_data[0][k]] + merged_data[1][k] for k in range(0,len(merged_data[0]))])

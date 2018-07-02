@@ -4,7 +4,6 @@ from queue import Empty
 from pncApp import *#appInit, appStart, appStop, appClose
 from pncMachineControl import OperatingSystemController
 import numpy as np
-#from pncSculptPrintIntegration import *
 
 pncLibrary.updatePath()
 sculptprint_MVC = None
@@ -12,7 +11,7 @@ sculptprint_MVC = None
 class CAM_MVC(Thread):
     def __init__(self):
         super(CAM_MVC, self).__init__()
-        self.name = "sculptprint_MVC"
+        self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
@@ -35,11 +34,10 @@ class CAM_MVC(Thread):
         self.terminal_printer = None
 
     def run(self):
-        print('CAM MVC: Starting...')
+        print('PNCAPP CONTROLLER: Starting...')
+        #current_process().name = self.name
         pncLibrary.waitForThreadStart(self, PNCAppInterfaceSocketLauncher)
         self.startup_event.set()
-        #self.pnc_app_initialized_event.wait()
-        print(current_process().pid)
         while self.t_run_CAM_MVC_thread.is_set():
             try:
                 command = self.command_queue.get(pncLibrary.queue_wait_timeout)
@@ -54,19 +52,6 @@ class CAM_MVC(Thread):
             #     #FIXME move to socket manager thread?
             #     print('SCULPTPRINT MVC: Client %s forcibly disconnected during transfer' % str(self.CAM_client_address))
 
-            # try:
-            #     command = pncLibrary.receiveIPCData(self.mvc_pipe.clients[0])
-            #     self.command_queue.put(command.data)
-            # except ConnectionAbortedError:
-            #     print('SCULPTPRINT INTERFACE: Pipe disconnected from client')
-            # except TimeoutError:
-            #     pass
-            # except IndexError:
-            #     #No clients connected
-            #     pass
-
-            #self.mvc_pipe.dropdeadclients()
-
         self.mvc_pipe.close()
         pncLibrary.waitForThreadStop(self, self.interface_socket_launcher)
         #pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
@@ -76,7 +61,7 @@ class CAM_MVC(Thread):
             pncLibrary.sendIPCData(connection_type, 'string', connection, 'ACK')
 
     def handleCommand(self, command):
-        print(command.command.split('_')[0])
+        print(command.command.split('_')[0].strip())
         command_data = command.command.split('_')
         command_type = command_data[0].strip()
         if command_type == 'INIT':
@@ -127,6 +112,7 @@ class CAM_MVC(Thread):
             #     print('break')
         elif command_type == 'FASTFORWARD':
             pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, [int(id) for id in command_data[1:]])
+            pncLibrary.updateInterfaceClockOffsets(self.feedback_state.last_values_read, self.feedback_state.clock_offsets)
             #if command.connection_format != 'internal'
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command_type)
         elif command_type == 'CLOSE_SP_INTERFACE':
@@ -285,8 +271,8 @@ def startPncApp():
 
 
     sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('START', None, None, None, 'internal'))
-    pncLibrary.printTerminalString(pncLibrary.printout_sculptprint_interface_initialization_string, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
-    print('SCULPTPRINT MVC: Waiting for startup...')
+    pncLibrary.printTerminalString(pncLibrary.printout_sculptprint_interface_initialization_string, sculptprint_MVC.name, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
+    print('PNCAPP CONTROLLER: Waiting for startup...')
     synchronizer.mvc_pncApp_started_event.wait(machine.max_mvc_startup_wait_time)
     return True
 

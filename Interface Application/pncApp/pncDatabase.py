@@ -73,7 +73,7 @@ class LoggingServer(Thread):
             #FIXME don't use spinlock
             try:
                 log_time, log_message = self.log_queue.get(True, self.machine.thread_queue_wait_timeout)
-                self.log_file_handle.write(str(log_time) + ': ' + str(log_message))
+                self.log_file_handle.write('\n' + str(log_time) + ': ' + str(log_message))
                 self.log_file_handle.flush()
             except:
                 pass
@@ -188,8 +188,6 @@ class Pusher(Thread):
         while self.synchronizer.t_run_database_pusher_event.is_set():
             try:
                 push_request = self.push_queue.get(True, self.machine.thread_queue_wait_timeout)
-                # if 'ENCODER_FEEDBACK_POSITIONS' in push_request[0]:
-                #     print('break')
                 self.push(push_request)
             except:
                 pass
@@ -221,6 +219,11 @@ class Pusher(Thread):
                     try:
                         #FIXME this is going to get very slow
                         setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
+                    except AttributeError:
+                        #print('DATABASE: Creating record type %s with %i records' % key, value.size)
+                        pncLibrary.printTerminalString(pncLibrary.printout_database_field_creation_string, key, value.size)
+                        setattr(self.data_store, key, value)
+                        self.data_store.data_descriptors.append(key)
                     except Exception as error:
                         print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
 
@@ -409,7 +412,7 @@ class DataStore():
 
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
         #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
-        self.PING_TIMES = np.empty((0, 2), float)
+        #self.PING_TIMES = np.empty((0, 2), float)
         self.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RTAPI_CLOCK_TIMES = np.empty((0, 1), float)
         #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)

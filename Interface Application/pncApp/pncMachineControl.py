@@ -458,8 +458,8 @@ class MachineController(Process):
             #self.setBinaryMode(1)
 
             #FIXME do this a number of times and average
-            if self.getLatencyEstimate()[0]:
-                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+            if self.getLatencyEstimate(10)[0]:
+                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Successful estimation of mean network latency as ' + str(self.machine.current_estimated_network_latency))
             else:
                 self.synchronizer.q_print_server_message_queue.put('MACHINE_CONTROLLER: Failed to get network latency')
 
@@ -518,12 +518,30 @@ class MachineController(Process):
         else:
             return (False, self.synchronizer.os_linuxcncrsh_running_event.is_set())
 
-    def getLatencyEstimate(self, timeout = 0.5):
-        self.sendPing()
-        if self.synchronizer.fb_ping_event.wait(timeout):
-            return (True, self.machine.estimated_network_latency)
-        else:
-            return (False, self.machine.estimated_network_latency)
+    def getLatencyEstimate(self, pings_to_send, timeout = 0.5):
+        print('Estimating latency with %i pings' % pings_to_send)
+        ping_times = np.array([[]])
+        for ping_number in range(0, pings_to_send):
+            self.sendPing()
+            time.sleep(pncLibrary.machine_ping_delay_time)
+            try:
+                self.synchronizer.fb_ping_event.wait(timeout)
+                ping_times = np.hstack((ping_times, np.array([[self.machine.current_estimated_network_latency]])))
+                success_flag = True
+            except TimeoutError:
+                print('MACHINE CONTROLLER: Latency estimation timed out after %i pings' % ping_number)
+                success_flag = False
+                break
+
+        self.machine.mean_network_latency = np.mean(ping_times)
+        pncLibrary.asynchronousPush(self.synchronizer, {'PINGS': ping_times})
+        #self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', {'PINGS': ping_times}))
+        return (success_flag, self.machine.mean_network_latency)
+
+            # if self.synchronizer.fb_ping_event.wait(timeout):
+            #     return (True, self.machine.current_estimated_network_latency)
+            # else:
+            #     return (False, self.machine.current_estimated_network_latency)
 
     def getClock(self):
         self.writeLineUTF('get time')
@@ -623,8 +641,8 @@ class MachineController(Process):
         self.operating_system_controller.command_queue.put(pncLibrary.OSCommand('KILL_RSH'))
 
     def sendPing(self):
-        self.writeLineUTF('get ping')
         self.machine.ping_tx_time = time.time()
+        self.writeLineUTF('get ping')
 
     def setCommMode(self, flag):
         sendstr = 'set comm_mode '

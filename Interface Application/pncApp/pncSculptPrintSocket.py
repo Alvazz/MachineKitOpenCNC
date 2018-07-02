@@ -11,11 +11,12 @@ import os, time, logging, socket, pickle, wpipe, numpy as np
 #pncLibrary.updatePath()
 
 #Globals
-pncApp_connection_event = Event()
-pncApp_feedback_synchronization_event = Event()
-mvc_connection_type = 'socket'
-mvc_command_format = 'string'
-mvc_feedback_format = 'binary'
+pncApp_connector = pncLibrary.PNCAppConnection('socket', 'string', 'binary')
+# pncApp_connection_event = Event()
+# pncApp_feedback_synchronization_event = Event()
+# mvc_connection_type = 'socket'
+# mvc_command_format = 'string'
+# mvc_feedback_format = 'binary'
 
 
 #mvc_connection_format = 'binary'
@@ -46,7 +47,7 @@ def setupMachineAuxilary(nMachine):
     return setupMachineAuxiliary(nMachine)
 
 def setupMachineAuxiliary(nMachine):
-    return pncLibrary.auxiliary_data_labels[nMachine]
+    return pncLibrary.SP_auxiliary_data_labels[nMachine]
     # if nMachine == 0:
     #     stringArray = [r'Buffer Level', r'Buffer Control PID Delays', r'Polyline Send Times']
     # else:
@@ -76,33 +77,32 @@ def setupUserFunctionNames():
 
 
 ######################## Operation ########################
-def initializeComms(connection_type):
-    if connection_type == 'pipe':
-        try:
-            print("SCULPTPRINT INTERFACE: Acquiring pipe %s..." % pncLibrary.socket_sculptprint_ipc_pipe_name)
-            sculptprint_pipe = wpipe.Client(pncLibrary.socket_sculptprint_ipc_pipe_name, wpipe.Mode.Master,
-                                                maxmessagesz=4096)
-            pncApp_connection_event.set()
-            print('SCULPTPRINT INTERFACE: Pipe %s opened successfully' % pncLibrary.socket_sculptprint_ipc_pipe_name)
-            return sculptprint_pipe
-        except:
-            raise ConnectionRefusedError
-    elif connection_type == 'socket':
-        try:
-
-            sculptprint_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sculptprint_socket.connect(('localhost', pncLibrary.socket_interface_socket_port))
-            pncApp_connection_event.set()
-            print('SCULPTPRINT INTERFACE: Socket connected successfully to %s' % 'localhost')
-            return sculptprint_socket
-        except:
-            raise ConnectionRefusedError
+# def initializeInterfaceIPC(connection_type):
+#     if connection_type == 'pipe':
+#         try:
+#             print("SCULPTPRINT INTERFACE: Acquiring pipe %s..." % pncLibrary.socket_sculptprint_ipc_pipe_name)
+#             sculptprint_pipe = wpipe.Client(pncLibrary.socket_sculptprint_ipc_pipe_name, wpipe.Mode.Master, maxmessagesz=4096)
+#             pncApp_connection_event.set()
+#             print('SCULPTPRINT INTERFACE: Pipe %s opened successfully' % pncLibrary.socket_sculptprint_ipc_pipe_name)
+#             return sculptprint_pipe
+#         except:
+#             raise ConnectionRefusedError
+#     elif connection_type == 'socket':
+#         try:
+#
+#             sculptprint_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+#             sculptprint_socket.connect(('localhost', pncLibrary.socket_interface_socket_port))
+#             pncApp_connection_event.set()
+#             print('SCULPTPRINT INTERFACE: Socket connected successfully to %s' % 'localhost')
+#             return sculptprint_socket
+#         except:
+#             raise ConnectionRefusedError
 
 def start():
-    global mvc_connection
+    #global mvc_connection
     try:
-        mvc_connection = initializeComms(mvc_connection_type)
-        if pncLibrary.MVCHandshake(mvc_connection_type, mvc_connection, 'HELLO_SCULPTPRINT_BINARY'):
+        pncApp_connector.connection = pncLibrary.initializeInterfaceIPC(pncApp_connector)
+        if pncLibrary.MVCHandshake(pncApp_connector, 'HELLO_SCULPTPRINT_BINARY'):
             print("SUCCESS: Connected to pncApp")
             return True
 
@@ -113,12 +113,12 @@ def start():
         print("SCULPTPRINT INTERFACE: pncApp handshake failed")
         return False
 
-def checkAppStart(connection_type):
-    pncLibrary.sendIPCData(connection_type, mvc_connection, 'CHECKSTATUS')
-    return pncLibrary.receiveIPCData(connection_type, mvc_connection)
+# def checkAppStart(connection_type):
+#     pncLibrary.sendIPCData(connection_type, mvc_connection, 'CHECKSTATUS')
+#     return pncLibrary.receiveIPCData(connection_type, mvc_connection)
 
 def isMonitoring():
-    return safelyHandleSocketData('ISMONITORING', bool, False)
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
     # if not pncApp_connection_event.is_set():
     #     return False
     #
@@ -132,7 +132,7 @@ def isMonitoring():
     #     return False
 
 def readMachine(axis_sensor_id):
-    return safelyHandleSocketData('READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
 
     # if not pncApp_connection_event.is_set():
     #     return []
@@ -166,40 +166,40 @@ def readMachine(axis_sensor_id):
     #     print('socket read error')
     #     return []
 
-def safelyHandleSocketData(message, expected_data_type, fallback_data):
-    if not pncApp_connection_event.is_set():
-        print('pncApp not connected')
-        return fallback_data
-
-    try:
-        pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, message)
-        if not pncApp_feedback_synchronization_event.is_set():
-            timeout = pncLibrary.socket_wait_timeout_initial
-        else:
-            #timeout = pncLibrary.socket_wait_timeout*5
-            timeout = pncLibrary.socket_wait_timeout_initial
-
-        received_packet = pncLibrary.receiveIPCData(mvc_connection_type, mvc_feedback_format, mvc_connection, timeout)
-        pncApp_feedback_synchronization_event.set()
-        if type(received_packet.data) is not expected_data_type:
-            raise TypeError
-
-        # if received_packet.data == True:
-        #     print('break')
-        return received_packet.data
-    except ConnectionResetError:
-        print('pncApp closed connection during ' + str(message))
-        pncApp_connection_event.clear()
-        return fallback_data
-    except TimeoutError:
-        print('read machine timed out on call to: ' + str(message))
-        return fallback_data
-    except TypeError:
-        print('SculptPrint socket out of sync on call to: ' + str(message))
-        return fallback_data
-    except EOFError:
-        print('socket read error on call to: ' + str(message))
-        return fallback_data
+# def safelyHandleSocketData(message, expected_data_type, fallback_data):
+#     if not pncApp_connection_event.is_set():
+#         print('pncApp not connected')
+#         return fallback_data
+#
+#     try:
+#         pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, message)
+#         if not pncApp_feedback_synchronization_event.is_set():
+#             timeout = pncLibrary.socket_wait_timeout_initial
+#         else:
+#             #timeout = pncLibrary.socket_wait_timeout*5
+#             timeout = pncLibrary.socket_wait_timeout_initial
+#
+#         received_packet = pncLibrary.receiveIPCData(mvc_connection_type, mvc_feedback_format, mvc_connection, timeout)
+#         pncApp_feedback_synchronization_event.set()
+#         if type(received_packet.data) is not expected_data_type:
+#             raise TypeError
+#
+#         # if received_packet.data == True:
+#         #     print('break')
+#         return received_packet.data
+#     except ConnectionResetError:
+#         print('pncApp closed connection during ' + str(message))
+#         pncApp_connection_event.clear()
+#         return fallback_data
+#     except TimeoutError:
+#         print('read machine timed out on call to: ' + str(message))
+#         return fallback_data
+#     except TypeError:
+#         print('SculptPrint socket out of sync on call to: ' + str(message))
+#         return fallback_data
+#     except EOFError:
+#         print('socket read error on call to: ' + str(message))
+#         return fallback_data
 
 ############################# User Functions #############################
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
@@ -220,20 +220,14 @@ def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
-def closeMVCConnection(connection_type, connection):
-    if connection_type == 'pipe':
-        connection.close()
-    elif connection_type == 'socket':
-        connection.send('CLOSE_SOCKET'.encode())
-        connection.shutdown(socket.SHUT_RDWR)
-        connection.close()
+
 
 def stop():
-    if pncApp_connection_event.is_set():
-        closeMVCConnection(mvc_connection_type, mvc_connection)
+    if pncApp_connector.connection_event.is_set():
+        pncLibrary.closeMVCConnection(pncApp_connector.connection_type, pncApp_connector.connection)
     return True
 
-#initializeComms()
+#initializeInterfaceIPC()
 
 print(setupMachineDescriptors(0))
 print(setupMachineDescriptors(1))
@@ -249,7 +243,7 @@ while True and __name__ != 'machinemonitor':
         print(z)
         yy = readMachine(0)
         print(yy)
-        time.sleep(0.1)
+        #time.sleep(0.1)
         print('encoder data is: ')
         yy = readMachine(1)
         print(yy)

@@ -20,48 +20,48 @@ class MachineModelStatics():
         self.connection_open_string = "CONNECTED to {} on {}"
         self.connection_close_string = "DISCONNECTED from {} on {}"
 
-class MachineModelState():
-    def __init__(self):
-        self.name = None
-        # Init states
-        self.local_epoch = 0
-        self.mode = self.modes[0]
-        self.mode_stack = []
-        self.status = self.statuses[2]
-
-        self.estop = 0
-        self.drive_power = 0
-        self.echo = 1
-        self.comm_mode = 0
-        self.logging_mode = 0
-        self.units = 'inch'
-
-        # self.rsh_error = 0
-        self.rsh_error = 0
-        self.linked = 0
-        self.connected = 0
-        self.axis_home_state = [0] * self.number_of_joints
-        self.current_move_serial_number = -1
-
-        self.ping_tx_time = 0
-        self.ping_rx_time = 0
-        self.estimated_network_latency = 0
-        self.OS_clock_offset = 0
-        self.RT_clock_offset = 0
-        self.pncApp_clock_offset = 0
-        self.last_unix_time = 0
-        self.clock_sync_received_time = 0
-
-        # Servo log parameters
-        self.servo_log_num_axes = 5
-        self.servo_log_sub_sample_rate = 10
-        self.servo_log_buffer_size = 50
-        self.buffer_level_feedback_mode = 0
-        self.buffer_level_feedback_period_us = 1e6
-
-        self.polylines_per_tx = 1
-        self.points_per_polyline = 25
-        self.buffer_level_setpoint = 1000
+# class MachineModelState():
+#     def __init__(self):
+#         self.name = None
+#         # Init states
+#         self.local_epoch = 0
+#         self.mode = self.modes[0]
+#         self.mode_stack = []
+#         self.status = self.statuses[2]
+#
+#         self.estop = 0
+#         self.drive_power = 0
+#         self.echo = 1
+#         self.comm_mode = 0
+#         self.logging_mode = 0
+#         self.units = 'inch'
+#
+#         # self.rsh_error = 0
+#         self.rsh_error = 0
+#         self.linked = 0
+#         self.connected = 0
+#         self.axis_home_state = [0] * self.number_of_joints
+#         self.current_move_serial_number = -1
+#
+#         self.ping_tx_time = 0
+#         self.ping_rx_time = 0
+#         self.current_estimated_network_latency = 0
+#         self.OS_clock_offset = 0
+#         self.RT_clock_offset = 0
+#         self.pncApp_clock_offset = 0
+#         self.last_unix_time = 0
+#         self.clock_sync_received_time = 0
+#
+#         # Servo log parameters
+#         self.servo_log_num_axes = 5
+#         self.servo_log_sub_sample_rate = 10
+#         self.servo_log_buffer_size = 50
+#         self.buffer_level_feedback_mode = 0
+#         self.buffer_level_feedback_period_us = 1e6
+#
+#         self.polylines_per_tx = 1
+#         self.points_per_polyline = 25
+#         self.buffer_level_setpoint = 1000
 
 class MachineModel():
     def __init__(self):
@@ -193,7 +193,8 @@ class MachineModel():
         self.clock_resolution = 1e6
         self.ping_tx_time = 0
         self.ping_rx_time = 0
-        self.estimated_network_latency = 0
+        self.current_estimated_network_latency = 0
+        self.mean_estimated_network_latency = 0
         self.OS_clock_offset = 0
         self.RT_clock_offset = 0
         self.pncApp_clock_offset = 0

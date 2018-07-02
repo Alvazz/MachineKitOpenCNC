@@ -282,7 +282,7 @@ class MachineController(Process):
 
             #FIXME do this a number of times and average
             # if self.getLatencyEstimate()[0]:
-            #     print('successful estimation of network latency as ' + str(self.machine.estimated_network_latency))
+            #     print('successful estimation of network latency as ' + str(self.machine.current_estimated_network_latency))
             # else:
             #     print('failed to get network latency')
 
