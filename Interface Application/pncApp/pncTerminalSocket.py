@@ -12,7 +12,7 @@ class PNCAppInterfaceSocketLauncher(Thread):
 
         self.interface_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
         self.interface_socket.setsockopt(socket.SIO_LOOPBACK_FAST_PATH)
-        self.interface_socket.settimeout(pncLibrary.pipe_wait_timeout)
+        self.interface_socket.settimeout(pncLibrary.socket_wait_timeout)
 
         self.clients_connected = 0
         self.client_list = []
@@ -24,7 +24,7 @@ class PNCAppInterfaceSocketLauncher(Thread):
         self.t_run_interface_socket_listener_event.set()
 
     def run(self):
-        self.interface_socket.bind(('localhost', pncLibrary.interface_socket_port))
+        self.interface_socket.bind(('localhost', pncLibrary.socket_interface_socket_port))
         self.interface_socket.listen()
         pncLibrary.printTerminalString(pncLibrary.thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
@@ -107,7 +107,7 @@ class PNCAppInterfaceSocket(Thread):
 #
 #         self.terminal_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
 #         self.terminal_socket.setsockopt(socket.SIO_LOOPBACK_FAST_PATH)
-#         self.terminal_socket.settimeout(pncLibrary.pipe_wait_timeout)
+#         self.terminal_socket.settimeout(pncLibrary.socket_wait_timeout)
 #
 #         self.t_run_terminal_socket_listener_event = Event()
 #         self.startup_event = Event()

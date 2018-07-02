@@ -3,7 +3,8 @@ from multiprocessing import Process, Event, Lock, Queue, current_process#Value#,
 #from multiprocessing.synchronize import Event
 from multiprocessing.managers import NamespaceProxy
 from threading import Thread, current_thread#, Event as threadEvent
-import queue, time, datetime, numpy as np
+from queue import Empty
+import time, datetime, numpy as np
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -104,7 +105,10 @@ class Puller(Thread):
                 pull_request = self.pull_queue.get(True, self.machine.thread_queue_wait_timeout)
                 output_data = self.pull(pull_request[0], pull_request[1], pull_request[2])
                 self.output_queue.put(output_data)
-            except:
+            except Empty:
+                pass
+            except Exception as error:
+                print('had pull error: ' + str(error))
                 pass
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
@@ -124,13 +128,15 @@ class Puller(Thread):
                 data_array = self.data_store.lookupDataType(data_type.upper())
                 start_index = start_indices[k]
                 end_index = end_indices[k]
-                if np.shape(data_array)[0] == 0:
-
+                #FIXME handle if data does not exist, consider returning a dict of the successfully retrieved values
+                if data_array is None:
+                    return_data.append(np.empty((0, 1)))
+                    success_flag = success_flag and False
+                elif np.shape(data_array)[0] == 0:
                     if self.machine.rsh_buffer_level > 0:
                         print('pull break')
                     #return_data.append(None)
                     return_data.append(np.empty((0,data_array.shape[1])))
-
                     success_flag = success_flag and False
                 elif (start_index or 0) >= np.shape(data_array)[0] or (end_index or 0) > np.shape(data_array)[0]:
                     #print('data index for type ' + str(data_type) + ' out of range')
@@ -140,7 +146,7 @@ class Puller(Thread):
                 else:
                     return_data.append(data_array[start_index:end_index,:])
                     if len(data_array[start_index:end_index,:]) == 0:
-                        print('break')
+                        print('break 123')
                     success_flag = success_flag and True
 
         #if None in return_data:
@@ -148,9 +154,9 @@ class Puller(Thread):
             #FIXME what is this shit
             if any([d is None for d in return_data]):
                 if success_flag is True:
-                    print('break')
+                    print('break sdf')
         except:
-            print('break')
+            print('break ghfdg')
         return (success_flag, return_data)
 
     def formatPullRequest(self, data_types, start_indices, end_indices):
@@ -248,21 +254,6 @@ class StateManipulator(Thread):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
-
-# class testProcess(Process):
-#     def __init__(self, machine, synchronizer):
-#         super(testProcess, self).__init__()
-#         self.name = "databasetest"
-#         self.main_thread_name = self.name + ".MainThread"
-#         self.machine = machine
-#         self.synchronizer = synchronizer
-#         self.q1 = self.synchronizer.q_print_server_message_queue
-#         self.q2 = self.synchronizer.q_database_command_queue_proxy
-#         self.q3 = self.synchronizer.q_machine_controller_command_queue
-#         self.q4 = self.synchronizer.q_database_output_queue_proxy
-#
-#     def run(self):
-#         print('running')
 
 class DatabaseServer(Process):
     def __init__(self, machine, pipe):

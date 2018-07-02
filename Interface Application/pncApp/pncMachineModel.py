@@ -139,8 +139,8 @@ class MachineModel():
         self.axes = ['X','Y','Z','A','B']
 
         #Stepgen calibration
-        self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
-        self.axis_offsets = [-2.5, -2.5, -0.1, 0.0, 0.0]
+        #self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
+        #self.axis_offsets = [-2.5, -2.5, -0.1, 0.0, 0.0]
         self.axis_offsets = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.table_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
 
@@ -148,7 +148,7 @@ class MachineModel():
         self.number_of_encoders = 6
         self.machine_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
         self.encoder_init = 1000000
-        self.encoder_offset = [155836, 180838, 2283, 9121, 0]
+        #self.encoder_offset = [155836, 180838, 2283, 9121, 0]
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
         self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, -1.0 / 172, -1.0 / 167]

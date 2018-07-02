@@ -4,59 +4,83 @@ from threading import Thread
 from multiprocessing import Event, current_process
 
 ######################## Statics ########################
-localhost = '127.0.0.1'
-interface_socket_port = 666
-# mvc_outbound_port = 42069
-# mvc_inbound_port = 666
-# mvc_socket_read_length = 65536
-sculptprint_ipc_pipe_name = 'pncApp_ipc_pipe'
-#sculptprint_inbound_ipc_pipe_name = 'pncApp_inbound_ipc_pipe'
-#sculptprint_outbound_ipc_pipe_name = 'pncApp_outbound_ipc_pipe'
+socket_localhost = '127.0.0.1'
+socket_interface_socket_port = 666
+socket_sculptprint_ipc_pipe_name = 'pncApp_ipc_pipe'
 
 #IPC Parameters
-pipe_wait_timeout_initial = 100
-pipe_wait_timeout = 2
-pipe_wait_interval = 0.01
+socket_wait_timeout_initial = 100
+socket_wait_timeout = 2
+socket_wait_interval = 0.01
+
+#SSH Parameters
 ssh_wait_timeout = 1
+ssh_port = 22
+ssh_credentials = ('pocketnc', 'pocketnc')
+ssh_opts = '-X'
+ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
 #Terminal printouts
-connection_string = "CONNECTED to {} remote shell at {}:{}"
-failed_connection_string = "CONNECTION FAILED: Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
-manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
-process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
-process_terminate_string = "PROCESS STOPPED: {} PID: {}"
-process_self_terminate_string = "PROCESS STOPPED: {} PID: {} shut itself down"
-process_force_terminate_string = "PROCESS FORCE STOPPED: {} PID: {}"
-process_error_string = "PROCESS ERROR: {} encountered error: {}"
-pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
-pncApp_launch_failure_string = "FAILURE: pncApp cannot launch, cleaning up..."
-pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
-thread_launch_string = "THREAD LAUNCHED: {} process started {}"
-thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
-device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
-device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
-connection_open_string = "CONNECTED to {} on {}"
-connection_close_string = "DISCONNECTED from {} on {}"
-connection_failed_string = "CONNECTION FAILED on {}, error: "
-sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
-trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
-trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
-ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
-ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
-ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
-interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
+printout_connection_string = "CONNECTED to {} remote shell at {}:{}"
+printout_failed_connection_string = "CONNECTION FAILED: Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+printout_manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
+printout_process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
+printout_process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+printout_process_self_terminate_string = "PROCESS STOPPED: {} PID: {} shut itself down"
+printout_process_force_terminate_string = "PROCESS FORCE STOPPED: {} PID: {}"
+printout_process_error_string = "PROCESS ERROR: {} encountered error: {}"
+printout_pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+printout_pncApp_launch_failure_string = "FAILURE: pncApp cannot launch, cleaning up..."
+printout_pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
+printout_thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+printout_thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+printout_device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+printout_device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
+printout_connection_open_string = "CONNECTED to {} on {}"
+printout_connection_close_string = "DISCONNECTED from {} on {}"
+printout_connection_failed_string = "CONNECTION FAILED on {}, error: "
+printout_sculptprint_interface_initialization_string = "SculptPrint embedded python process {} PID: {} starting pncApp"
+printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
+printout_trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
+printout_ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
+printout_ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
+printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
+printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
 
 #Queue operations
 queue_wait_timeout = 1
 
+#SculptPrint Formatting
+SP_axis_sensor_IDs = [0, 1]
+SP_pncApp_time = ['T']
+SP_pncApp_machine_axes = ['X','Y','Z','A','B']
+SP_CAM_machine_axes = [['X','Z','S','Y','A','B','V','W'], ['X','Z','S','Y','A','B','V','W']]
+SP_pncApp_data_auxes = [['BL', 'BPID'], ['']]
+SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL','BPID'], ['T','X','Z','S','Y','A','B','V','W']]
+
+#SP_clock_data_names = [['RTAPI_CLOCK_TIMES', 'RSH_CLOCK_TIMES'], ['ENCODER_RECEIVED_TIMES']]
+SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1)), ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))], [('', '', (0, 0))]]
+SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
+
+#Machine kinematics
+machine_number_of_joints = 5
+machine_servo_dt = 0.001
+machine_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+machine_max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
+machine_max_joint_acceleration = [30, 30, 30, 1500, 1500]
+machine_max_joint_jerk = [100, 100, 100, 100, 100]
+machine_fk = []
+machine_ik = []
+
 ######################## Directories ########################
-parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
-point_sample_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples'
-pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+dir_parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
+dir_point_sample_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples'
+dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
 
 def updatePath():
-    if pncApp_project_path not in sys.path:
-        sys.path.append(pncApp_project_path)
+    if dir_pncApp_project_path not in sys.path:
+        sys.path.append(dir_pncApp_project_path)
 
 ######################## Useful Classes ########################
 class SculptPrintInterface():
@@ -86,13 +110,22 @@ class SculptPrintFeedbackState():
         self.HF_start_time_index = 0
         self.serial_start_time_index = 0
 
-        self.last_time_reading = 0
+        #self.last_time_reading = 0
         #FIXME set this up parametrically
-        self.last_position_reading = [0]*5
-        self.last_buffer_level_reading = 0
+        #self.last_position_reading = [0]*5
+        #self.last_buffer_level_reading = 0
+
+        #self.last_values_read = [[0]*len(SP_data_formats[k]) for k in range(0,len(SP_data_formats))]
+        #self.feedback_indices = [[0]*(len(SP_pncApp_machine_axes)+len(SP_pncApp_data_auxes[k])) for k in range(0,len(SP_data_formats))]
+        self.CAM_clock_offsets = dict()
+        self.last_values_read = dict()
+        self.feedback_indices = dict()
 
         self.machine_feedback_record_id = 0
         self.encoder_feedback_record_id = 0
+
+    def buildFeedbackIndexDictionary(self):
+        pass
 
 class InternalFeedbackState():
     def __init__(self, machine):
@@ -113,6 +146,7 @@ class InternalFeedbackState():
         self.feedback_data_processed = False
         self.feedback_data_processing_error = False
         self.rsh_error_check = False
+        self.multiple_socket_passes_required = False
 
 
 class PrintServer(Thread):
@@ -255,12 +289,6 @@ class MachineCommand():
         self.command_type = command_type
         self.command_data = command_data
 
-        # self.control_function = control_function
-        # self.control_function_parameters = control_function_parameters
-        # self.ack_function = ack_function
-        # if ack_function_parameters != None:
-        #     self.ack_function_parameters = ack_function_parameters
-
 class DatabaseCommand():
     def __init__(self, command_type, records, parameters = None, time = None):
         self.command_type = command_type
@@ -352,7 +380,11 @@ def sendIPCData(connection_type, data_type, connection, message):
         elif data_type == 'internal':
             pass
 
-def receiveIPCData(connection_type, connection_format, connection, timeout = pipe_wait_timeout, interval = pipe_wait_interval):
+def sendIPCAck(connection_type, connection_format, connection, message):
+    if connection_format != 'internal':
+        sendIPCData(connection_type, 'string', connection, message + '_ACK')
+
+def receiveIPCData(connection_type, connection_format, connection, timeout = socket_wait_timeout, interval = socket_wait_interval):
     received_data = waitForIPCDataTransfer(connection_type, connection, timeout, interval)
     if received_data is None:
         raise ConnectionAbortedError
@@ -401,6 +433,75 @@ def MVCHandshake(connection_type, connection, message):
     #     return received_message.data == message + '_ACK'
     # elif connection_format == 'string':
 
+def setSynchronizer(pipe, synchronizer):
+    pipe.send(synchronizer)
+
+def getSynchronizer(caller, pipe):
+    caller.synchronizer = pipe.recv()
+
+######################## App Interface ########################
+def updateInterfaceData(update_mode, synchronizer, feedback_state, main_data_streams, auxiliary_data_streams, axis_sensor_IDs):
+    time_slices = []
+    data_slices = []
+    for ID in axis_sensor_IDs:
+        streams = main_data_streams[ID] + auxiliary_data_streams[ID]
+        clock_stream_names = [name for name in list(map(lambda stream: stream[0], streams)) if name != '']
+        data_stream_names = [name for name in list(map(lambda stream: stream[1], streams)) if name != '']
+        clock_stream_sizes = [size for size in list(map(lambda stream: stream[2][0], streams)) if size != 0]
+        data_stream_sizes = [size for size in list(map(lambda stream: stream[2][1], streams)) if size != 0]
+        complete_stream_names = clock_stream_names + data_stream_names
+        complete_stream_sizes = clock_stream_sizes + data_stream_sizes
+        #complete_stream_names = [name for name in clock_stream_names + data_stream_names if name != '']
+        #complete_stream_names = clock_stream_names + data_stream_names
+        #complete_stream_sizes = [size for size in clock_stream_sizes + data_stream_sizes if size != 0]
+        #complete_stream_sizes = clock_stream_sizes + data_stream_sizes
+
+        DB_query_data = lockedPull(synchronizer, complete_stream_names, getFeedbackIndices(feedback_state, complete_stream_names), len(complete_stream_names) * [None])
+
+        time_slice, data_slice = DB_query_data[1][:len(clock_stream_names)], DB_query_data[1][-len(data_stream_names):]
+        updateFeedbackIndices(feedback_state.feedback_indices, complete_stream_names, time_slice + data_slice)
+        updateFallbackDataPoints(feedback_state.last_values_read, complete_stream_names, complete_stream_sizes, time_slice + data_slice)
+
+        time_slices.append(time_slice)
+        data_slices.append(data_slice)
+
+    if update_mode == 'pull':
+        return time_slice, data_slice, data_stream_names, data_stream_sizes
+    elif update_mode == 'touch':
+        return
+
+def getFeedbackIndices(feedback_state, data_stream_names):
+    return list(map(lambda stream: feedback_state.feedback_indices[stream] if stream in feedback_state.feedback_indices else 0, data_stream_names))
+
+def updateFeedbackIndices(feedback_indices, stream_names, streams):
+    for stream_name, stream in map(lambda sn, s: (sn, s), stream_names, streams):
+        if stream_name in feedback_indices:
+            feedback_indices[stream_name] += len(stream)
+        else:
+            feedback_indices[stream_name] = len(stream)
+    #for key, value in feedback_indices.items():
+
+    #return dict(map(lambda stream_name, stream: (stream_name, feedback_indices[stream_name] + len(stream) if stream_name in feedback_indices else len(stream)), stream_names, streams))
+
+def getFallbackDataPoints(feedback_state, stream_names, stream_sizes):
+    return list(map(lambda stream_name, stream_size: feedback_state.last_values_read[stream_name] if stream_name in feedback_state.last_values_read else np.zeros(stream_size), stream_names, stream_sizes))
+
+def updateFallbackDataPoints(fallback_values, stream_names, stream_sizes, streams):
+    for stream_name, stream_size, stream in map(lambda sn, ss, s: (sn, ss, s), stream_names, stream_sizes, streams):
+        if len(stream) > 0:
+            fallback_values[stream_name] = stream[-1]
+        else:
+            if stream_name not in fallback_values:
+                fallback_values[stream_name] = np.zeros(stream_size)
+        # if stream_name in feedback_indices:
+        #     if len(stream) > 0:
+        #         fallback_values[stream_name] = stream[-1]
+        #     else:
+        #
+        #     feedback_indices[stream_name] += len(stream)
+        # else:
+        #     feedback_indices[stream_name] = len(stream)
+    #return dict(map(lambda stream_name, stream_size, stream: tuple((stream_name, stream[-1] if len(stream) > 0 else fallback_values[stream_name] if stream_name in fallback_values else np.zeros(stream_size))), stream_names, stream_sizes, streams))
 
 def lockedPull(synchronizer, data_types, start_indices, end_indices):
     with synchronizer.db_pull_lock:
@@ -410,12 +511,6 @@ def lockedPull(synchronizer, data_types, start_indices, end_indices):
 def waitForErrorReset():
     #FIXME implement a spinlock or wait for RSH error to be handled and reset, then return to normal operation
     pass
-
-def setSynchronizer(pipe, synchronizer):
-    pipe.send(synchronizer)
-
-def getSynchronizer(caller, pipe):
-    caller.synchronizer = pipe.recv()
 
 ######################## State Machine ########################
 def setTaskRunFlags(synchronizer, state = True):
@@ -473,13 +568,10 @@ def isIdle(machine, synchronizer):
 
 ######################## Clocking ########################
 def estimateMachineClock(machine, time_to_estimate=-1):
-    # if not machine.clock_event.isSet():
-    #     print('WARNING: missing clock synchronization flag')
-
     if time_to_estimate == -1:
-        time_to_estimate = time.clock()
+        time_to_estimate = time.time()
 
-    return (time_to_estimate - machine.pncApp_clock_offset) * machine.clock_resolution
+    return (time_to_estimate - machine.pncApp_clock_offset)
     #return machine.RT_clock_offset + (time_to_estimate - machine.estimated_network_latency) * machine.clock_resolution
 
 ######################## Comms ########################

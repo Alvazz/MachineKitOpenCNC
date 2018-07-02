@@ -183,6 +183,7 @@ class FeedbackProcessor(Thread):
 
     def processBufferLevelFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         #print('got buffer_level feedback')
+        rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
         if feedback_encoding == 'ascii':
             rsh_clock_time = float(feedback_data[0])
             rsh_buffer_level = int(feedback_data[1])
@@ -194,17 +195,18 @@ class FeedbackProcessor(Thread):
         record = dict()
         record['HIGHRES_TC_QUEUE_LENGTH'] = np.array([[rsh_buffer_level]])
         #print('buffer level is ' + str(rsh_buffer_level))
-        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time]])
+        record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time-self.machine.pncApp_clock_offset]])
 
         #FIXME major band-aid
-        record['RSH_CLOCK_TIMES'] = np.array([[rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset]])
+        #record['RSH_CLOCK_TIMES'] = np.array([[rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset]])
         record['RSH_CLOCK_TIMES'] = np.array(
-            [[rsh_clock_time + (self.machine.RT_clock_offset - self.machine.OS_clock_offset) - self.machine.RT_clock_offset]])
+            [[(rsh_clock_time + (self.machine.RT_clock_offset - self.machine.OS_clock_offset) - self.machine.RT_clock_offset)/self.machine.clock_resolution]])
 
         if self.synchronizer.mc_xenomai_clock_sync_event.is_set():
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
+        rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
         try:
             #machine_feedback_records = []
             if feedback_encoding == 'ascii':
@@ -250,15 +252,15 @@ class FeedbackProcessor(Thread):
 
                     RTAPI_feedback_indices[sample_number, :] += float(sample_number)
                     RTAPI_clock_times[sample_number, :] = float(sample_point[0])
-                    stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]]) + np.asarray(self.machine.axis_offsets)
+                    stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]])
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
             else:
                 return
 
             record = dict()
             record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
-            record['RTAPI_clock_times'] = RTAPI_clock_times
-            record['stepgen_feedback_positions'] = stepgen_feedback_positions
+            record['RTAPI_clock_times'] = (RTAPI_clock_times-self.machine.RT_clock_offset)/self.machine.clock_resolution
+            record['stepgen_feedback_positions'] = stepgen_feedback_positions - np.asarray(self.machine.machine_zero)
             if type(stepgen_feedback_positions[0]) == int:
                 print('break')
             record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
@@ -270,6 +272,7 @@ class FeedbackProcessor(Thread):
                 if not self.synchronizer.mc_xenomai_clock_sync_event.is_set():
                     self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
                     self.synchronizer.mc_xenomai_clock_sync_event.set()
+                    return
                 self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
             else:
                 # Throw away first data point because thread counter in RSH should start from thread_periods % servo_log_flush_samples = 0
@@ -332,7 +335,7 @@ class MachineFeedbackHandler(Process):
             #FIXME ensure that the socket actually exists
             if select.select([self.machine.rsh_socket], [], [], 0)[0]:
                 #Clock when these data were received
-                rx_received_time = time.clock()
+                rx_received_time = time.time()
                 #First parse the header
                 bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
@@ -346,7 +349,11 @@ class MachineFeedbackHandler(Process):
             if self.header_processed and not self.header_processing_error:
                 #Drop header data, it's already good
                 old_byte_string_before_header = self.byte_string
-                self.byte_string = self.byte_string[self.header_delimiter_index:]
+                if not self.feedback_data_processing_error:
+                    #If this is the first pass on the data, FIXME can move this into assenbleAndProcess, but is it worth it?
+                    self.byte_string = self.byte_string[self.header_delimiter_index:]
+                else:
+                    print('passing again on socket')
                 self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
                     self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
 
@@ -447,9 +454,12 @@ class MachineFeedbackHandler(Process):
             #The first four bytes give transmission length
             if len(byte_string) >= self.machine.size_of_feedback_int:
                 transmission_length = struct.unpack('!I',byte_string[:self.machine.size_of_feedback_int])[0]
-                self.incoming_transmission_length = transmission_length
+                self.old_transmission_length = self.incoming_transmission_length
+                if not self.feedback_state.multiple_socket_passes_required:
+                    self.incoming_transmission_length = transmission_length
                 byte_string = byte_string[self.machine.size_of_feedback_int:]
-                if len(byte_string) >= transmission_length:
+                if len(byte_string) >= self.incoming_transmission_length:
+                #if len(byte_string) >= transmission_length:
                     if transmission_length <= len(self.machine.binary_line_terminator):
                         print('break')
                     #Now we have a full transmission and can process it
@@ -463,12 +473,13 @@ class MachineFeedbackHandler(Process):
                             self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length))
                             complete_transmission_delimiter_index = self.machine.size_of_feedback_int+transmission_length
                             self.socket_passes = 0
+                            self.feedback_state.multiple_socket_passes_required = False
                             return True, False, feedback_data, complete_transmission_delimiter_index
+                        else:
+                            print('binary feedback had incorrect terminator')
+                            return True, True, None, None
                     except Exception as error:
                         print('had error: ' + str(error))
-                    else:
-                        print('binary feedback had incorrect terminator')
-                        return True, True, None, None
                 else:
                     #Wait for complete transmission
                     print('waiting for complete transmission')
@@ -480,6 +491,7 @@ class MachineFeedbackHandler(Process):
             else:
                 # Wait for transmission length integer
                 print('waiting for transmission length')
+                self.feedback_state.multiple_socket_passes_required = True
                 return False, False, None, None
 
     # def handleRSHError(self):

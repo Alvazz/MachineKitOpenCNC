@@ -212,6 +212,10 @@ class OperatingSystemController(Thread):
         elif command.command_type == 'KILL_RSH':
             stdin, stdout, stderr = self.ssh_client.exec_command('sudo pkill linuxcncrsh')
 
+    def runCNC(self):
+        if not self.getRSHStatus()[0]:
+            self.waitForSet(self.startRSH, None, self.getRSHStatus)
+
     def setEventFlag(self, stdout, event):
         if stdout.read():
             event.set()
@@ -298,13 +302,13 @@ class MotionController(Thread):
                 raise pncLibrary.RSHError("Detected RSH error after " + str(command) + " commands")
                 return
 
-            tx_time = time.clock()
+            tx_time = time.time()
             pncLibrary.socketLockedWrite(self.machine, self.synchronizer, binary_command)
 
             #FIXME check buffer was flushed
             sleep_time = self.runNetworkPID(self.machine.rsh_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
-            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]), 'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time]])}]))
+            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]), 'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]])}]))
             time.sleep(sleep_time)
 
     def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.1, Ki=0,
@@ -620,7 +624,7 @@ class MachineController(Process):
 
     def sendPing(self):
         self.writeLineUTF('get ping')
-        self.machine.ping_tx_time = time.clock()
+        self.machine.ping_tx_time = time.time()
 
     def setCommMode(self, flag):
         sendstr = 'set comm_mode '
