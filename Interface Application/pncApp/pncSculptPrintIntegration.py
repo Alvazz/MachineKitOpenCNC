@@ -123,7 +123,8 @@ def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
 def mergeSort(feedback_state, time_arrays, data_arrays, fallback_data_samples, output_time_array = [], output_data_array = []):
     number_of_arrays = len(time_arrays)
     array_indices = [0]*len(time_arrays)
-    while all([array_indices[k] != time_arrays[k].size for k in range(0,len(time_arrays)) if time_arrays[k].size != 0]):
+    while all([array_indices[k] != time_arrays[k].size for k in range(0, len(time_arrays)) if time_arrays[k].size != 0]) and not all([time_array.size == 0 for time_array in time_arrays]):
+    #while all([array_indices[k] != time_arrays[k].size for k in range(0,len(time_arrays)) if time_arrays[k].size != 0]):
         time_sample, merged_data = None, number_of_arrays * [None]
         for k in range(0, len(time_arrays)):
             if all([time_arrays[k][array_indices[k]] < time_arrays[j][array_indices[j]] if time_arrays[k].size != 0 and time_arrays[j].size != 0 else False for j in range(0, len(time_arrays))]):
@@ -194,7 +195,7 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
             data_position = data_LF[LF_index]
             if HF_index-1 < 0:
                 #data_aux = 0
-                #data_aux = machine.rsh_buffer_level
+                #data_aux = machine.current_buffer_level
                 data_aux = feedback_state.last_buffer_level_reading
             else:
                 data_aux = data_HF[HF_index-1]
@@ -209,7 +210,7 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
             #output_index_list.append((0, index2))
             data_time = times_HF[HF_index]
             if LF_index - 1 < 0:
-                #data_position = machine.current_position
+                #data_position = machine.current_stepgen_position
                 data_position = feedback_state.last_position_reading
             else:
                 data_position = data_LF[LF_index-1]
@@ -226,7 +227,7 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
         data_time = times_LF[LF_index]
         data_position = data_LF[LF_index]
         if HF_index - 1 < 0:
-            #data_aux = machine.rsh_buffer_level
+            #data_aux = machine.current_buffer_level
             data_aux = feedback_state.last_buffer_level_reading
         else:
             data_aux = data_HF[HF_index - 1]
@@ -241,7 +242,7 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
         #output_index_list.append((1,index2))
         data_time = times_HF[HF_index]
         if LF_index - 1 < 0:
-            #data_position = machine.current_position
+            #data_position = machine.current_stepgen_position
             #data_position = machine.sculptprint_interface.last_position_reading
             data_position = feedback_state.last_position_reading
         else:

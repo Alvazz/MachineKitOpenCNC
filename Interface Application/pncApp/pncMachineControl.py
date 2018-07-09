@@ -172,8 +172,8 @@ class OperatingSystemController(Thread):
         #FIXME raise exception if this doesn't work
         self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
         try:
-            self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, self.machine.ssh_credentials[0],
-                                    self.machine.ssh_credentials[1], timeout=timeout)
+            self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, username=self.machine.ssh_credentials[0],
+                                    password=self.machine.ssh_credentials[1], allow_agent=False, look_for_keys=False, timeout=timeout)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          self.machine.ssh_connection_success_string,
                                                          self.machine.ssh_credentials[0], self.machine.ip_address)
@@ -256,7 +256,7 @@ class MotionController(Thread):
                 #print('length of move queue is ' + str(self.move_queue.qsize()))
 
                 #There are new moves in the queue, find the one to be executed next
-                while not self.move_queue.empty() and not self.machine.rsh_error:
+                while not self.move_queue.empty() and not self.synchronizer.mc_rsh_error_event.is_set():
                     move_to_execute = self.move_queue.get()
                     self.current_move_serial_number += 1
                     move_to_execute.serial_number = self.current_move_serial_number
@@ -265,6 +265,7 @@ class MotionController(Thread):
                         pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOVES": move_to_execute}]))
 
                     try:
+                        print('buffer level at start is ' + str(self.machine.current_buffer_level))
                         self.commandPoints(move_to_execute.servo_tx_array, self.polylines, self.blocklength)
                     except pncLibrary.RSHError:
                         self.synchronizer.q_print_server_message_queue.put("MOTION CONTROLLER: Detected RSH error, aborting motion")
@@ -298,25 +299,27 @@ class MotionController(Thread):
 
             binary_command += self.machine.binary_line_terminator
 
-            if self.machine.rsh_error:
-                raise pncLibrary.RSHError("Detected RSH error after " + str(command) + " commands")
-                return
+            if self.synchronizer.mc_rsh_error_event.is_set():
+                raise pncLibrary.RSHError("Detected RSH error after " + str(command) + " commands", command)
+                #return
 
             tx_time = time.time()
             pncLibrary.socketLockedWrite(self.machine, self.synchronizer, binary_command)
 
             #FIXME check buffer was flushed
-            sleep_time = self.runNetworkPID(self.machine.rsh_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
+            sleep_time = self.runNetworkPID(self.machine.current_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
-            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]), 'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]])}]))
+            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
+                                                                                                      'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
+                                                                                                      'COMMANDED_POSITIONS': servo_points[command]}]))
             time.sleep(sleep_time)
 
-    def runNetworkPID(self, current_buffer_length, block_length, polylines, set_point_buffer_length, Kp=.1, Ki=0,
-                      Kd=0):
-        if (self.machine.max_buffer_level - current_buffer_length) < 100:
+    def runNetworkPID(self, current_buffer_level, block_length, polylines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
+        if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer finna overflow')
-        sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_length - current_buffer_length))) / 1000,0)
-        return sleep_time
+        #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)
+        sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000, 0)
+        return float(sleep_time)
 
     def adaptNetworkTxGain(self):
         pass
@@ -333,8 +336,8 @@ class MachineController(Process):
         self.planned_point_buffer = []
         self.support_threads = [OperatingSystemController, MotionController]
 
-        self.getFunctions = [self.getMachineMode, self.getEstop]
-        self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
+        #self.getFunctions = [self.getMachineMode, self.getEstop]
+        #self.setFunctions = [self.setEcho, self.setDrivePower, self.setEnable, self.setHomeAll, self.setServoFeedbackMode, self.setMachineMode, self.setEstop]
 
         #self._running_process = True
 
@@ -383,7 +386,13 @@ class MachineController(Process):
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "EXECUTE":
+            print('machine mode is ' + self.machine.mode)
+            self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
+            if self.machine.mode != 'AUTO':
+                print('mode not auto')
             self.synchronizer.mc_run_motion_event.set()
+        elif command.command_type == "RESET_MOTION":
+            pass
 
     def updateTrajectory(self):
         while not self.cloud_trajectory_planner.planned_point_queue.empty():
@@ -404,20 +413,26 @@ class MachineController(Process):
     ######################## Motion Controller Interface ########################
     def insertMove(self, move):
         # Populate parameters of the move
-        move.polylines = self.motion_controller.polylines
-        move.blocklength = self.motion_controller.blocklength
-        move.servo_tx_array = pncLibrary.TP.formatPoints(move.point_samples, move.polylines, move.blocklength)
-        self.motion_controller.move_queue.put(move)
-        print('Put move ' + str(move.serial_number) + ' with type \"' + str(move.move_type) + '\" on motion controller queue')
+        limit_check = pncLibrary.TP.checkMoveOvertravel(move.point_samples, self.machine.absolute_axis_travel_limits)
+        if not limit_check[0]:
+            move.polylines = self.motion_controller.polylines
+            move.blocklength = self.motion_controller.blocklength
+            move.servo_tx_array = pncLibrary.TP.formatPoints(pncLibrary.TP.convertMotionCS(self.machine, 'table center', move.point_samples), move.polylines, move.blocklength)
+            self.motion_controller.move_queue.put(move)
+            print('Put move ' + str(move.serial_number) + ' with type \"' + str(move.move_type) + '\" on motion controller queue')
+            return True
+        else:
+            print('move exceeds machine limits at point %d for axis ??', limit_check[1])
+            return False
 
     def enqueuePointFiles(self,start_file_number=5,end_file_number=10):
         start_file_number = 5
-        end_file_number = 7
+        end_file_number = 10
         #hold_points = self.generateHoldPositionPoints(1)
         hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),'hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
         first_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
-        rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points.tolist()),'trap')
+        rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'),'trap')
 
         self.insertMove(hold_move)
         self.insertMove(rapid_to_start)
@@ -426,7 +441,7 @@ class MachineController(Process):
         try:
             for f in range(start_file_number + 1, end_file_number):
                 fname = self.machine.point_files_path + self.machine.point_file_prefix + str(f)
-                imported_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, fname), 'imported', fname)
+                imported_move = pncLibrary.Move(pncLibrary.TP.convertMotionCS(self.machine, 'absolute', pncLibrary.TP.importPoints(self.machine, fname)), 'imported', fname)
                 self.insertMove(imported_move)
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))
@@ -450,19 +465,17 @@ class MachineController(Process):
             return False
         else:
             self.waitForSet(self.setEcho, 0, self.getEcho)
-            try:
-                self.readyMachine()
-            except pncLibrary.MachineControllerError:
-                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Homing timeout')
-                return False
-            #self.setBinaryMode(1)
 
-            #FIXME do this a number of times and average
             if self.getLatencyEstimate(10)[0]:
                 self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Successful estimation of mean network latency as ' + str(self.machine.current_estimated_network_latency))
             else:
                 self.synchronizer.q_print_server_message_queue.put('MACHINE_CONTROLLER: Failed to get network latency')
 
+            try:
+                self.readyMachine()
+            except pncLibrary.MachineControllerError:
+                self.synchronizer.q_print_server_message_queue.put('MACHINE CONTROLLER: Homing timeout')
+                return False
 
             while not self.syncMachineClock():# and self.machine.servo_feedback_mode:
                  #Busy wait for clock sync

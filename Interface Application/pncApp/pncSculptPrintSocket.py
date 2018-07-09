@@ -6,16 +6,16 @@ if dir_pncApp_project_path not in sys.path:
 import pncLibrary
 from multiprocessing import Event
 from threading import Thread
-import os, time, logging, socket, pickle, wpipe, numpy as np
+import os, time, logging, socket, pickle, numpy as np
 
 #pncLibrary.updatePath()
 
 #Globals
-pncApp_connector = pncLibrary.PNCAppConnection('socket', 'string', 'binary')
+pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
 # pncApp_connection_event = Event()
 # pncApp_feedback_synchronization_event = Event()
 # mvc_connection_type = 'socket'
-# mvc_command_format = 'string'
+# mvc_command_format = 'text'
 # mvc_feedback_format = 'binary'
 
 
@@ -28,9 +28,9 @@ pncApp_connector = pncLibrary.PNCAppConnection('socket', 'string', 'binary')
 # pncLibrary.auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays', r'Polyline Send Times'], ['']]
 # pncLibrary.auxiliary_data_names = [['HIGHRES_TC_QUEUE_LENGTH', 'BUFFER_PID_DELAYS', 'POLYLINE_SEND_TIMES'], ['']]
 
-class PNCAppConnector(Thread):
-    def __init__(self):
-        super(PNCAppConnector, self).__init__()
+# class PNCAppConnector(Thread):
+#     def __init__(self):
+#         super(PNCAppConnector, self).__init__()
 
 ############################# Setup Functions #############################
 def monitoredMachineCount():
@@ -206,14 +206,20 @@ def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
     sculptprint_MVC.command_queue.put('CONNECT')
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
-    print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
-    return True;
+    #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+    return 'ENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'ENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+    # if 'ENQUQUE' in ack:
+    #     return True
+    # else:
+    #     return False
+    #sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
+    #return True;
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-    print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    sculptprint_MVC.command_queue.put('EXECUTE')
-    return True;
+    return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
+    # print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+    # sculptprint_MVC.command_queue.put('EXECUTE')
+    # return True;
 
 # def connectToMachine():
 #     sculptprint_MVC.command_queue.put('CONNECT')
@@ -242,11 +248,15 @@ while True and __name__ != 'machinemonitor':
     if 1:
         print(z)
         yy = readMachine(0)
-        print(yy)
+        print(yy[0])
         #time.sleep(0.1)
         print('encoder data is: ')
         yy = readMachine(1)
-        print(yy)
+        print(yy[0])
+
+        userPythonFunction2(5, 7, 0, 0, 0)
+        userPythonFunction3(0,0,0,0,0)
+        break
 
     #time.sleep(0.1)
     #stop()
@@ -254,4 +264,4 @@ while True and __name__ != 'machinemonitor':
 # z = isMonitoring()
 # zz = readMachine(1)
 # print(zz)
-stop()
+#stop()

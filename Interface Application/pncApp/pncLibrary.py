@@ -51,6 +51,7 @@ printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record 
 
 #Queue operations
 queue_wait_timeout = 1
+queue_database_command_queue_wait_timeout = 0.05
 
 #SculptPrint Formatting
 SP_axis_sensor_IDs = [0, 1]
@@ -68,7 +69,8 @@ SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], [''
 #Machine kinematics
 machine_number_of_joints = 5
 machine_servo_dt = 0.001
-machine_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+#machine_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+machine_table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
 machine_max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
 machine_max_joint_acceleration = [30, 30, 30, 1500, 1500]
 machine_max_joint_jerk = [100, 100, 100, 100, 100]
@@ -224,7 +226,8 @@ class Synchronizer():
         # #FIXME implement this
         self.fb_position_change_event = manager.Event()
 
-        self.mc_initial_position_set_event = manager.Event()
+        self.mc_initial_stepgen_position_set_event = manager.Event()
+        self.mc_initial_buffer_level_set_event = manager.Event()
         self.mc_restore_mode_event = manager.Event()
         self.mc_clock_sync_event = manager.Event()
         self.mc_xenomai_clock_sync_event = manager.Event()
@@ -233,6 +236,7 @@ class Synchronizer():
         self.mc_rsh_error_event = manager.Event()
         self.mc_socket_connected_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
+        self.ei_initial_encoder_position_set_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
@@ -280,6 +284,13 @@ class Synchronizer():
         # Process Clock Sync
         self.process_start_signal = manager.Event()
 
+        # Position state machine initialization events
+        #self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'ENCODER_FEEDBACK_POSITIONS']
+        #self.machine_state_events = ['mc_initial_position_set_event', 'ei_initial_encoder_position_set_event', 'mc_initial_buffer_level_set_event']
+        #self.machine_state_events = [self.mc_initial_position_set_event, self.ei_initial_encoder_position_set_event, self.mc_initial_buffer_level_set_event]
+
+        self.profile_event = manager.Event()
+
 ######################## Commands ########################
 class Move():
     def __init__(self,point_samples,move_type = None, sequence_id = None):
@@ -325,9 +336,9 @@ class OSCommand():
 #         self.data = data
 
 class PNCAppCommand():
-    def __init__(self, command, data, connection, connection_type, connection_format):
+    def __init__(self, command, command_data, connection, connection_type, connection_format):
         self.command = command
-        self.data = data
+        self.command_data = command_data
         self.connection = connection
         self.connection_type = connection_type
         self.connection_format = connection_format
@@ -336,7 +347,7 @@ class IPCDataWrapper():
     def __init__(self, data):
         self.data = data
 
-class RSHError(BaseException):
+class RSHError(Exception):
     def __init__(self, message, errors):
         super().__init__(message)
         self.errors = errors
@@ -404,21 +415,21 @@ def sendIPCData(connection_type, data_type, connection, message):
     if connection_type == 'pipe':
         if data_type == 'binary':
             connection.write(pickle.dumps(IPCDataWrapper(message)))
-        elif data_type == 'string':
+        elif data_type == 'text':
             connection.write((message).encode())
         elif data_type == 'internal':
             pass
     elif connection_type == 'socket':
         if data_type == 'binary':
             connection.send(pickle.dumps(IPCDataWrapper(message)))
-        elif data_type == 'string':
+        elif data_type == 'text':
             connection.send((str(message)+'\n').encode())
         elif data_type == 'internal':
             pass
 
 def sendIPCAck(connection_type, connection_format, connection, message):
     if connection_format != 'internal':
-        sendIPCData(connection_type, 'string', connection, message + '_ACK')
+        sendIPCData(connection_type, connection_format, connection, message + '_ACK')
 
 def receiveIPCData(connection_type, connection_format, connection, timeout = socket_wait_timeout, interval = socket_wait_interval):
     received_data = waitForIPCDataTransfer(connection_type, connection, timeout, interval)
@@ -431,7 +442,7 @@ def receiveIPCData(connection_type, connection_format, connection, timeout = soc
                 return pickle.loads(received_data)
             except Exception as error:
                 print('break in receive, error: ' + str(error))
-        elif connection_format == 'string':
+        elif connection_format == 'text':
             return received_data.decode()
 
 def waitForIPCDataTransfer(connection_type, connection, timeout = None, wait_interval = None):
@@ -458,8 +469,8 @@ def waitForIPCDataTransfer(connection_type, connection, timeout = None, wait_int
             raise TimeoutError
 
 def MVCHandshake(app_connector, message):
-    sendIPCData(app_connector.connection_type, 'string', app_connector.connection, message)
-    received_message = receiveIPCData(app_connector.connection_type, 'string', app_connector.connection).strip()
+    sendIPCData(app_connector.connection_type, 'text', app_connector.connection, message)
+    received_message = receiveIPCData(app_connector.connection_type, 'text', app_connector.connection).strip()
     if not received_message == message + '_ACK':
         print('handshake doesnt match, received: ' + received_message)
     return received_message == message + '_ACK'
@@ -467,7 +478,7 @@ def MVCHandshake(app_connector, message):
     #     if not received_message.data == message + '_ACK':
     #         print('handshake doesnt match, received: ' + received_message.data)
     #     return received_message.data == message + '_ACK'
-    # elif connection_format == 'string':
+    # elif connection_format == 'text':
 
 def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_data):
     if not app_connector.app_connection_event.is_set():
@@ -491,7 +502,7 @@ def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_
         app_connector.app_connection_event.clear()
         return fallback_data
     except TimeoutError:
-        print('read machine timed out on call to: ' + str(message))
+        print('timed out on call to: ' + str(message))
         return fallback_data
     except TypeError:
         print('SculptPrint socket out of sync on call to: ' + str(message))

@@ -5,6 +5,7 @@ from multiprocessing.managers import NamespaceProxy
 from threading import Thread, current_thread#, Event as threadEvent
 from queue import Empty
 import time, datetime, numpy as np
+import cProfile, pstats
 
 # Store feedback data from other modules
 # A Machine Feedback record is of the following form:
@@ -121,6 +122,9 @@ class Puller(Thread):
         #     data_types, start_indices, end_indices = [[d] for d in [data_types, start_indices, end_indices]]
         data_types, start_indices, end_indices = self.formatPullRequest(data_types, start_indices, end_indices)
         return_data = []
+        #print('pulling %d records' % len(data_types))
+        # if len(data_types) > 1:
+        #     print('break')
         success_flag = True
         with self.data_store_lock:
             for k in range(0,len(data_types)):
@@ -133,7 +137,7 @@ class Puller(Thread):
                     return_data.append(np.empty((0, 1)))
                     success_flag = success_flag and False
                 elif np.shape(data_array)[0] == 0:
-                    if self.machine.rsh_buffer_level > 0:
+                    if self.machine.current_buffer_level > 0:
                         print('pull break')
                     #return_data.append(None)
                     return_data.append(np.empty((0,data_array.shape[1])))
@@ -266,7 +270,7 @@ class DatabaseServer(Process):
         self.machine = machine
         self.feed_pipe = pipe
 
-        self.data_store = DataStore()
+        self.data_store = DataStore(self.machine)
 
     def run(self):
         current_thread().name = self.main_thread_name
@@ -284,9 +288,17 @@ class DatabaseServer(Process):
             self.synchronizer.p_run_database_event.wait()
             while self.synchronizer.p_run_database_event.is_set():
                 #First handle incoming commands
-                if not self.synchronizer.q_database_command_queue_proxy.empty():
-                    command = self.synchronizer.q_database_command_queue_proxy.get()
+                #print('database running')
+                try:
+                    command = self.synchronizer.q_database_command_queue_proxy.get(True, pncLibrary.queue_database_command_queue_wait_timeout)
                     self.handleCommand(command)
+                except Empty:
+                    #print('database queue empty')
+                    pass
+
+                # if not self.synchronizer.q_database_command_queue_proxy.empty():
+                #     command = self.synchronizer.q_database_command_queue_proxy.get()
+                #     self.handleCommand(command)
 
                 # if not self.push_queue.empty:
                 #     records = self.record_queue.get()
@@ -297,71 +309,11 @@ class DatabaseServer(Process):
 
 
             pncLibrary.waitForThreadStop(self, self.database_pusher, self.database_puller, self.machine_state_manipulator, self.logging_server)
-            # self.synchronizer.t_run_pusher_event.clear()
-            # self.pusher.join()
-            #
-            # self.synchronizer.t_run_puller_event.clear()
-            # self.puller.join()
-            #
-            # self.synchronizer.t_run_state_manipulator_event.clear()
-            # self.state_manipulator.join()
-            #
-            # self.synchronizer.t_run_logger_event.clear()
-            # self.logging_server.join()
-                # position_update = self.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
-                # buffer_level_update = self.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
-                # if position_update[0]:
-                #     self.machine.current_position = position_update[1][0][0].tolist()
-                #     self.synchronizers.initial_position_set_event.set()
-                # if buffer_level_update[0]:
-                #     self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
-
-
-        # while self._running_process:
-        #     if not self.record_queue.empty():
-        #         records = self.record_queue.get()
-        #         #FIXME what about time stamp?
-        #         self.appendMachineFeedbackRecords([records.data])
-        #         self.record_queue.task_done()
-        #
-        #     #update_data = self.pull(['STEPGEN_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH'],[-1,-1],[None, None])
-        #     position_update = self.pull(['STEPGEN_FEEDBACK_POSITIONS'], [-1], [None])
-        #     buffer_level_update = self.pull(['HIGHRES_TC_QUEUE_LENGTH'], [-1], [None])
-        #     if position_update[0]:
-        #         self.machine.current_position = position_update[1][0][0].tolist()
-        #         self.machine.initial_position_set_event.set()
-        #     if buffer_level_update[0]:
-        #         self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
-
-    # def waitForDatabaseHelperThreads(self):
-    #     self.pusher = Pusher(self.machine, self.synchronizer, self.data_store)
-    #     self.puller = Puller(self.machine, self.synchronizer, self.data_store)
-    #     self.state_manipulator = StateManipulator(self.machine, self.synchronizer)
-    #     self.logging_server = LoggingServer(self.machine, self.synchronizer)
-    #
-    #     self.state_manipulator.start()
-    #     self.pusher.start()
-    #     self.puller.start()
-    #     self.logging_server.start()
-    #
-    #     self.state_manipulator.startup_event.wait()
-    #     self.pusher.startup_event.wait()
-    #     self.puller.startup_event.wait()
-    #     self.logging_server.startup_event.wait()
 
     def handleCommand(self, command):
         #FIXME do I need separate pusher/puller threads?
         if command.command_type == 'push':
-            # records_upper = {}
-            # for key, value in command.data.items():
-            #     records_upper[key.upper()] = value
             self.database_pusher.push_queue.put((command.data, 'numpy'))
-
-            #FIXME this is a band-aid, perhaps the database should only be started once clocks are synced
-            # if self.synchronizer.mc_clock_sync_event.is_set() or 1:
-            #     # Only push data to DB after clocks have been synced
-            #     self.appendMachineFeedbackRecords([records_upper])
-            #     #self.record_queue.put(Record(records_upper, time.clock()))
 
         elif command.command_type == 'push_object':
             self.database_pusher.push_queue.put((command.data, 'object'))
@@ -379,21 +331,47 @@ class DatabaseServer(Process):
         elif command.command_type == 'log':
             self.logging_server.log_queue.put((command.time, command.data))
 
-    # def lockedPull(self, data_types, start_indices, end_indices):
-    #     with self.synchronizer.db_data_store_lock:
-    #         return self.puller.pull(data_types, start_indices, end_indices)
+        elif command.command_type == 'update':
+            self.updateMachineState()
 
     def updateMachineState(self):
-        position_update = self.database_puller.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
-        buffer_level_update = self.database_puller.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
-        if position_update[0]:
-            self.machine.current_position = position_update[1][0][0].tolist()
-            self.synchronizer.mc_initial_position_set_event.set()
-        if buffer_level_update[0]:
-            self.machine.rsh_buffer_level = int(buffer_level_update[1][0][0].item())
+        #state_updates = self.database_puller.pull(self.synchronizer.state_streams, -1, None)
+        #for state_update in state_updates:
+
+        for k in range(0, len(self.machine.motion_states)):
+            state_update = self.database_puller.pull(self.machine.state_streams[k], -1, None)
+            if state_update[0]:
+                setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])
+                getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
+                # if k == 0:
+                #     print('state break')
+                # if not getattr(self.synchronizer, self.machine.state_initialization_events[k]).is_set():
+                #     time.sleep(0.5)
+                #     getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
+                # if self.synchronizer.mc_initial_stepgen_position_set_event.is_set():
+                #     print('state break')
+#                self.machin.machine_state_events[k].set()
+                #self.machine.state_stream[k] = state_update[1][0][0]
+
+    def archiveRecords(self):
+        pass
+
+        # position_update = self.database_puller.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
+        # buffer_level_update = self.database_puller.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
+        # encoder_position_update = self.database_puller.pull('ENCODER_FEEDBACK_POSITIONS', -1, None)
+        # if position_update[0]:
+        #     self.machine.current_stepgen_position = position_update[1][0][0].tolist()
+        #     self.synchronizer.mc_initial_position_set_event.set()
+        # if buffer_level_update[0]:
+        #     self.machine.current_buffer_level = int(buffer_level_update[1][0][0].item())
+        #     self.machine.current_buffer_level = buffer_level_update[1][0][0]
+        #     self.synchronizer.mc_initial_buffer_level_set_event.set()
+        #     self.synchronizer.machine_state_events[k].set()
+        # if encoder_position_update[0]:
+        #     self.machine.current_encoder_position = encoder_position_update[1][0][0].tolist()
 
 class DataStore():
-    def __init__(self):
+    def __init__(self, machine_statics):
         #Timers for each data source
         self.machine_running_time = 0
         self.encoder_running_time = 0
@@ -411,14 +389,10 @@ class DataStore():
         self.MACHINE_TIMES_INTERPOLATED = np.empty((0, 1), float)
 
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
-        #self.lowfreq_ethernet_received_times = np.zeros(1,dtype=float)
-        #self.PING_TIMES = np.empty((0, 2), float)
         self.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RTAPI_CLOCK_TIMES = np.empty((0, 1), float)
-        #self.highfreq_ethernet_received_times = np.zeros(1, dtype=float)
         self.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RSH_CLOCK_TIMES = np.empty((0, 1), float)
-        #self.SERIAL_RECEIVED_TIMES = np.zeros(1, dtype=float)
         self.SERIAL_RECEIVED_TIMES = np.empty((0, 1), float)
 
         #Buffer fill level
@@ -426,17 +400,13 @@ class DataStore():
         self.HIGHRES_TC_QUEUE_LENGTH = np.empty((0, 1), float)
 
         #Positions from stepgen and encoders
-        #self.commanded_joint_positions = np.zeros([1,5],dtype=float)
-        self.COMMANDED_SERVO_POLYLINES = []#np.empty((0,5), float)
-        self.sent_servo_commands = []
+        self.COMMANDED_SERVO_POLYLINES = []
+        #self.sent_servo_commands = []
 
-        #self.RTAPI_feedback_indices = np.zeros(1, dtype=float)
         self.RTAPI_FEEDBACK_INDICES = np.empty((0, 1), float)
-        #self.STEPGEN_FEEDBACK_POSITIONS = np.zeros([1, 5], dtype=float)
-        self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0,5), float)
-        #self.ENCODER_FEEDBACK_POSITIONS = np.zeros([1,5],dtype=float)
-        #self.stepgen_feedback_positions = np.empty((0,5), float)
-        self.ENCODER_FEEDBACK_POSITIONS = np.empty((0, 5), float)
+        self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
+        self.ENCODER_FEEDBACK_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
+        self.COMMANDED_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
 
         #Thread counter
         #self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
@@ -450,18 +420,23 @@ class DataStore():
         self.POLYLINE_TRANSMISSION_TIMES = np.empty((0, 1), float)
         self.EXECUTED_MOVES = []
 
+        self.DATA_ARCHIVE = {}
+
+        #FIXME not needed
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
                                  'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINES',
-                                 'NETWORK_PID_DELAYS', 'POLYLINE_TRANSMISSION_TIMES']
+                                 'NETWORK_PID_DELAYS', 'POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_POSITIONS']
 
     def lookupDataType(self, data_type):
         data_type = data_type.upper()
-        if data_type in self.data_descriptors:
-            return getattr(self,data_type)
-        else:
-            print('data does not exist')
+        # if data_type in self.data_descriptors:
+        #     return getattr(self,data_type)
+        try:
+            return getattr(self, data_type)
+        except AttributeError:
+            print('DATA STORE: Data type %s does not exist' % data_type)
             return None
 
 class DatabaseServerProxy(NamespaceProxy):

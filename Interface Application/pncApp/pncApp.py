@@ -2,7 +2,7 @@ import multiprocessing, socket, sys,  time, inspect
 from threading import Thread, current_thread
 
 #PNC Modules
-from pncMachineModel import MachineModel, MachineModelProxy
+from pncMachineModel import MachineModel, MachineModelStatics, MachineModelProxy, MachineModelStaticsProxy
 from pncDatabase import DatabaseServer
 from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackHandler
@@ -43,6 +43,7 @@ def openNetworkConnection(machine, synchronizer, control_client_ip, control_clie
 
 def appInit():
     registerProxy('MachineModel', MachineModel, MachineModelProxy, PNCAppManager)
+    registerProxy('MachineModelStatics', MachineModelStatics, MachineModelStaticsProxy, PNCAppManager)
 
     # FIXME ignore SIGINT
     pnc_app_manager = PNCAppManager()
@@ -50,6 +51,7 @@ def appInit():
     pnc_app_manager.start()
 
     machine = pnc_app_manager.MachineModel()
+    machine_statics = pnc_app_manager.MachineModelStatics()
     synchronizer = pncLibrary.Synchronizer(pnc_app_manager)
     synchronizer.main_process_name = str(multiprocessing.current_process().name)
     synchronizer.main_process_pid = str(multiprocessing.current_process().pid)

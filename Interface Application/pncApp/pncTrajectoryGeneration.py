@@ -1,9 +1,31 @@
 ######################## Trajectory Generation ########################
 import math, csv, numpy as np
 
+def checkMoveOvertravel(point_samples, limits):
+    if not (point_samples < limits[0]).any() or (point_samples > limits[1]).any():
+        return (False, None, None)
+    else:
+        negative_overtravel = np.where(point_samples < limits[0])
+        positive_overtravel = np.where(point_samples > limits[1])
+        #Should be (bool, (line, axis), (line, axis))
+        return (True,
+                (negative_overtravel[0][0], negative_overtravel[1][0]) if negative_overtravel[0].size else None,
+                (positive_overtravel[0][0], positive_overtravel[1][0]) if positive_overtravel.size else None)
+        #return (False, (np.where(move.point_samples < limits[0]), np.where(move.point_samples < limits[0])))
+    # for k in range(0, move.point_samples.shape[0]):
+    #     if any(move.point_samples[k] < limits[0]) or any(move.point_samples[k] > limits[1]):
+    #         return (False, k)
+    # return (True, None)
+
+def convertMotionCS(machine, mode, points):
+    if mode == 'table center':
+        return points + machine.machine_table_center_zero
+    elif mode == 'absolute':
+        return points - machine.machine_table_center_zero
+
 def importPoints(machine, file):
     ##FIXME check for overtravel
-    points = np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints]
+    points = convertMotionCS(machine, 'absolute', np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints])
     return points
 
 def padAndShapeAxisPoints(points, polylines, blocklength):
@@ -22,7 +44,7 @@ def formatPoints(points, polylines, block_length):
 
 def generateHoldPositionPoints(machine, hold_time=1, position = [np.nan]):
     if any(np.isnan(position)):
-        position_to_hold = machine.current_position
+        position_to_hold = machine.current_stepgen_position
     else:
         position_to_hold = np.array(position)
 
@@ -30,15 +52,16 @@ def generateHoldPositionPoints(machine, hold_time=1, position = [np.nan]):
     return joint_position_samples
 
 def generateMovePoints(machine, end_points, start_points = [np.nan], move_velocity = 0, max_joint_velocities = -1, max_joint_accelerations = -1, move_type = 'trapezoidal'):
-    fallthrough_points = generateHoldPositionPoints(machine, 0, start_points)
+    #fallthrough_points = generateHoldPositionPoints(machine, 0, start_points)
     #FIXME check for out of limit move generation
-    if any(end_points[k] < machine.limits[k][0] for k in range(0,len(end_points))) or any(end_points[k] > machine.limits[k][1] for k in range(0,len(end_points))):
+    if checkMoveOvertravel(end_points, machine.absolute_axis_travel_limits)[0]:
+    #if any(end_points[k] < machine.table_center_axis_travel_limits[k][0] for k in range(0,len(end_points))) or any(end_points[k] > machine.table_center_axis_travel_limits[k][1] for k in range(0,len(end_points))):
         print('move exceeds bounds')
-        return fallthrough_points
+        return generateHoldPositionPoints(machine, 0, start_points)
 
     #Handle arguments
     if any(np.isnan(start_points)):
-        start_points = machine.current_position
+        start_points = machine.current_stepgen_position
     if max_joint_velocities == -1:
         max_joint_velocities = machine.max_joint_velocity
     if max_joint_accelerations == -1:
@@ -61,7 +84,7 @@ def generateMovePoints(machine, end_points, start_points = [np.nan], move_veloci
             # FIXME return 0 if move_vector == 0
             #Null move
             print('move is null')
-            return fallthrough_points
+            return generateHoldPositionPoints(machine, 0, start_points)
 
         move_direction = np.sign(move_vector)
         #Check if we can reach cruise for each joint

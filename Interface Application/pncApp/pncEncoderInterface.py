@@ -23,6 +23,9 @@ class EncoderInterface(Process):
         self.encoder_reading_time = 0
         self.encoder_read_time_moving_average = 0
 
+        self.encoder_position_buffer = np.zeros((self.machine.encoder_read_buffer_size, self.machine.number_of_joints))
+        self.encoder_time_buffer = np.zeros((self.machine.encoder_read_buffer_size, 1))
+
     def run(self):
         current_thread().name = self.main_thread_name
         pncLibrary.getSynchronizer(self, self.feed_pipe)
@@ -50,7 +53,7 @@ class EncoderInterface(Process):
             self.synchronizer.process_start_signal.wait()
             time.clock()
 
-            if not self.syncEncoderToStepgen(self.machine.event_wait_timeout):
+            if not self.syncEncoderToStepgen(self.machine.encoder_event_wait_timeout):
                 raise TimeoutError
 
             self.initializeSerialComm(self.machine.target_baudrate)
@@ -62,21 +65,25 @@ class EncoderInterface(Process):
                 while self.synchronizer.p_run_encoder_interface_event.is_set():
                     #FIXME should this be on a timer?
                     #FIXME move to getEncoderCounts
-                    request_time = time.time()
-                    encoder_counts = self.getEncoderCounts('current')
-                    #print('serial read time is: ' + str(time.clock()-rx_received_time))
+                    #encoder_position_buffer = []
+                    #encoder_time_buffer = []
+                    encoder_buffer_data_flag = True
+                    for read_count in range(0, self.machine.encoder_read_buffer_size):
+                        request_time = time.time()
+                        encoder_counts = self.getEncoderCounts('current')
 
-                    if encoder_counts[0]:
-                        #Got good data, push to DB
-                        self.encoder_reading_time += (time.time() - request_time)
-                        self.encoder_reads += 1
-                        self.encoder_read_time_moving_average = self.encoder_reading_time/self.encoder_reads
-                        self.machine.average_encoder_read_frequency = 1.0/self.encoder_read_time_moving_average
+                        if encoder_counts[0]:
+                            self.encoder_position_buffer[read_count] = np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1]))
+                            self.encoder_time_buffer[read_count] = np.asarray(pncLibrary.estimateMachineClock(self.machine, encoder_counts[2]))
+                            encoder_buffer_data_flag = encoder_buffer_data_flag and True
+                        else:
+                            print('had bad encoder reading')
+                            encoder_buffer_data_flag = False
+                            #FIXME should probably push packets of data instead of every sample
 
-                        #FIXME should probably push packets of data instead of every sample
-                        if self.synchronizer.mc_xenomai_clock_sync_event.is_set():
-                            encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
-                            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
+                    if self.synchronizer.mc_xenomai_clock_sync_event.is_set() and encoder_buffer_data_flag:
+                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
+                        self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
 
         except serial.SerialException as error:
             #print('Could not open serial port, error: ' + str(error))
@@ -86,12 +93,12 @@ class EncoderInterface(Process):
                                                          self.machine.process_self_terminate_string,
                                                          self.name,
                                                          self.pid)
-        except Exception as error:
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.process_error_string, self.name, str(error))
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         self.machine.process_self_terminate_string,
-                                                         self.machine.name,
-                                                         self.machine.comm_port)
+        # except Exception as error:
+        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.process_error_string, self.name, str(error))
+        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #                                                  self.machine.process_self_terminate_string,
+        #                                                  self.machine.name,
+        #                                                  self.machine.comm_port)
         else:
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          self.machine.connection_close_string, self.device_name,
@@ -103,14 +110,16 @@ class EncoderInterface(Process):
 
     def syncEncoderToStepgen(self, timeout = None):
         try:
-            self.synchronizer.mc_initial_position_set_event.wait(timeout)
+            #self.synchronizer.mc_initial_stepgen_position_set_event.wait(timeout)
+            self.synchronizer.mc_initial_stepgen_position_set_event.wait(timeout)
             # self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(
-            #     map(lambda cp, mz: cp - mz, self.machine.current_position, self.machine.machine_zero))))
-            self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, self.machine.current_position))
+            #     map(lambda cp, mz: cp - mz, self.machine.current_stepgen_position, self.machine.machine_table_center_zero))))
+            #self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', self.machine.current_stepgen_position)))
+            self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, self.machine.current_stepgen_position))
             self.synchronizer.ei_encoder_init_event.set()
             return True
-        except:
-            self.synchronizer.q_print_server_message_queue.put("ENCODER INTERFACE: Wait on stepgen sync timed out")
+        except Exception as error:
+            self.synchronizer.q_print_server_message_queue.put("ENCODER INTERFACE: Wait on stepgen sync timed out, error: " + str(error))
             return False
 
     def initializeSerialComm(self, baudrate):
@@ -131,7 +140,7 @@ class EncoderInterface(Process):
         for axis in range(0,len(axes)):
             axis_index = self.machine.axes.index(axes[axis].upper())
             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
-        return counts
+        return np.asarray(counts)
 
     # def countToPosition(self, axis, counts):
     #     axis_index = self.machine.axes.index(axis.upper())
@@ -141,7 +150,7 @@ class EncoderInterface(Process):
         positions = []
         for axis in range(0, len(axes)):
             axis_index = self.machine.axes.index(axes[axis].upper())
-            positions.append((counts[axis] - self.machine.encoder_offset[axis_index]) * self.machine.encoder_scale[axis_index])# + self.machine.machine_zero[axis_index])
+            positions.append((counts[axis] - self.machine.encoder_offset[axis_index]) * self.machine.encoder_scale[axis_index])# + self.machine.machine_table_center_zero[axis_index])
         return positions
 
     def waitForBytes(self, number_of_bytes, timeout = 0.5):
@@ -161,7 +170,7 @@ class EncoderInterface(Process):
         ## FIXME need a timeout here in case sync fails
         start = time.clock()
         read_data = self.serial_port.readline().decode('utf-8')
-        self.synchronizer.q_print_server_message_queue.put('read took ' + str(time.clock()-start))
+        #self.synchronizer.q_print_server_message_queue.put('read took ' + str(time.clock()-start))
         if string in read_data:
             return (True, read_data)
         else:
@@ -221,6 +230,8 @@ class EncoderInterface(Process):
     def setBaudrate(self, baudrate):
         self.writeUnicode(self.machine.encoder_command_strings[3] + str(self.countBytesInTransmission(baudrate)) + str(baudrate))
         ack = self.waitForString(self.machine.encoder_ack_strings[4])
+        #FIXME why the fuck did this break itself
+        #return True
         if int(ack[1].split(' ')[1]) == baudrate:
             time.sleep(0.5)
             self.serial_port.baudrate = baudrate

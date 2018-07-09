@@ -1,3 +1,4 @@
+import numpy as np
 from multiprocessing.managers import NamespaceProxy
 
 class MachineModelStatics():
@@ -20,9 +21,20 @@ class MachineModelStatics():
         self.connection_open_string = "CONNECTED to {} on {}"
         self.connection_close_string = "DISCONNECTED from {} on {}"
 
-# class MachineModelState():
-#     def __init__(self):
-#         self.name = None
+        #Machine kinematics
+        self.number_of_joints = 5
+        self.servo_dt = 0.001
+        self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+        self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
+        self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
+        self.max_joint_jerk = [100, 100, 100, 100, 100]
+        self.fk = []
+        self.ik = []
+
+
+class MachineModelState():
+    def __init__(self):
+        self.name = None
 #         # Init states
 #         self.local_epoch = 0
 #         self.mode = self.modes[0]
@@ -71,6 +83,7 @@ class MachineModel():
         self.thread_queue_wait_timeout = 0.1
         self.process_queue_wait_timeout = 0.1
         self.event_wait_timeout = 5
+        self.encoder_event_wait_timeout = 30
         self.join_timeout = 2
         self.socket_timeout = 1
         self.max_mvc_startup_wait_time = 10
@@ -146,7 +159,11 @@ class MachineModel():
 
         #Encoder calibration
         self.number_of_encoders = 6
-        self.machine_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
+        #self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
+        self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
+        #self.machine_table_center_zero = np.array([-1.75, -2.05, 0.1, -5.0, 0.0])
+        #self.machine_axis_limit_zero =
+        self.encoder_read_buffer_size = 10
         self.encoder_init = 1000000
         #self.encoder_offset = [155836, 180838, 2283, 9121, 0]
         self.encoder_offset = 5*[1e8]
@@ -160,7 +177,10 @@ class MachineModel():
         #Machine kinematics
         self.number_of_joints = 5
         self.servo_dt = 0.001
-        self.limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+        #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+        self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
+        #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
+        self.absolute_axis_travel_limits = [[0, 0, -3.55, 0, 0], [4.3, 5, 0, 100, 99999]]
         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
         self.max_joint_jerk = [100, 100, 100, 100, 100]
@@ -234,18 +254,22 @@ class MachineModel():
         self.ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
         #TCP Control Parameters
-        self.polylines_per_tx = 1
+        self.polylines_per_tx = 2
         self.points_per_polyline = 25
         self.buffer_level_setpoint = 1000
         self.max_buffer_level = 2000
 
         #Motion State Machine
-        self.current_position = [0.0]*self.number_of_joints
+        self.current_stepgen_position = np.asarray([0.0]*self.number_of_joints)
         self.current_encoder_position = [0.0]*self.number_of_joints
         self.current_velocity = [0.0]*self.number_of_joints
         self.current_acceleration = [0.0]*self.number_of_joints
         self.current_jerk = [0.0]*self.number_of_joints
-        self.rsh_buffer_level = 0
+        self.current_buffer_level = 0
+        #self.motion_states = [self.current_stepgen_position, self.current_encoder_position, self.current_buffer_level]
+        self.motion_states = ['current_stepgen_position', 'current_encoder_position', 'current_buffer_level']
+        self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
+        self.state_initialization_events = ['mc_initial_stepgen_position_set_event', 'ei_initial_encoder_position_set_event', 'mc_initial_buffer_level_set_event']
 
         #File Handling
         #self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
@@ -254,4 +278,10 @@ class MachineModel():
         self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
 
 class MachineModelProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
+
+class MachineModelStateProxy(NamespaceProxy):
+    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
+
+class MachineModelStaticsProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

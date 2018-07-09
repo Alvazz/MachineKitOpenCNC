@@ -74,7 +74,7 @@ class PNCAppInterfaceSocket(Thread):
                 if not self.login_event.is_set():
                     self.waitForSocketLogin()
                     pncLibrary.printTerminalString(pncLibrary.interface_socket_connection_string, self.client_name, self.client_address)
-                inbound_message = pncLibrary.receiveIPCData(self.client_type, 'string', self.terminal_client)
+                inbound_message = pncLibrary.receiveIPCData(self.client_type, 'text', self.terminal_client)
                 self.pncApp_command_queue.put(inbound_message)
             except (ConnectionAbortedError, ConnectionResetError):
                 self.client_connected_event.clear()
@@ -88,7 +88,7 @@ class PNCAppInterfaceSocket(Thread):
         self.parent.client_list.pop(self.parent.client_list.index(self))
 
     def waitForSocketLogin(self):
-        login_message = pncLibrary.receiveIPCData(self.client_type, 'string', self.connection)
+        login_message = pncLibrary.receiveIPCData(self.client_type, 'text', self.connection)
         try:
             login_command, name = login_message.data.split('_')
             if login_command == 'HELLO':

@@ -234,7 +234,7 @@ class FeedbackProcessor(Thread):
                     stepgen_feedback_positions[sample_number,:] = np.asarray([float(s) for s in sample_point[1:]])+np.asarray(self.machine.axis_offsets)
                     ## FIXME use clock delta between samples instead of straight interpolation
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt*self.machine.servo_log_sub_sample_rate * float(sample_number)
-                    #self.machine.current_position = stepgen_feedback_positions[sample_number,:]
+                    #self.machine.current_stepgen_position = stepgen_feedback_positions[sample_number,:]
 
             elif feedback_encoding == 'binary':
                 number_of_feedback_points = int(len(feedback_data) / (self.machine.servo_log_num_axes + 1))
@@ -252,7 +252,7 @@ class FeedbackProcessor(Thread):
 
                     RTAPI_feedback_indices[sample_number, :] += float(sample_number)
                     RTAPI_clock_times[sample_number, :] = float(sample_point[0])
-                    stepgen_feedback_positions[sample_number, :] = np.asarray([float(s) for s in sample_point[1:]])
+                    stepgen_feedback_positions[sample_number, :] = np.asarray([round(float(s), 6) for s in sample_point[1:]])
                     received_times_interpolated[sample_number, :] = rx_received_time + self.machine.servo_dt * self.machine.servo_log_sub_sample_rate * float(sample_number)
             else:
                 return
@@ -260,7 +260,7 @@ class FeedbackProcessor(Thread):
             record = dict()
             record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
             record['RTAPI_clock_times'] = (RTAPI_clock_times-self.machine.RT_clock_offset)/self.machine.clock_resolution
-            record['stepgen_feedback_positions'] = stepgen_feedback_positions - np.asarray(self.machine.machine_zero)
+            record['stepgen_feedback_positions'] = pncLibrary.TP.convertMotionCS(self.machine, 'absolute', stepgen_feedback_positions)
             if type(stepgen_feedback_positions[0]) == int:
                 print('break')
             record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
@@ -458,7 +458,7 @@ class MachineFeedbackHandler(Process):
                 if not self.feedback_state.multiple_socket_passes_required:
                     self.incoming_transmission_length = transmission_length
                     byte_string = byte_string[self.machine.size_of_feedback_int:]
-                if len(byte_string) >= self.incoming_transmission_length:
+                if len(byte_string) >= (self.incoming_transmission_length - self.machine.size_of_feedback_int):
                 #if len(byte_string) >= transmission_length:
                     if transmission_length <= len(self.machine.binary_line_terminator):
                         print('break')
@@ -487,7 +487,7 @@ class MachineFeedbackHandler(Process):
                     self.feedback_state.multiple_socket_passes_required = True
                     self.socket_passes += 1
                     self.last_byte_string = byte_string
-                    if self.socket_passes >= 2:
+                    if self.socket_passes >= 3:
                         print('socket pass break')
                     return False, False, None, None
             else:
