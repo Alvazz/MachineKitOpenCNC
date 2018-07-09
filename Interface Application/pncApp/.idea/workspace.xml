@@ -2,59 +2,12 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="8bd26cf1-5304-4d98-8138-03fba3eca374" name="Default" comment="">
-      <change afterPath="$PROJECT_DIR$/pncMotionControl.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncApp.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncBokeh.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncCamUserInterface.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncDatabase.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncEncoderInterface.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncLibrary.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncMachineControl.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncMachineFeedback.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncMachineModel.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncSculptPrintIntegration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/pncTrajectoryGeneration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/test_modules.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Multiprocessing Port/test_mp.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/index.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncApp.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncApp.zip" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncBokeh.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncComm.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncComm_11.9.17.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncComm_old.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncDataStore.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncMachineControl.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncMachineFeedback.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncMachineModel.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncSculptPrintIntegration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncSculptPrintIntegrationConsolidated.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Old/pncSculptPrintIntegrationConsolidated_old.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/__init__.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/index.html" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncApp.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncBokeh.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncCamUserInterface.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncDataStore.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncMachineControl.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncMachineFeedback.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncMachineModel.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/pncSculptPrintIntegration.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/test_modules.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/Threaded Implementation/test_modules2.py" beforeDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncApp.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncApp.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncAppInterface.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncAppInterface.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pncDatabase.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncDatabase.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pncEncoderInterface.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncEncoderInterface.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pncLibrary.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncLibrary.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pncMachineControl.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncMachineControl.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/pncMachineFeedback.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncMachineFeedback.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncMachineModel.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncMachineModel.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncSculptPrintIntegration.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncSculptPrintIntegration.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncSculptPrintSocket.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncSculptPrintSocket.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncTerminalSocket.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncTerminalSocket.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/pncTrajectoryGeneration.py" beforeDir="false" afterPath="$PROJECT_DIR$/pncTrajectoryGeneration.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../ODrive" beforeDir="false" afterPath="$PROJECT_DIR$/../../ODrive" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/../../ODriveHardware" beforeDir="false" afterPath="$PROJECT_DIR$/../../ODriveHardware" afterDir="false" />
     </list>
@@ -70,8 +23,8 @@
       <file leaf-file-name="pncMachineControl.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="551">
-              <caret line="340" lean-forward="true" selection-start-line="340" selection-end-line="340" />
+            <state relative-caret-position="476">
+              <caret line="450" column="35" lean-forward="true" selection-start-line="450" selection-start-column="35" selection-end-line="450" selection-end-column="35" />
               <folding>
                 <element signature="e#0#80#0" expanded="true" />
               </folding>
@@ -82,8 +35,8 @@
       <file leaf-file-name="pncMachineFeedback.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="206">
-              <caret line="67" selection-start-line="67" selection-end-line="67" />
+            <state relative-caret-position="291">
+              <caret line="492" selection-start-line="492" selection-end-line="492" />
               <folding>
                 <element signature="e#0#17#0" expanded="true" />
               </folding>
@@ -94,20 +47,8 @@
       <file leaf-file-name="pncDatabase.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncDatabase.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="446">
-              <caret line="292" selection-start-line="292" selection-end-line="292" />
-              <folding>
-                <element signature="e#0#17#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="pncSculptPrintIntegration.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="15">
-              <caret line="274" column="4" selection-start-line="274" selection-start-column="4" selection-end-line="274" selection-end-column="4" />
+            <state relative-caret-position="341">
+              <caret line="309" selection-start-line="309" selection-end-line="309" />
               <folding>
                 <element signature="e#0#17#0" expanded="true" />
               </folding>
@@ -118,8 +59,8 @@
       <file leaf-file-name="pncMachineModel.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="224">
-              <caret line="256" column="33" selection-start-line="256" selection-start-column="33" selection-end-line="256" selection-end-column="33" />
+            <state relative-caret-position="260">
+              <caret line="170" column="92" lean-forward="true" selection-start-line="170" selection-start-column="92" selection-end-line="170" selection-end-column="92" />
               <folding>
                 <element signature="e#0#18#0" expanded="true" />
               </folding>
@@ -130,8 +71,8 @@
       <file leaf-file-name="pncTrajectoryGeneration.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncTrajectoryGeneration.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="227">
-              <caret line="27" column="155" selection-start-line="27" selection-start-column="155" selection-end-line="27" selection-end-column="155" />
+            <state relative-caret-position="197">
+              <caret line="53" column="4" selection-start-line="53" selection-start-column="4" selection-end-line="53" selection-end-column="4" />
             </state>
           </provider>
         </entry>
@@ -139,8 +80,8 @@
       <file leaf-file-name="pncAppInterface.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="536">
-              <caret line="104" column="125" lean-forward="true" selection-start-line="104" selection-start-column="125" selection-end-line="104" selection-end-column="125" />
+            <state relative-caret-position="1196">
+              <caret line="168" selection-start-line="168" selection-end-line="168" />
               <folding>
                 <element signature="e#0#65#0" expanded="true" />
               </folding>
@@ -148,14 +89,11 @@
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="pncLibrary.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/pncLibrary.py">
+      <file leaf-file-name="connection.py" pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/connection.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="191">
-              <caret line="349" column="15" selection-start-line="349" selection-start-column="15" selection-end-line="349" selection-end-column="15" />
-              <folding>
-                <element signature="e#0#69#0" expanded="true" />
-              </folding>
+            <state relative-caret-position="206">
+              <caret line="306" selection-start-line="306" selection-end-line="306" />
             </state>
           </provider>
         </entry>
@@ -163,8 +101,8 @@
       <file leaf-file-name="pncEncoderInterface.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncEncoderInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="279">
-              <caret line="224" selection-start-line="224" selection-end-line="224" />
+            <state relative-caret-position="51">
+              <caret line="64" selection-start-line="64" selection-end-line="64" />
               <folding>
                 <element signature="e#0#33#0" expanded="true" />
               </folding>
@@ -175,8 +113,17 @@
       <file leaf-file-name="managers.py" pinned="false" current-in-tab="false">
         <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="383">
+            <state relative-caret-position="428">
               <caret line="1015" selection-start-line="1015" selection-end-line="1015" />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="process.py" pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/process.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="326">
+              <caret line="271" selection-start-line="271" selection-end-line="271" />
             </state>
           </provider>
         </entry>
@@ -193,7 +140,6 @@
   <component name="FindInProjectRecents">
     <findStrings>
       <find>current_position</find>
-      <find>current_buffer_level</find>
       <find>read machine timed out</find>
       <find>mc_rsh_error_event</find>
       <find>self.machine.machin</find>
@@ -216,12 +162,13 @@
       <find>mc_initial_stepgen_position_set_event</find>
       <find>event_wait_timeout</find>
       <find>event_wa</find>
-      <find>conver</find>
-      <find>split</find>
       <find>mc_run_motion_event</find>
       <find>polyl</find>
       <find>setFunctions</find>
       <find>getFunctions</find>
+      <find>current_buffer_level</find>
+      <find>conver</find>
+      <find>split</find>
     </findStrings>
     <replaceStrings>
       <replace>mvc_connection</replace>
@@ -290,22 +237,22 @@
         <option value="$PROJECT_DIR$/pncApp.py" />
         <option value="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
         <option value="$PROJECT_DIR$/pncSculptPrintSocket.py" />
-        <option value="$PROJECT_DIR$/pncMachineFeedback.py" />
         <option value="$PROJECT_DIR$/pncMotionControl.py" />
-        <option value="$PROJECT_DIR$/pncDatabase.py" />
         <option value="$PROJECT_DIR$/pncTrajectoryGeneration.py" />
-        <option value="$PROJECT_DIR$/pncEncoderInterface.py" />
         <option value="$PROJECT_DIR$/pncMachineModel.py" />
         <option value="$PROJECT_DIR$/pncLibrary.py" />
+        <option value="$PROJECT_DIR$/pncMachineFeedback.py" />
+        <option value="$PROJECT_DIR$/pncDatabase.py" />
         <option value="$PROJECT_DIR$/pncMachineControl.py" />
+        <option value="$PROJECT_DIR$/pncEncoderInterface.py" />
       </list>
     </option>
   </component>
   <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="3426" />
-    <option name="y" value="-309" />
-    <option name="width" value="383" />
-    <option name="height" value="225" />
+    <option name="x" value="2872" />
+    <option name="y" value="-8" />
+    <option name="width" value="1936" />
+    <option name="height" value="1096" />
   </component>
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectView">
@@ -458,8 +405,8 @@
     </list>
     <recent_temporary>
       <list>
-        <item itemvalue="Python.pncSculptPrintSocket" />
         <item itemvalue="Python.pncCamUserInterface" />
+        <item itemvalue="Python.pncSculptPrintSocket" />
         <item itemvalue="Python.scratch" />
         <item itemvalue="Python.pncSculptPrintIntegration" />
         <item itemvalue="Python.pncApp" />
@@ -489,9 +436,9 @@
     </todo-panel>
   </component>
   <component name="ToolWindowManager">
-    <frame x="2872" y="-295" width="1936" height="1096" extended-state="6" />
+    <frame x="2872" y="-8" width="1936" height="1096" extended-state="6" />
     <layout>
-      <window_info active="true" content_ui="combo" id="Project" order="0" sideWeight="0.4951613" visible="true" weight="0.18229716" />
+      <window_info content_ui="combo" id="Project" order="0" sideWeight="0.4951613" visible="true" weight="0.18229716" />
       <window_info anchor="bottom" id="TODO" order="6" weight="0.3297062" />
       <window_info anchor="bottom" id="Event Log" order="7" sideWeight="0.5032467" side_tool="true" weight="0.39377084" />
       <window_info anchor="bottom" id="Find" order="1" weight="0.32881" />
@@ -501,7 +448,7 @@
       <window_info id="Structure" order="1" sideWeight="0.5048387" side_tool="true" weight="0.18229716" />
       <window_info anchor="bottom" id="Terminal" order="7" weight="0.24843423" />
       <window_info id="Favorites" order="2" side_tool="true" />
-      <window_info anchor="bottom" id="Debug" order="3" sideWeight="0.49675325" visible="true" weight="0.302714" />
+      <window_info active="true" anchor="bottom" id="Debug" order="3" sideWeight="0.49675325" visible="true" weight="0.302714" />
       <window_info anchor="right" content_ui="combo" id="Hierarchy" order="2" weight="0.25" />
       <window_info anchor="right" id="Commander" order="0" weight="0.4" />
       <window_info anchor="right" id="Ant Build" order="1" weight="0.25" />
@@ -611,13 +558,8 @@
           <option name="timeStamp" value="308" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncDatabase.py</url>
-          <line>231</line>
-          <option name="timeStamp" value="433" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncEncoderInterface.py</url>
-          <line>102</line>
+          <line>103</line>
           <option name="timeStamp" value="548" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -627,7 +569,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
-          <line>374</line>
+          <line>376</line>
           <option name="timeStamp" value="667" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -637,22 +579,22 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
-          <line>353</line>
+          <line>355</line>
           <option name="timeStamp" value="696" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>264</line>
+          <line>266</line>
           <option name="timeStamp" value="764" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>281</line>
+          <line>283</line>
           <option name="timeStamp" value="765" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>215</line>
+          <line>217</line>
           <option name="timeStamp" value="766" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -682,22 +624,22 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>494</line>
+          <line>496</line>
           <option name="timeStamp" value="814" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>490</line>
+          <line>492</line>
           <option name="timeStamp" value="815" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>480</line>
+          <line>482</line>
           <option name="timeStamp" value="825" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>355</line>
+          <line>357</line>
           <option name="timeStamp" value="827" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -727,7 +669,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>463</line>
+          <line>465</line>
           <option name="timeStamp" value="911" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -746,29 +688,14 @@
           <option name="timeStamp" value="988" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
-          <line>67</line>
-          <option name="timeStamp" value="990" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncEncoderInterface.py</url>
-          <line>96</line>
+          <line>97</line>
           <option name="timeStamp" value="1004" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncEncoderInterface.py</url>
-          <line>121</line>
+          <line>119</line>
           <option name="timeStamp" value="1006" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncEncoderInterface.py</url>
-          <line>202</line>
-          <option name="timeStamp" value="1022" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
-          <line>436</line>
-          <option name="timeStamp" value="1032" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncTrajectoryGeneration.py</url>
@@ -777,8 +704,28 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
-          <line>391</line>
+          <line>394</line>
           <option name="timeStamp" value="1039" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncMachineControl.py</url>
+          <line>320</line>
+          <option name="timeStamp" value="1046" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncDatabase.py</url>
+          <line>233</line>
+          <option name="timeStamp" value="1052" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncMachineFeedback.py</url>
+          <line>68</line>
+          <option name="timeStamp" value="1058" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncEncoderInterface.py</url>
+          <line>209</line>
+          <option name="timeStamp" value="1073" />
         </line-breakpoint>
       </breakpoints>
       <breakpoints-dialog>
@@ -791,7 +738,7 @@
           </properties>
         </breakpoint>
       </default-breakpoints>
-      <option name="time" value="1045" />
+      <option name="time" value="1081" />
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
@@ -859,47 +806,47 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
     </expressions>
     <expressions id="evaluateExpression">
       <expression>
-        <expression-string>z = np.diff(self.data_store.POLYLINE_TRANSMISSION_TIMES, 1, 0)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>z = np.diff(self.data_store.POLYLINE_TRANSMISSION_TIMES, 1, 1)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>z = np.diff(self.data_store.POLYLINE_TRANSMISSION_TIMES)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>np.diff(self.data_store.POLYLINE_TRANSMISSION_TIMES)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>convertMotionCS(machine, 'absolute', points)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>pncLibrary.convertMotionCS(machine, 'absolute', points)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
-        <expression-string>checkMoveOvertravel(end_points, machine.absolute_axis_travel_limits)</expression-string>
-        <language-id>Python</language-id>
-        <evaluation-mode>EXPRESSION</evaluation-mode>
-      </expression>
-      <expression>
         <expression-string>self.serial_port.readline()</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.countsToPositions(self.machine.axes, encoder_counts[1])</expression-string>
+        <expression-string>self.serial_port.write(b'B6250000')</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>np.zeros((5))</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>np.zeros((1,5))</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>self.data_store.COMMANDED_SERVO_POLYLINES[512]</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>self.data_store.COMMANDED_SERVO_POLYLINES[511]</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>self.data_store.COMMANDED_SERVO_POLYLINES[510]</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>self.data_store.COMMANDED_SERVO_POLYLINES[509]</expression-string>
+        <language-id>Python</language-id>
+        <evaluation-mode>EXPRESSION</evaluation-mode>
+      </expression>
+      <expression>
+        <expression-string>self.data_store.COMMANDED_SERVO_POLYLINES[520]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>EXPRESSION</evaluation-mode>
       </expression>
@@ -973,13 +920,6 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="211">
           <caret line="230" selection-start-line="230" selection-end-line="230" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/process.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="488">
-          <caret line="282" column="23" lean-forward="true" selection-start-line="282" selection-start-column="23" selection-end-line="282" selection-end-column="23" />
         </state>
       </provider>
     </entry>
@@ -1060,13 +1000,6 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/connection.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="206">
-          <caret line="306" selection-start-line="306" selection-end-line="306" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/codecs.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="361">
@@ -1088,16 +1021,6 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="536">
-          <caret line="104" column="125" lean-forward="true" selection-start-line="104" selection-start-column="125" selection-end-line="104" selection-end-column="125" />
-          <folding>
-            <element signature="e#0#65#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="15">
@@ -1108,64 +1031,88 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="383">
-          <caret line="1015" selection-start-line="1015" selection-end-line="1015" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncTrajectoryGeneration.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="227">
-          <caret line="27" column="155" selection-start-line="27" selection-start-column="155" selection-end-line="27" selection-end-column="155" />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncEncoderInterface.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="279">
-          <caret line="224" selection-start-line="224" selection-end-line="224" />
-          <folding>
-            <element signature="e#0#33#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="224">
-          <caret line="256" column="33" selection-start-line="256" selection-start-column="33" selection-end-line="256" selection-end-column="33" />
-          <folding>
-            <element signature="e#0#18#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pncLibrary.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="191">
-          <caret line="349" column="15" selection-start-line="349" selection-start-column="15" selection-end-line="349" selection-end-column="15" />
+        <state relative-caret-position="206">
+          <caret line="528" column="4" selection-start-line="528" selection-start-column="4" selection-end-line="528" selection-end-column="4" />
           <folding>
             <element signature="e#0#69#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
+    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/connection.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="206">
-          <caret line="67" selection-start-line="67" selection-end-line="67" />
+          <caret line="306" selection-start-line="306" selection-end-line="306" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncTrajectoryGeneration.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="197">
+          <caret line="53" column="4" selection-start-line="53" selection-start-column="4" selection-end-line="53" selection-end-column="4" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1196">
+          <caret line="168" selection-start-line="168" selection-end-line="168" />
+          <folding>
+            <element signature="e#0#65#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="260">
+          <caret line="170" column="92" lean-forward="true" selection-start-line="170" selection-start-column="92" selection-end-line="170" selection-end-column="92" />
+          <folding>
+            <element signature="e#0#18#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="291">
+          <caret line="492" selection-start-line="492" selection-end-line="492" />
           <folding>
             <element signature="e#0#17#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
+    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/process.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="326">
+          <caret line="271" selection-start-line="271" selection-end-line="271" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="428">
+          <caret line="1015" selection-start-line="1015" selection-end-line="1015" />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncEncoderInterface.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="51">
+          <caret line="64" selection-start-line="64" selection-end-line="64" />
+          <folding>
+            <element signature="e#0#33#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/pncDatabase.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="446">
-          <caret line="292" selection-start-line="292" selection-end-line="292" />
+        <state relative-caret-position="341">
+          <caret line="309" selection-start-line="309" selection-end-line="309" />
           <folding>
             <element signature="e#0#17#0" expanded="true" />
           </folding>
@@ -1174,8 +1121,8 @@ np.asarray(end_points) &lt; machine.absolute_axis_travel_limits</expression-stri
     </entry>
     <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="551">
-          <caret line="340" lean-forward="true" selection-start-line="340" selection-end-line="340" />
+        <state relative-caret-position="476">
+          <caret line="450" column="35" lean-forward="true" selection-start-line="450" selection-start-column="35" selection-end-line="450" selection-end-column="35" />
           <folding>
             <element signature="e#0#80#0" expanded="true" />
           </folding>

@@ -304,21 +304,23 @@ class MotionController(Thread):
                 #return
 
             tx_time = time.time()
+            #print('commanding points: ' + str(command))
             pncLibrary.socketLockedWrite(self.machine, self.synchronizer, binary_command)
 
             #FIXME check buffer was flushed
-            sleep_time = self.runNetworkPID(self.machine.current_buffer_level, blocklength, polylines, self.machine.buffer_level_setpoint)
+            current_BL = self.machine.current_buffer_level
+            sleep_time = self.runNetworkPID(int(current_BL), blocklength, polylines, self.machine.buffer_level_setpoint)
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
                                                                                                       'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
-                                                                                                      'COMMANDED_POSITIONS': servo_points[command]}]))
+                                                                                                      'COMMANDED_POSITIONS': servo_points[command], 'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])}]))
             time.sleep(sleep_time)
 
-    def runNetworkPID(self, current_buffer_level, block_length, polylines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
+    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer finna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)
-        sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000, 0)
+        sleep_time = max((block_length * poly_lines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000, 0)
         return float(sleep_time)
 
     def adaptNetworkTxGain(self):
@@ -384,7 +386,8 @@ class MachineController(Process):
             self.synchronizer.mvc_connect_event.set()
         elif command.command_type == "ENQUEUE":
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
-            self.enqueuePointFiles(command.command_data[0], command.command_data[1])
+            #self.enqueuePointFiles(command.command_data[0], command.command_data[1])
+            self.enqueueTrapezoidalTest()
         elif command.command_type == "EXECUTE":
             print('machine mode is ' + self.machine.mode)
             self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
@@ -425,6 +428,28 @@ class MachineController(Process):
             print('move exceeds machine limits at point %d for axis ??', limit_check[1])
             return False
 
+    def enqueueTrapezoidalTest(self, iterations=5):
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5), 'hold')
+        rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)), move_type='trapezoidal'), 'trap')
+
+        rapid1 = pncLibrary.Move(
+            pncLibrary.TP.generateMovePoints(self.machine,
+                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.array([1,1,-1,20,20])),
+                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)),
+                                             move_type='trapezoidal'), 'trap')
+        rapid0 = pncLibrary.Move(
+            pncLibrary.TP.generateMovePoints(self.machine,
+                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)),
+                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute',
+                                                                           np.array([1, 1, -1, 20, 20])),
+                                             move_type='trapezoidal'), 'trap')
+
+        self.insertMove(hold_move)
+        self.insertMove(rapid_to_start)
+        for k in range(0, iterations):
+            self.insertMove(rapid1)
+            self.insertMove(rapid0)
+
     def enqueuePointFiles(self,start_file_number=5,end_file_number=10):
         start_file_number = 5
         end_file_number = 10
@@ -441,7 +466,7 @@ class MachineController(Process):
         try:
             for f in range(start_file_number + 1, end_file_number):
                 fname = self.machine.point_files_path + self.machine.point_file_prefix + str(f)
-                imported_move = pncLibrary.Move(pncLibrary.TP.convertMotionCS(self.machine, 'absolute', pncLibrary.TP.importPoints(self.machine, fname)), 'imported', fname)
+                imported_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, fname), 'imported', fname)
                 self.insertMove(imported_move)
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))

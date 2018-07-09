@@ -82,7 +82,8 @@ class EncoderInterface(Process):
                             #FIXME should probably push packets of data instead of every sample
 
                     if self.synchronizer.mc_xenomai_clock_sync_event.is_set() and encoder_buffer_data_flag:
-                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
+                        #encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
+                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': self.encoder_position_buffer, 'SERIAL_RECEIVED_TIMES': self.encoder_time_buffer}
                         self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
 
         except serial.SerialException as error:
@@ -112,9 +113,6 @@ class EncoderInterface(Process):
         try:
             #self.synchronizer.mc_initial_stepgen_position_set_event.wait(timeout)
             self.synchronizer.mc_initial_stepgen_position_set_event.wait(timeout)
-            # self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, list(
-            #     map(lambda cp, mz: cp - mz, self.machine.current_stepgen_position, self.machine.machine_table_center_zero))))
-            #self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', self.machine.current_stepgen_position)))
             self.setAllEncoderCounts(self.machine.axes, self.positionsToCounts(self.machine.axes, self.machine.current_stepgen_position))
             self.synchronizer.ei_encoder_init_event.set()
             return True
@@ -123,9 +121,11 @@ class EncoderInterface(Process):
             return False
 
     def initializeSerialComm(self, baudrate):
-        self.serial_port.flushInput()
+        #self.serial_port.readline()
+        self.serial_port.readline()
+        self.serial_port.reset_input_buffer()
         self.setBaudrate(baudrate)
-        self.serial_port.flushInput()
+        self.serial_port.reset_input_buffer()
 
     ########################### UTILITIES ###########################
     def countBytesInTransmission(self, transmission):
@@ -197,15 +197,17 @@ class EncoderInterface(Process):
     def setAxisEncoderCount(self, axis, count):
         command_string = 'S' + str(axis) + str(self.countBytesInTransmission(count)) + str(count)
         self.writeUnicode(command_string)
-        if self.waitForString(self.machine.encoder_ack_strings[1]):
+        if self.waitForString(self.machine.encoder_ack_strings[1])[0]:
             return True
         else:
             return False
 
     def setAllEncoderCounts(self, axes, counts):
         for axis in axes:
+            time.sleep(0.05)
             axis_index = self.machine.axes.index(axis)
-            self.setAxisEncoderCount(axis_index+1,counts[axis_index])
+            while not self.setAxisEncoderCount(axis_index+1,counts[axis_index]):
+                print('Retrying set axis encoder count for axis ' + axis)
 
     def getEncoderCounts(self, request_type):
         #print('requesting encoder count')
@@ -228,6 +230,8 @@ class EncoderInterface(Process):
         return(False, None)
 
     def setBaudrate(self, baudrate):
+        #ack = (False, False)
+        #while not ack[0]:
         self.writeUnicode(self.machine.encoder_command_strings[3] + str(self.countBytesInTransmission(baudrate)) + str(baudrate))
         ack = self.waitForString(self.machine.encoder_ack_strings[4])
         #FIXME why the fuck did this break itself

@@ -226,7 +226,9 @@ class Pusher(Thread):
                     except AttributeError:
                         #print('DATABASE: Creating record type %s with %i records' % key, value.size)
                         pncLibrary.printTerminalString(pncLibrary.printout_database_field_creation_string, key, value.size)
-                        setattr(self.data_store, key, value)
+                        #setattr(self.data_store, key, value)
+                        #setattr(self.data_store, key, np.empty((0, value.size), float))
+                        setattr(self.data_store, key, np.append(np.empty((0, value.size), float), value, 0))
                         self.data_store.data_descriptors.append(key)
                     except Exception as error:
                         print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
@@ -338,7 +340,7 @@ class DatabaseServer(Process):
         #state_updates = self.database_puller.pull(self.synchronizer.state_streams, -1, None)
         #for state_update in state_updates:
 
-        for k in range(0, len(self.machine.motion_states)):
+        for k in range(0, len(self.machine.motion_states)-1):
             state_update = self.database_puller.pull(self.machine.state_streams[k], -1, None)
             if state_update[0]:
                 setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])

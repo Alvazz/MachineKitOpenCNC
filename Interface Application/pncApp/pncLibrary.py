@@ -47,7 +47,7 @@ printout_ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} 
 printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
 printout_ssh_command_execution_string = "MACHINE OS CONTROLLER: Executing {}"
 printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
-printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with {} records"
+printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with size {}"
 
 #Queue operations
 queue_wait_timeout = 1

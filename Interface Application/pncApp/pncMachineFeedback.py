@@ -66,6 +66,7 @@ class FeedbackProcessor(Thread):
     def handleRSHError(self):
         self.synchronizer.mc_rsh_error_event.set()
         self.synchronizer.q_print_server_message_queue.put("FEEDBACK HANDLER: RSH error detected by feedback_processor")
+        print('flag set')
 
     def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
         if feedback_type.upper() == 'COMMAND ECHO':
@@ -204,6 +205,7 @@ class FeedbackProcessor(Thread):
 
         if self.synchronizer.mc_xenomai_clock_sync_event.is_set():
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))
+            self.machine.current_buffer_level = np.array([rsh_buffer_level])
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
