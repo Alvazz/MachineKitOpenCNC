@@ -224,10 +224,7 @@ class Pusher(Thread):
                         #FIXME this is going to get very slow
                         setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
                     except AttributeError:
-                        #print('DATABASE: Creating record type %s with %i records' % key, value.size)
                         pncLibrary.printTerminalString(pncLibrary.printout_database_field_creation_string, key, value.size)
-                        #setattr(self.data_store, key, value)
-                        #setattr(self.data_store, key, np.empty((0, value.size), float))
                         setattr(self.data_store, key, np.append(np.empty((0, value.size), float), value, 0))
                         self.data_store.data_descriptors.append(key)
                     except Exception as error:

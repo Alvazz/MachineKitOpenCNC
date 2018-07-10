@@ -48,6 +48,7 @@ class EncoderInterface(Process):
             else:
                 #pncLibrary.printTerminalString(self.machine.device_boot_string, self.device_name, self.serial_port.name)
                 pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.device_boot_string, self.device_name, self.serial_port.name)
+                self.synchronizer.ei_encoder_comm_init_event.set()
 
             self.synchronizer.ei_startup_event.set()
             self.synchronizer.process_start_signal.wait()

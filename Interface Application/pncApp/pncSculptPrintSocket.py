@@ -119,91 +119,13 @@ def start():
 
 def isMonitoring():
     return pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
-    # if not pncApp_connection_event.is_set():
-    #     return False
-    #
-    # pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, 'ISMONITORING')
-    # try:
-    #     received_packet = pncLibrary.receiveIPCData(mvc_connection_type, mvc_feedback_format, mvc_connection, pncLibrary.socket_wait_timeout_initial)
-    #     print('ismonitoring returning ' + str(received_packet.data))
-    #     return received_packet.data
-    # except TimeoutError:
-    #     print('ismonitoring timed out')
-    #     return False
 
 def readMachine(axis_sensor_id):
     return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
 
-    # if not pncApp_connection_event.is_set():
-    #     return []
-    #
-    # pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, 'READ_' + str(pncLibrary.SP_axis_sensor_id))
-    # try:
-    #     if not pncApp_feedback_synchronization_event.is_set():
-    #         timeout = pncLibrary.socket_wait_timeout_initial
-    #     else:
-    #         timeout = pncLibrary.socket_wait_timeout_initial
-    #
-    #     received_packet = pncLibrary.receiveIPCData(mvc_connection_type, mvc_feedback_format, mvc_connection, timeout)
-    #     pncApp_feedback_synchronization_event.set()
-    #     if type(received_packet.data) is not list:
-    #         raise TypeError
-    #
-    #     # if received_packet.data == True:
-    #     #     print('break')
-    #     return received_packet.data
-    # except ConnectionResetError:
-    #     print('pncApp closed connection')
-    #     pncApp_connection_event.clear()
-    #     return []
-    # except TimeoutError:
-    #     print('read machine timed out')
-    #     return []
-    # except TypeError:
-    #     print('SculptPrint socket out of sync')
-    #     return []
-    # except EOFError:
-    #     print('socket read error')
-    #     return []
-
-# def safelyHandleSocketData(message, expected_data_type, fallback_data):
-#     if not pncApp_connection_event.is_set():
-#         print('pncApp not connected')
-#         return fallback_data
-#
-#     try:
-#         pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, message)
-#         if not pncApp_feedback_synchronization_event.is_set():
-#             timeout = pncLibrary.socket_wait_timeout_initial
-#         else:
-#             #timeout = pncLibrary.socket_wait_timeout*5
-#             timeout = pncLibrary.socket_wait_timeout_initial
-#
-#         received_packet = pncLibrary.receiveIPCData(mvc_connection_type, mvc_feedback_format, mvc_connection, timeout)
-#         pncApp_feedback_synchronization_event.set()
-#         if type(received_packet.data) is not expected_data_type:
-#             raise TypeError
-#
-#         # if received_packet.data == True:
-#         #     print('break')
-#         return received_packet.data
-#     except ConnectionResetError:
-#         print('pncApp closed connection during ' + str(message))
-#         pncApp_connection_event.clear()
-#         return fallback_data
-#     except TimeoutError:
-#         print('read machine timed out on call to: ' + str(message))
-#         return fallback_data
-#     except TypeError:
-#         print('SculptPrint socket out of sync on call to: ' + str(message))
-#         return fallback_data
-#     except EOFError:
-#         print('socket read error on call to: ' + str(message))
-#         return fallback_data
-
 ############################# User Functions #############################
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    sculptprint_MVC.command_queue.put('CONNECT')
+    return 'CONNECT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CONNECT', str, '')
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
@@ -229,23 +151,34 @@ def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
 
 
 def stop():
-    if pncApp_connector.connection_event.is_set():
-        pncLibrary.closeMVCConnection(pncApp_connector.connection_type, pncApp_connector.connection)
+    if pncApp_connector.app_connection_event.is_set():
+        pncLibrary.closeMVCConnection(pncApp_connector)
     return True
 
 #initializeInterfaceIPC()
 
-print(setupMachineDescriptors(0))
-print(setupMachineDescriptors(1))
+#print(setupMachineDescriptors(0))
+#print(setupMachineDescriptors(1))
 if __name__ != 'machinemonitor':
     start()
     #pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, 'FASTFORWARD_0_1')
     time.sleep(1)
 
-while True and __name__ != 'machinemonitor':
+if __name__ != 'machinemonitor':
     z = isMonitoring()
+    print(z)
+    yy = readMachine(0)
+    print(yy[0])
+    # time.sleep(0.1)
+    print('encoder data is: ')
+    yy = readMachine(1)
+    print(yy[0])
+    userPythonFunction2(5, 7, 0, 0, 0)
+    userPythonFunction3(0,0,0,0,0)
+
     #zz = readMachine(1)
-    if 1:
+    while 1:
+        z = isMonitoring()
         print(z)
         yy = readMachine(0)
         print(yy[0])
@@ -254,9 +187,10 @@ while True and __name__ != 'machinemonitor':
         yy = readMachine(1)
         print(yy[0])
 
-        userPythonFunction2(5, 7, 0, 0, 0)
-        userPythonFunction3(0,0,0,0,0)
-        break
+        #userPythonFunction2(5, 7, 0, 0, 0)
+        #userPythonFunction3(0,0,0,0,0)
+        #stop()
+        #break
 
     #time.sleep(0.1)
     #stop()

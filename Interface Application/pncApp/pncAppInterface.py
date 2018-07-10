@@ -81,24 +81,25 @@ class CAM_MVC(Thread):
             except Exception as error:
                 print("SCULPTPRINT MVC: Could not launch pncApp, error " + str(error))
                 self.command_queue = Queue()
-        elif command.command == 'CLOSE':
-            #FIXME only after connect to guarantee encoder sync?
-            self.synchronizer.mvc_pncApp_started_event.wait()
-            self.close_pncApp()
+        # elif command.command == 'CLOSE':
+        #     #FIXME only after connect to guarantee encoder sync?
+        #     self.synchronizer.mvc_pncApp_started_event.wait()
+        #     self.close_pncApp()
         elif command.command == 'CONNECT':
             try:
                 self.synchronizer.mvc_pncApp_started_event.wait(self.machine.event_wait_timeout)
                 self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('CONNECT', None))
+                pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection,command.command)
             except Exception as error:
                 print("SCULPTPRINT MVC: Connection problem, error " + str(error))
         elif command.command == 'ENQUEUE':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', [int(data) for data in command.command_data]))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
-            #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', None))
         elif command.command == 'EXECUTE':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
         elif command.command == 'READ':
@@ -108,7 +109,7 @@ class CAM_MVC(Thread):
             pncLibrary.updateInterfaceClockOffsets(self.feedback_state.last_values_read, self.feedback_state.clock_offsets)
             #if command.connection_format != 'internal'
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
-        elif command.command == 'CLOSE_SP_INTERFACE':
+        elif command.command == 'CLOSESPINTERFACE':
             pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command_type + '_ACK')
             self.CAM_socket_listener.client_connected_event.clear()
             print('SCULPTPRINT MVC: Client %s cleanly disconnected' % str(self.CAM_socket_listener.CAM_client_address))
@@ -212,6 +213,7 @@ class PNCAppInterfaceSocket(Thread):
                                                    self.client_address)
                 inbound_message = pncLibrary.receiveIPCData(self.connection_type, 'text', self.connection)
                 if inbound_message.strip() == 'CLOSESOCKET':
+                    pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message)
                     raise EOFError
 
                 command = pncLibrary.PNCAppCommand(inbound_message.strip().split('_')[0], inbound_message.strip().split('_')[1:], self.connection, self.connection_type, self.connection_format)

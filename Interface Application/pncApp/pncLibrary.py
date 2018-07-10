@@ -33,7 +33,9 @@ printout_pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
 printout_pncApp_launch_failure_string = "FAILURE: pncApp cannot launch, cleaning up..."
 printout_pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
 printout_thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+printout_subthread_launch_string = "SUBTHREAD LAUNCHED: {} thread started {}"
 printout_thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+printout_subthread_terminate_string = "SUBTHREAD STOPPED: {} thread stopped {}"
 printout_device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
 printout_device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
 printout_connection_open_string = "CONNECTED to {} on {}"
@@ -194,6 +196,7 @@ class Synchronizer():
         self.p_run_machine_controller_event = manager.Event()
         self.p_run_feedback_handler_event = manager.Event()
         self.t_run_motion_controller_event = manager.Event()
+        self.t_run_motion_queue_feeder_thread = manager.Event()
         self.t_run_feedback_processor_event = manager.Event()
         self.t_run_logging_server_event = manager.Event()
         self.t_run_database_puller_event = manager.Event()
@@ -235,6 +238,7 @@ class Synchronizer():
         self.mc_motion_complete_event = manager.Event()
         self.mc_rsh_error_event = manager.Event()
         self.mc_socket_connected_event = manager.Event()
+        self.ei_encoder_comm_init_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
         self.ei_initial_encoder_position_set_event = manager.Event()
 
@@ -255,8 +259,6 @@ class Synchronizer():
         self.os_linuxcnc_running_event = manager.Event()
         self.os_linuxcncrsh_running_event = manager.Event()
         self.os_ssh_connected_event = manager.Event()
-
-        #self.testevent = Event()
 
         #SculptPrint MVC Events
         self.mvc_pncApp_initialized_event = manager.Event()
@@ -511,13 +513,16 @@ def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_
         print('socket read error on call to: ' + str(message))
         return fallback_data
 
-def closeMVCConnection(connection_type, connection):
-    if connection_type == 'pipe':
-        connection.close()
-    elif connection_type == 'socket':
-        connection.send('CLOSE_SOCKET'.encode())
-        connection.shutdown(socket.SHUT_RDWR)
-        connection.close()
+def closeMVCConnection(pncApp_connector):
+    if pncApp_connector.connection_type == 'pipe':
+        pncApp_connector.connection.close()
+    elif pncApp_connector.connection_type == 'socket':
+        #pncApp_connector.connection.send('CLOSESOCKET'.encode())
+        if 'CLOSESOCKET' in safelyHandleSocketData(pncApp_connector, 'CLOSESOCKET', str, ''):
+            pncApp_connector.connection.shutdown(socket.SHUT_RDWR)
+            pncApp_connector.connection.close()
+        else:
+            print('socket close error')
 
 def setSynchronizer(pipe, synchronizer):
     pipe.send(synchronizer)
