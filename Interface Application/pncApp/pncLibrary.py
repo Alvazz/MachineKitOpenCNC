@@ -50,6 +50,7 @@ printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection fo
 printout_ssh_command_execution_string = "MACHINE OS CONTROLLER: Executing {}"
 printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
 printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with size {}"
+printout_database_object_list_creation_string = "DATABASE CONTROLLER: Creating object list type {} with size {}"
 
 #Queue operations
 queue_wait_timeout = 1
@@ -354,7 +355,7 @@ class RSHError(Exception):
         super().__init__(message)
         self.errors = errors
 
-class WebsocketError(BaseException):
+class WebsocketError(Exception):
     def __init__(self, message):
         self.message = message
 
@@ -439,6 +440,8 @@ def receiveIPCData(connection_type, connection_format, connection, timeout = soc
         raise ConnectionAbortedError
     else:
         print('pickled size is: ' + str(len(received_data)))
+        if str(len(received_data)) == 55:
+            print('break')
         if connection_format == 'binary':
             try:
                 return pickle.loads(received_data)

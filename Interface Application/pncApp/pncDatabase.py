@@ -4,7 +4,7 @@ from multiprocessing import Process, Event, Lock, Queue, current_process#Value#,
 from multiprocessing.managers import NamespaceProxy
 from threading import Thread, current_thread#, Event as threadEvent
 from queue import Empty
-import time, datetime, numpy as np
+import time, datetime, collections, numpy as np
 import cProfile, pstats
 
 # Store feedback data from other modules
@@ -22,11 +22,11 @@ import cProfile, pstats
 #         self.timestamp = timestamp
 #         self.data = data
 
-class Record():
-    def __init__(self, data_type, data, timestamp):
-        self.data_type = data_type
-        self.timestamp = timestamp
-        self.data = data
+# class Record():
+#     def __init__(self, data_type, data, timestamp):
+#         self.data_type = data_type
+#         self.timestamp = timestamp
+#         self.data = data
 
 # class ReturnRecord(Record):
 #     def __init__(self, record_id, data):
@@ -57,6 +57,7 @@ class LoggingServer(Thread):
         self.output_directory = self.machine.log_file_output_directory
 
         self.log_queue = Queue()
+        self.circular_log_buffer = collections.deque(maxlen=20)
         self.startup_event = Event()
 
     def run(self):
@@ -74,9 +75,10 @@ class LoggingServer(Thread):
             #FIXME don't use spinlock
             try:
                 log_time, log_message = self.log_queue.get(True, self.machine.thread_queue_wait_timeout)
+                self.circular_log_buffer.append(str(log_time) + ': ' + str(log_message))
                 self.log_file_handle.write('\n' + str(log_time) + ': ' + str(log_message))
                 self.log_file_handle.flush()
-            except:
+            except Empty:
                 pass
 
         self.log_file_handle.close()
@@ -238,6 +240,9 @@ class Pusher(Thread):
                         #FIXME this is going to get very slow
                         #setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
                         getattr(self.data_store, key).append(value)
+                    except AttributeError:
+                        pncLibrary.printTerminalString(pncLibrary.printout_database_object_list_creation_string, key, len(records))
+                        setattr(self.data_store, key, [value])
                     except Exception as error:
                         print("Feedback pusher could not append object with type ID: " + str(key) + ', had error: ' + str(error))
 
@@ -255,8 +260,7 @@ class StateManipulator(Thread):
     def run(self):
         self.startup_event.set()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
-        #while True:
-            #pass
+
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
                                                      self.name)
@@ -273,7 +277,6 @@ class DatabaseServer(Process):
 
     def run(self):
         current_thread().name = self.main_thread_name
-        #self.synchronizer = pncLibrary.getSynchronizer(self.feed_pipe)
         pncLibrary.getSynchronizer(self, self.feed_pipe)
 
         pncLibrary.waitForThreadStart(self, Pusher, Puller, StateManipulator, LoggingServer)
@@ -286,24 +289,12 @@ class DatabaseServer(Process):
             self.synchronizer.db_successful_start_event.set()
             self.synchronizer.p_run_database_event.wait()
             while self.synchronizer.p_run_database_event.is_set():
-                #First handle incoming commands
-                #print('database running')
                 try:
                     command = self.synchronizer.q_database_command_queue_proxy.get(True, pncLibrary.queue_database_command_queue_wait_timeout)
                     self.handleCommand(command)
                 except Empty:
-                    #print('database queue empty')
                     pass
 
-                # if not self.synchronizer.q_database_command_queue_proxy.empty():
-                #     command = self.synchronizer.q_database_command_queue_proxy.get()
-                #     self.handleCommand(command)
-
-                # if not self.push_queue.empty:
-                #     records = self.record_queue.get()
-                #     #FIXME what about time stamp?
-                #     self.appendMachineFeedbackRecords([records.data])
-                #     self.record_queue.task_done()
                 self.updateMachineState()
 
 
@@ -342,32 +333,9 @@ class DatabaseServer(Process):
             if state_update[0]:
                 setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])
                 getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
-                # if k == 0:
-                #     print('state break')
-                # if not getattr(self.synchronizer, self.machine.state_initialization_events[k]).is_set():
-                #     time.sleep(0.5)
-                #     getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
-                # if self.synchronizer.mc_initial_stepgen_position_set_event.is_set():
-                #     print('state break')
-#                self.machin.machine_state_events[k].set()
-                #self.machine.state_stream[k] = state_update[1][0][0]
 
     def archiveRecords(self):
         pass
-
-        # position_update = self.database_puller.pull('STEPGEN_FEEDBACK_POSITIONS', -1, None)
-        # buffer_level_update = self.database_puller.pull('HIGHRES_TC_QUEUE_LENGTH', -1, None)
-        # encoder_position_update = self.database_puller.pull('ENCODER_FEEDBACK_POSITIONS', -1, None)
-        # if position_update[0]:
-        #     self.machine.current_stepgen_position = position_update[1][0][0].tolist()
-        #     self.synchronizer.mc_initial_position_set_event.set()
-        # if buffer_level_update[0]:
-        #     self.machine.current_buffer_level = int(buffer_level_update[1][0][0].item())
-        #     self.machine.current_buffer_level = buffer_level_update[1][0][0]
-        #     self.synchronizer.mc_initial_buffer_level_set_event.set()
-        #     self.synchronizer.machine_state_events[k].set()
-        # if encoder_position_update[0]:
-        #     self.machine.current_encoder_position = encoder_position_update[1][0][0].tolist()
 
 class DataStore():
     def __init__(self, machine_statics):
@@ -418,6 +386,7 @@ class DataStore():
         self.NETWORK_PID_DELAYS = np.empty((0,1), float)
         self.POLYLINE_TRANSMISSION_TIMES = np.empty((0, 1), float)
         self.EXECUTED_MOVES = []
+        #self.PROCESSED_MOVES = []
 
         self.DATA_ARCHIVE = {}
 

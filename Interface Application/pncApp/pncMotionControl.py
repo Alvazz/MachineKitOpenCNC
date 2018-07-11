@@ -11,9 +11,12 @@ class MotionController(Thread):
         self.synchronizer = parent.synchronizer
 
         self.move_queue = Queue()
+        self.motion_queue = Queue()
         self.move_in_progress = 0
         self.last_move_serial_number = 0
         self.current_move_serial_number = 0
+        self.current_move_subserial_number = 0
+        self.current_motion_block_serial_number = 0
 
         ### Network control parameters
         self.polylines = self.machine.polylines_per_tx
@@ -23,33 +26,34 @@ class MotionController(Thread):
 
     def run(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
-
         pncLibrary.waitForThreadStart(self, MotionQueueFeeder)
-
         self.startup_event.set()
 
         while self.synchronizer.t_run_motion_controller_event.is_set():
             if self.synchronizer.mc_run_motion_event.wait(self.machine.thread_queue_wait_timeout):
 
                 #There are new moves in the queue, find the one to be executed next
-                while not self.move_queue.empty() and not self.synchronizer.mc_rsh_error_event.is_set():
-                    move_to_execute = self.move_queue.get()
-                    self.current_move_serial_number += 1
-                    move_to_execute.serial_number = self.current_move_serial_number
+                while not self.synchronizer.mc_rsh_error_event.is_set():
+                    motion_block_to_execute = self.motion_queue.get()
+                    self.current_move_serial_number = motion_block_to_execute.serial_number
+                    self.current_move_subserial_number = motion_block_to_execute.subserial_number
+
+                    self.current_motion_block_serial_number += 1
+                    motion_block_to_execute.motion_block_serial_number = self.current_motion_block_serial_number
 
                     self.synchronizer.q_database_command_queue_proxy.put(
-                        pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOVES": move_to_execute}]))
+                        pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOTION_BLOCKS": motion_block_to_execute}]))
 
                     try:
                         print('buffer level at start is ' + str(self.machine.current_buffer_level))
-                        self.commandPoints(move_to_execute.servo_tx_array, self.polylines, self.blocklength)
+                        self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
                     except pncLibrary.RSHError:
-                        self.synchronizer.q_print_server_message_queue.put("MOTION CONTROLLER: Detected RSH error, aborting motion")
-                        self.move_queue = Queue()
+                        self.synchronizer.q_print_server_message_queue.put(
+                            "MOTION CONTROLLER: Detected RSH error, aborting motion")
+                        self.motion_queue = Queue()
                         break
 
-                    self.last_move_serial_number = move_to_execute.serial_number
-
+                    self.last_move_serial_number = motion_block_to_execute.serial_number
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
@@ -100,7 +104,6 @@ class MotionController(Thread):
     def adaptNetworkTxGain(self):
         pass
 
-
 class MotionQueueFeeder(Thread):
     def __init__(self, parent):
         super(MotionQueueFeeder, self).__init__()
@@ -108,9 +111,13 @@ class MotionQueueFeeder(Thread):
         self.name = "motion_queue_feeder"
         self.synchronizer = parent.synchronizer
 
+        self.max_motion_block_size = self.parent.machine.max_motion_block_size
+
         self.move_queue = parent.move_queue
-        self.motion_queue = Queue()
+        self.motion_queue = parent.motion_queue
         self.startup_event = Event()
+
+        self.processed_move_serial_number = 0
 
     def run(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
@@ -120,9 +127,44 @@ class MotionQueueFeeder(Thread):
 
         while self.synchronizer.t_run_motion_queue_feeder_thread.is_set():
             move_to_execute = self.move_queue.get()
-            
-            return
+            self.processed_move_serial_number += 1
+            move_to_execute.serial_number = self.processed_move_serial_number
+            samples_in_block = self.max_motion_block_size/move_to_execute.blocklength
+
+            if samples_in_block != int(samples_in_block):
+                print('division problem')
+
+            samples_in_block = int(samples_in_block)
+
+            self.synchronizer.q_database_command_queue_proxy.put(
+                pncLibrary.DatabaseCommand('push_object', [{"PROCESSED_MOVES": move_to_execute}]))
+
+            # if np.shape(move_to_execute.servo_tx_array)[0] < samples_in_block:
+            #     self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array, 1)
+            #     self.insertMotionBlock(move_to_execute,
+            #                            (motion_packet_start_index, motion_packet_start_index + samples_in_block),
+            #                            int(motion_packet_start_index / samples_in_block + 1))
+            #     #self.motion_queue
+            #else:
+            for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
+                #self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array[motion_packet_start_index:motion_packet_start_index+samples_in_block], motion_packet_start_index/samples_in_block+1)
+                self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.subthread_terminate_string, self.parent.name,
                                                      self.name)
+
+    def insertMotionBlock(self, original_move, indices, motion_block_id):
+        #motion_block = pncLibrary.Move(original_move.point_samples[original_move.blocklength*indices[0]:original_move.blocklength*indices[1]], 'block')
+        point_samples_flat = original_move.servo_tx_array.reshape((np.shape(original_move.servo_tx_array)[0] * np.shape(original_move.servo_tx_array)[1], -1))
+        try:
+            motion_block = pncLibrary.Move(point_samples_flat[original_move.blocklength*indices[0]:original_move.blocklength*indices[1]], 'block')
+        except Exception as error:
+            print('break motion')
+        motion_block.servo_tx_array = original_move.servo_tx_array[indices[0]:indices[1]]
+        motion_block.polylines = original_move.polylines
+        motion_block.blocklength = original_move.blocklength
+        motion_block.serial_number = original_move.serial_number
+        motion_block.subserial_number = motion_block_id
+
+        self.motion_queue.put(motion_block)

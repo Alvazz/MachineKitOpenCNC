@@ -167,8 +167,6 @@ class FeedbackProcessor(Thread):
             else:
                 print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
         elif feedback_encoding == 'binary':
-            #feedback_type = self.machine.binary_rsh_feedback_strings[feedback_type]
-            #print('the feedback type is: ' + feedback_type)
             if any(s in feedback_type for s in self.machine.binary_rsh_feedback_strings):
                 if self.machine.binary_rsh_feedback_strings[0] == feedback_type:
                     feedback_data = struct.unpack('!' + 'd' * int((transmission_length - len(
@@ -198,8 +196,6 @@ class FeedbackProcessor(Thread):
         #print('buffer level is ' + str(rsh_buffer_level))
         record['HIGHFREQ_ETHERNET_RECEIVED_TIMES'] = np.array([[rx_received_time-self.machine.pncApp_clock_offset]])
 
-        #FIXME major band-aid
-        #record['RSH_CLOCK_TIMES'] = np.array([[rsh_clock_time-self.machine.OS_clock_offset+self.machine.RT_clock_offset]])
         record['RSH_CLOCK_TIMES'] = np.array(
             [[(rsh_clock_time + (self.machine.RT_clock_offset - self.machine.OS_clock_offset) - self.machine.RT_clock_offset)/self.machine.clock_resolution]])
 
@@ -210,7 +206,6 @@ class FeedbackProcessor(Thread):
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
         rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
         try:
-            #machine_feedback_records = []
             if feedback_encoding == 'ascii':
                 number_of_feedback_points = len(feedback_data)
                 #Check end line terminator
@@ -225,9 +220,6 @@ class FeedbackProcessor(Thread):
                 received_times_interpolated = np.zeros([number_of_feedback_points, 1])
                 RTAPI_feedback_indices = np.zeros([number_of_feedback_points, 1])
                 lowfreq_ethernet_received_times = np.zeros([number_of_feedback_points, 1]) + rx_received_time
-
-                # if len(feedback_data) < 10:
-                #     print('feedback error with data_string = ' + feedback_data)
 
                 for sample_number in range(0,number_of_feedback_points):
                     sample_point = feedback_data[sample_number].split(self.machine.ascii_servo_feedback_terminator)
@@ -266,9 +258,6 @@ class FeedbackProcessor(Thread):
             if type(stepgen_feedback_positions[0]) == int:
                 print('break')
             record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
-
-            ## FIXME major band-aid
-            #machine_time = pncLibrary.lockedPull(self.synchronizer, 'RTAPI_clock_times', None, 1)
 
             if self.synchronizer.fb_feedback_data_initialized_event.is_set():
                 if not self.synchronizer.mc_xenomai_clock_sync_event.is_set():
@@ -360,8 +349,6 @@ class MachineFeedbackHandler(Process):
                     self.assembleAndProcessFeedbackData(self.feedback_encoding, self.feedback_type, self.byte_string, self.rx_received_time)
 
                 if self.feedback_data_processed and not self.feedback_data_processing_error:
-                    #Now drop the complete command from the buffer and reset flags
-                    #old_byte_string = self.byte_string
                     self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
                     #FIXME use feedbackstate object instead of individual flags
                     self.resetFeedbackState()
@@ -373,8 +360,6 @@ class MachineFeedbackHandler(Process):
 
         #Flag set, shutdown. Handle socket closure in machine_controller
         pncLibrary.waitForThreadStop(self, self.feedback_processor)
-        # self.synchronizer.t_run_feedback_processor_event.clear()
-        # self.feedback_processor.join()
 
     def resetFeedbackState(self):
         self.header_processed = False
@@ -489,7 +474,7 @@ class MachineFeedbackHandler(Process):
                     self.feedback_state.multiple_socket_passes_required = True
                     self.socket_passes += 1
                     self.last_byte_string = byte_string
-                    if self.socket_passes >= 3:
+                    if self.socket_passes >= 6:
                         print('socket pass break')
                     return False, False, None, None
             else:

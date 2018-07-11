@@ -147,6 +147,8 @@ def mergeSort(feedback_state, time_arrays, data_arrays, fallback_data_samples, o
                 for j in range(0,number_of_arrays):
                     if j == k:
                         continue
+                    if k == 0 and time_arrays[0].size == 0:
+                        print('break mergesort')
                     if time_arrays[k][array_indices[k]] != time_arrays[j][array_indices[j]]:
                         if array_indices[j]-1 < 0:
                             merged_data[j] = fallback_data_samples[j]

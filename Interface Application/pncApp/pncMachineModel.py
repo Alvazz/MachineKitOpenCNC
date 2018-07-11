@@ -161,8 +161,6 @@ class MachineModel():
         self.number_of_encoders = 6
         #self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
         self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
-        #self.machine_table_center_zero = np.array([-1.75, -2.05, 0.1, -5.0, 0.0])
-        #self.machine_axis_limit_zero =
         self.encoder_read_buffer_size = 10
         self.encoder_init = 1000000
         #self.encoder_offset = [155836, 180838, 2283, 9121, 0]
@@ -180,7 +178,7 @@ class MachineModel():
         #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
-        self.absolute_axis_travel_limits = [[0, 0, -3.55, 0, 0], [4.3, 5, 0, 100, 99999]]
+        self.absolute_axis_travel_limits = [[0, 0, -3.55, 0, -99999], [4.3, 5, 0, 100, 99999]]
         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
         self.max_joint_jerk = [100, 100, 100, 100, 100]
@@ -245,7 +243,7 @@ class MachineModel():
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
         self.serial_read_timeout = 0.5
-        self.websocket_timeout = 0.5
+        self.websocket_timeout = 2
         self.websocket_client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
         self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
         self.ssh_port = 22
@@ -256,6 +254,7 @@ class MachineModel():
         #TCP Control Parameters
         self.polylines_per_tx = 2
         self.points_per_polyline = 25
+        self.max_motion_block_size = 1000
         self.buffer_level_setpoint = 1000
         self.max_buffer_level = 2000
 
@@ -273,7 +272,8 @@ class MachineModel():
 
         #File Handling
         #self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
-        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\'
+        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
+        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\Raw\\'
         self.point_file_prefix = 'opt_code'
         self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
 

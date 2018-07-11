@@ -39,9 +39,12 @@ class CloudTrajectoryPlanner(Thread):
         self.startup_event.set()
         #with websockets.connect("wss://node2.wsninja.io") as self.tp_websocket:
         self.openConnection()
+        self.connectToTP()
         while self.synchronizer.t_run_cloud_trajectory_planner_event.is_set() and self.websocket_connected_event.is_set():
             #FIXME use asynchronous receive so can send multiple point sets in one shot
-            self.raw_point_queue.put(np.array([6, 6, 6]))
+            #self.raw_point_queue.put(np.array([6, 6, 6]))
+            #self.raw_point_queue.put([np.array([1]), np.random.rand(10,7), np.random.rand(10,8)])
+            self.raw_point_queue.put([np.array([1]), np.loadtxt(self.machine.raw_point_files_path + 'tool_short.txt', skiprows=1), np.loadtxt(self.machine.raw_point_files_path + 'machine_short.txt', skiprows=1)])
             self.sendPoints()
             self.receivePoints()
 
@@ -59,6 +62,24 @@ class CloudTrajectoryPlanner(Thread):
             raise pncLibrary.WebsocketError('Websocket connection failed')
         #else:
 
+        # try:
+        #     self.tp_websocket.send('HELLO')
+        #     ack_message = self.tp_websocket.recv()
+        #     if ack_message != 'HELLO_ACK':
+        #         raise pncLibrary.WebsocketError('MukulLab not online')
+        #     self.websocket_connected_event.set()
+        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #                                                  self.machine.trajectory_planner_connection_string, self.name,
+        #                                                  'MukulLab')
+        # except websocket.WebSocketTimeoutException as error:
+        #     print('MukulLab not online, error: ' + str(error))
+        #     # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #     #                                              self.machine.trajectory_planner_connection_failed_string, self.name,
+        #     #                                              'MukulLab')
+        # except pncLibrary.WebsocketError as error:
+        #     print('MukulLab did not ack properly: ' + str(error))
+
+    def connectToTP(self):
         try:
             self.tp_websocket.send('HELLO')
             ack_message = self.tp_websocket.recv()
@@ -70,21 +91,17 @@ class CloudTrajectoryPlanner(Thread):
                                                          'MukulLab')
         except websocket.WebSocketTimeoutException as error:
             print('MukulLab not online, error: ' + str(error))
-            # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-            #                                              self.machine.trajectory_planner_connection_failed_string, self.name,
-            #                                              'MukulLab')
         except pncLibrary.WebsocketError as error:
             print('MukulLab did not ack properly: ' + str(error))
 
-
-    def stringifyPoints(self, point_array):
-        #FIXME there is no way this can be this clunky
-        points_fh = StringIO()
-        np.savetxt(points_fh, point_array)
-        return points_fh.getvalue().strip()
-
-    def unStringifyPoints(self, point_string):
-        return np.loadtxt(StringIO(point_string))
+    # def stringifyPoints(self, point_array):
+    #     #FIXME there is no way this can be this clunky
+    #     points_fh = StringIO()
+    #     np.savetxt(points_fh, point_array)
+    #     return points_fh.getvalue().strip()
+    #
+    # def unStringifyPoints(self, point_string):
+    #     return np.loadtxt(StringIO(point_string))
 
     def sendPoints(self):
         points_to_plan = self.raw_point_queue.get()
@@ -95,12 +112,16 @@ class CloudTrajectoryPlanner(Thread):
         self.tp_websocket.send_binary(data_stream.read())
 
     def receivePoints(self):
-        planned_point_payload = np.load(self.tp_websocket.recv())
-        self.planned_point_payload_buffer.append(planned_point_payload)
+        payload = self.tp_websocket.recv()
+        byte_stream = BytesIO(payload)
+        byte_stream.seek(0)
+        planned_point_payload = np.load(byte_stream)
 
         path_id = planned_point_payload['pid']
         sequence_id = planned_point_payload['sid']
-        planned_points = planned_point_payload['planned']
+        planned_points = planned_point_payload['planned_points']
+
+        self.planned_point_payload_buffer.append(planned_point_payload)
 
     def sortAndOutputPoints(self):
         for p in range(0,len(self.planned_point_payload_buffer)):
@@ -117,6 +138,88 @@ class CloudTrajectoryPlanner(Thread):
     def enqueuePointsForPlanning(self, tool_space_data, joint_space_data):
         self.raw_point_queue.put((self.path_serial_number, tool_space_data, joint_space_data))
         return self.path_serial_number
+
+    # Transform applies f based on file index. First three coordinates are for the translation axis.
+    # Rest are rotational, irrespective of the file type.
+    def _units_transform(self, data, dist_slice=slice(None, 3, None), rot_slice=slice(3, None, None),
+                         correct_dist=True, correct_rot=True):
+        # Convert to radian if rotational axis
+        if correct_rot:
+            data[rot_slice, :] = (data[rot_slice, :] * np.pi) / 180
+        if correct_dist:
+            data[dist_slice, :] = data[dist_slice, :] * self.conversion_factor_dist
+        return data
+
+    # Returns desired slices of tool and joint data files.
+    # Tool file order - x,y,z,volume,a,b
+    # Joint file order - X,Y,Z,A,B,S
+    def load_sp_data(self, data_folder, joint_data_file, tool_data_file,
+                     data_slice=slice(None, None, None),
+                     subsample_slice=slice(None, None, None)):
+        tool_data = np.loadtxt(data_folder + tool_data_file, skiprows=1)
+        joint_data = np.loadtxt(data_folder + joint_data_file, skiprows=1)
+
+        return self.load_sp_data_from_arrays(joint_data, tool_data, subsample_slice)
+
+    # Load SculptPrint data from numpy arrays
+    def load_sp_data_from_arrays(self, joint_data, tool_data,
+                                 subsample_slice=slice(None, None, None)):
+        # Joint file indexing order is a mapping from n+1 -> n+1 that maps coordinate order -> index in file
+        # The last index is for the spindle coordinate.
+        joint_file_indexing_order = [1, 4, 2, 5, 6, 3]
+        # Joint file indexing order is a mapping from n -> n that maps
+        # coordinate order -> index in file -- in the file written out by
+        # SculptPrint, the 6th index is the volumes, and the 5th is if this is
+        # a flag or not.
+        tool_file_indexing_order = [0, 1, 2, 6, 3, 4, 5]
+
+        tool_temp_data = tool_data.T
+        joint_temp_data = joint_data.T
+
+        tool_analysis_data = np.zeros((len(tool_file_indexing_order), tool_temp_data.shape[1]))
+        for index in np.arange(len(tool_file_indexing_order)):
+            tool_analysis_data[index] = tool_temp_data[tool_file_indexing_order[index]]
+        tool_analysis_data = self._units_transform(tool_analysis_data,
+                                                   dist_slice=slice(None, 4, None),
+                                                   rot_slice=slice(4, 5, None), correct_rot=False)
+
+        joint_analysis_data = np.zeros((len(joint_file_indexing_order), joint_temp_data.shape[1]))
+        for index in np.arange(len(joint_file_indexing_order)):
+            joint_analysis_data[index] = joint_temp_data[joint_file_indexing_order[index]]
+        joint_analysis_data = self._units_transform(joint_analysis_data)
+
+        return (tool_analysis_data[:, subsample_slice],
+                joint_analysis_data[:, subsample_slice],
+                tool_analysis_data[-1, subsample_slice].astype(dtype=bool))
+
+    # Given data (:, n) and flag(1, n) of bools, split into
+    # contiguous set of slices based on flag
+    def obtain_contiguous_sequences(self, flag):
+        switch_indices = np.where((flag[1:] - flag[:-1]) != 0)[0]
+        switch_indices = np.hstack((np.array([-1]), switch_indices))
+        contiguous_lists = []
+        all_same = []
+        for index in np.arange(switch_indices.size - 1):
+            contiguous_lists.append((flag[switch_indices[index] + 1],
+                                     slice(switch_indices[index] + 1,
+                                           switch_indices[index + 1] + 1, None)))
+            if __debug__:
+                all_same.append(np.any(flag[switch_indices[index] + 1:
+                                            switch_indices[index + 1] + 1] -
+                                       flag[switch_indices[index] + 1]))
+        if __debug__:
+            print("All contiguous flags are same", not
+            np.any(np.asarray(all_same)))
+        return contiguous_lists
+
+    def get_combined_data(self, joint_data, tool_data):
+        return (np.vstack((tool_data[:3], tool_data[4:6],
+                           tool_data[3], joint_data[:6],
+                           tool_data[6])))
+
+    def write_combined_data(self, joint_data, tool_data, filename):
+        combined_analysis_data = self.get_combined_data(joint_data, tool_data).T
+        np.savetxt(filename, combined_analysis_data)
 
 class OperatingSystemController(Thread):
     def __init__(self, parent):
@@ -236,7 +339,7 @@ class MachineController(Process):
         current_thread().name = self.main_thread_name
         pncLibrary.getSynchronizer(self, self.feed_pipe)
         #FIXME detect thread launch failure
-        pncLibrary.waitForThreadStart(self, MotionController)#, CloudTrajectoryPlanner)
+        pncLibrary.waitForThreadStart(self, MotionController, CloudTrajectoryPlanner)
 
         self.synchronizer.mc_startup_event.set()
         self.synchronizer.process_start_signal.wait()
@@ -276,7 +379,8 @@ class MachineController(Process):
         elif command.command_type == "ENQUEUE":
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
             #self.enqueuePointFiles(command.command_data[0], command.command_data[1])
-            self.enqueueTrapezoidalTest()
+            #self.enqueueTrapezoidalTest()
+            self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "EXECUTE":
             print('machine mode is ' + self.machine.mode)
             self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
@@ -340,8 +444,8 @@ class MachineController(Process):
             self.insertMove(rapid0)
 
     def enqueuePointFiles(self,start_file_number=5,end_file_number=10):
-        start_file_number = 5
-        end_file_number = 10
+        start_file_number = 1
+        end_file_number = 20
         #hold_points = self.generateHoldPositionPoints(1)
         hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),'hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
