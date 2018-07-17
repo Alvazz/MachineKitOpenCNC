@@ -79,12 +79,8 @@ class CAM_MVC(Thread):
             try:
                 self.start_pncApp()
             except Exception as error:
-                print("SCULPTPRINT MVC: Could not launch pncApp, error " + str(error))
+                print("PNCAPP INTERFACE: Could not launch pncApp, error " + str(error))
                 self.command_queue = Queue()
-        # elif command.command == 'CLOSE':
-        #     #FIXME only after connect to guarantee encoder sync?
-        #     self.synchronizer.mvc_pncApp_started_event.wait()
-        #     self.close_pncApp()
         elif command.command == 'CONNECT':
             try:
                 self.synchronizer.mvc_pncApp_started_event.wait(self.machine.event_wait_timeout)
@@ -92,9 +88,21 @@ class CAM_MVC(Thread):
                 pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection,command.command)
             except Exception as error:
                 print("SCULPTPRINT MVC: Connection problem, error " + str(error))
+        elif command.command == 'LOAD':
+            self.synchronizer.mvc_connect_event.wait()
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('LOAD', [int(data) for data in command.command_data]))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'ENQUEUE':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE', [int(data) for data in command.command_data]))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'TRAPENQUEUE':
+            self.synchronizer.mvc_connect_event.wait()
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE_TRAPEZOID', [int(data) for data in command.command_data]))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'VOXELENQUEUE':
+            self.synchronizer.mvc_connect_event.wait()
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('ENQUEUE_VOXELIZED', [int(data) for data in command.command_data]))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'EXECUTE':
             self.synchronizer.mvc_connect_event.wait()
@@ -106,7 +114,8 @@ class CAM_MVC(Thread):
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.readMachine(self.synchronizer, self.feedback_state, int(command.command_data[0])))
         elif command.command == 'FASTFORWARD':
             pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
-            pncLibrary.updateInterfaceClockOffsets(self.feedback_state.last_values_read, self.feedback_state.clock_offsets)
+            pncLibrary.updateInterfaceClockOffsets(self.machine, self.feedback_state.clock_offsets)
+            #pncLibrary.updateMotionControllerClockOffset(self.machine, 'motion_controller_clock_offset', self.machine.pncApp_clock_offset)
             #if command.connection_format != 'internal'
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'CLOSESPINTERFACE':
@@ -162,6 +171,7 @@ class PNCAppInterfaceSocketLauncher(Thread):
 
     def run(self):
         self.interface_socket.bind(('localhost', pncLibrary.socket_interface_socket_port))
+        #self.interface_socket.bind(('0.0.0.0', pncLibrary.socket_interface_socket_port))
         self.interface_socket.listen()
         pncLibrary.printTerminalString(pncLibrary.printout_thread_launch_string, current_process().name, self.name)
         self.startup_event.set()

@@ -424,7 +424,9 @@ def sendIPCData(connection_type, data_type, connection, message):
             pass
     elif connection_type == 'socket':
         if data_type == 'binary':
+            start_time = time.clock()
             connection.send(pickle.dumps(IPCDataWrapper(message)))
+            print('send time is ' + str(time.clock()-start_time))
         elif data_type == 'text':
             connection.send((str(message)+'\n').encode())
         elif data_type == 'internal':
@@ -466,9 +468,11 @@ def waitForIPCDataTransfer(connection_type, connection, timeout = None, wait_int
 
     elif connection_type == 'socket':
         if select.select([connection], [], [], timeout)[0]:
+            start_time = time.clock()
             socket_data = bytearray()
-            while select.select([connection], [], [], 0.1)[0]:
-                socket_data += connection.recv(4096)
+            while select.select([connection], [], [], 0.001)[0]:
+                socket_data += connection.recv(65536)
+            print('receive time is ' + str(time.clock()-start_time))
             return socket_data
         else:
             raise TimeoutError
@@ -555,6 +559,7 @@ def updateInterfaceData(update_mode, synchronizer, feedback_state, main_data_str
         time_slice, data_slice = DB_query_data[1][:len(clock_stream_names)], DB_query_data[1][-len(data_stream_names):]
 
         clock_offsets = getInterfaceClockOffsets(feedback_state.clock_offsets, clock_stream_names)
+        print('interface clock offsets are: ' + str(clock_offsets))
         updateFeedbackIndices(feedback_state.feedback_indices, complete_stream_names, time_slice + data_slice)
         updateFallbackDataPoints(feedback_state.last_values_read, complete_stream_names, complete_stream_sizes, time_slice + data_slice)
 
@@ -564,7 +569,6 @@ def updateInterfaceData(update_mode, synchronizer, feedback_state, main_data_str
     if update_mode == 'pull':
         return time_slices, data_slices, data_stream_names, data_stream_sizes
     elif update_mode == 'touch':
-
         return
 
 def getFeedbackIndices(feedback_indices, data_stream_names):
@@ -603,10 +607,21 @@ def updateFallbackDataPoints(fallback_values, stream_names, stream_sizes, stream
 def getInterfaceClockOffsets(clock_offsets, data_stream_names):
     return list(map(lambda stream: clock_offsets[stream] if stream in clock_offsets else 0, data_stream_names))
 
-def updateInterfaceClockOffsets(fallback_values, clock_offsets):
-    for key, value in fallback_values.items():
-        if 'TIME' in key:
-            clock_offsets[key] = value
+def updateMotionControllerClockOffset(machine, clock_offset, app_clock_offset):
+    #clock = time.time()-app_clock_offset
+    setattr(machine, clock_offset, time.time()-app_clock_offset)
+
+# def updateInterfaceClockOffsets(fallback_values, clock_offsets):
+#     for key, value in fallback_values.items():
+#         if 'TIME' in key:
+#             clock_offsets[key] = value
+
+def updateInterfaceClockOffsets(machine, clock_offsets):
+    clock_offsets['SERIAL_RECEIVED_TIMES'] = estimateMachineClock(machine)#time.time() - machine.pncApp_clock_offset
+    #clock_offsets['RTAPI_CLOCK_TIMES'] = time.time() - machine.xenomai_clock_offset
+    clock_offsets['RTAPI_CLOCK_TIMES'] = estimateMachineClock(machine)
+    clock_offsets['RSH_CLOCK_TIMES'] = time.time() - machine.pncApp_clock_offset
+    clock_offsets['POLYLINE_TRANSMISSION_TIMES'] = time.time() - machine.pncApp_clock_offset
 
 ######################## Database Interaction ########################
 def synchronousPull(synchronizer, data_types, start_indices, end_indices):
@@ -682,7 +697,8 @@ def estimateMachineClock(machine, time_to_estimate=-1):
     if time_to_estimate == -1:
         time_to_estimate = time.time()
 
-    return (time_to_estimate - machine.pncApp_clock_offset)
+    #return (time_to_estimate - machine.pncApp_clock_offset)
+    return (time_to_estimate - machine.RT_clock_sync_pncApp_time)
     #return machine.RT_clock_offset + (time_to_estimate - machine.current_current_estimated_network_latency) * machine.clock_resolution
 
 ######################## Comms ########################

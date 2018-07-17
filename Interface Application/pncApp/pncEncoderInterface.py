@@ -68,6 +68,8 @@ class EncoderInterface(Process):
                     #FIXME move to getEncoderCounts
                     #encoder_position_buffer = []
                     #encoder_time_buffer = []
+                    raise serial.SerialException
+
                     encoder_buffer_data_flag = True
                     for read_count in range(0, self.machine.encoder_read_buffer_size):
                         request_time = time.time()
@@ -142,10 +144,6 @@ class EncoderInterface(Process):
             axis_index = self.machine.axes.index(axes[axis].upper())
             counts.append(int(round(positions[axis] / self.machine.encoder_scale[axis_index]) + self.machine.encoder_offset[axis_index]))
         return np.asarray(counts)
-
-    # def countToPosition(self, axis, counts):
-    #     axis_index = self.machine.axes.index(axis.upper())
-    #     return round(counts * self.machine.encoder_scale[axis_index]) - self.machine.encoder_offset[axis]
 
     def countsToPositions(self, axes, counts):
         positions = []

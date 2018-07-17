@@ -204,7 +204,7 @@ class FeedbackProcessor(Thread):
             self.machine.current_buffer_level = np.array([rsh_buffer_level])
 
     def processPositionFeedback(self, feedback_encoding, rx_received_time, feedback_data):
-        rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
+        #rx_received_time = rx_received_time - self.machine.pncApp_clock_offset
         try:
             if feedback_encoding == 'ascii':
                 number_of_feedback_points = len(feedback_data)
@@ -262,6 +262,7 @@ class FeedbackProcessor(Thread):
             if self.synchronizer.fb_feedback_data_initialized_event.is_set():
                 if not self.synchronizer.mc_xenomai_clock_sync_event.is_set():
                     self.machine.RT_clock_offset = RTAPI_clock_times[0].item()
+                    self.machine.RT_clock_sync_pncApp_time = rx_received_time-(RTAPI_clock_times[-1].item()-RTAPI_clock_times[0].item())/self.machine.clock_resolution
                     self.synchronizer.mc_xenomai_clock_sync_event.set()
                     return
                 self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [record]))

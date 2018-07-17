@@ -160,13 +160,14 @@ class MachineModel():
         #Encoder calibration
         self.number_of_encoders = 6
         #self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
-        self.machine_table_center_zero = [-1.75, -2.05, 0.1, -5.0, 0.0]
+        self.machine_table_center_zero = [-1.75, -2.05, 0.1, 0.0, 0.0]
+        self.machine_table_center_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.encoder_read_buffer_size = 10
         self.encoder_init = 1000000
         #self.encoder_offset = [155836, 180838, 2283, 9121, 0]
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
-        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, -1.0 / 172, -1.0 / 167]
+        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / 172, -1.0 / 167]
         self.max_encoder_transmission_length = 1+4*6+1
         self.encoder_command_strings = ['S', 'G', 'R', 'B']
         self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n', '&']
@@ -178,7 +179,8 @@ class MachineModel():
         #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
-        self.absolute_axis_travel_limits = [[0, 0, -3.55, 0, -99999], [4.3, 5, 0, 100, 99999]]
+        #self.absolute_axis_travel_limits = [[0, 0, -3.55, -5, -99999], [4.3, 5, 0, 95, 99999]]
+        self.absolute_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
         self.max_joint_jerk = [100, 100, 100, 100, 100]
@@ -215,14 +217,17 @@ class MachineModel():
         self.mean_estimated_network_latency = 0
         self.OS_clock_offset = 0
         self.RT_clock_offset = 0
+        self.RT_clock_sync_pncApp_time = 0
         self.pncApp_clock_offset = 0
+        self.motion_controller_clock_offset = 0
         self.last_unix_time = 0
         self.clock_sync_received_time = 0
 
         # Servo log parameters
         self.servo_log_num_axes = 5
         self.servo_log_sub_sample_rate = 10
-        self.servo_log_buffer_size = 50
+        #self.servo_log_buffer_size = 50
+        self.servo_log_buffer_size = 10
 
         #Comm parameters
         self.rsh_socket = None
@@ -257,6 +262,7 @@ class MachineModel():
         self.max_motion_block_size = 1000
         self.buffer_level_setpoint = 1000
         self.max_buffer_level = 2000
+        self.motion_control_data_prebuffer_size = 20
 
         #Motion State Machine
         self.current_stepgen_position = np.asarray([0.0]*self.number_of_joints)
@@ -276,6 +282,8 @@ class MachineModel():
         self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\Raw\\'
         self.point_file_prefix = 'opt_code'
         self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        self.database_file_name = 'database_output'
 
 class MachineModelProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

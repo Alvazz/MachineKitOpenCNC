@@ -121,6 +121,7 @@ def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
     return SP_formatted_data
 
 def mergeSort(feedback_state, time_arrays, data_arrays, fallback_data_samples, output_time_array = [], output_data_array = []):
+    #time_start = time.clock()
     number_of_arrays = len(time_arrays)
     array_indices = [0]*len(time_arrays)
     while all([array_indices[k] != time_arrays[k].size for k in range(0, len(time_arrays)) if time_arrays[k].size != 0]) and not all([time_array.size == 0 for time_array in time_arrays]):
@@ -183,6 +184,8 @@ def mergeSort(feedback_state, time_arrays, data_arrays, fallback_data_samples, o
     next_fallback_points = [fallback_data_samples[k] if time_arrays[k].size == 0 else np.array([data_arrays[k][array_indices[k]-1]]) for k in range(0, number_of_arrays)]
 
     if all([len(time_array) == 0 for time_array in next_time_arrays]):
+        #time_end = time.clock()-time_start
+        #print('mergesort time is: ' + str(time_end))
         return output_time_array, output_data_array
     else:
         return mergeSort(feedback_state, next_time_arrays, next_data_arrays, next_fallback_points, output_time_array, output_data_array)
@@ -279,21 +282,15 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
     if synchronizer.mvc_run_feedback_event.is_set():
         #FIXME add clock offset
         #if axis_sensor_id == 0 or 1:
+        start_time = time.clock()
         time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateInterfaceData('pull', synchronizer, feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, [axis_sensor_id])
+        print('pull took ' + str(time.clock()-start_time))
+        start_time = time.clock()
         merged_data = mergeSort(feedback_state, time_slice[0], data_slice[0], pncLibrary.getFallbackDataPoints(feedback_state.last_values_read, data_stream_names, data_stream_sizes), [], [])
-
+        print('MS ' + str(time.clock() - start_time))
         #FIXME this iteration here is probably not good
         return formatFeedbackData(axis_sensor_id, data_format, [[merged_data[0][k]] + merged_data[1][k] for k in range(0,len(merged_data[0]))])
 
-        # elif axis_sensor_id == 1:
-        #     DB_query_data = pncLibrary.lockedPull(synchronizer, ['SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS'],
-        #                                           2*[feedback_state.serial_start_time_index],
-        #                                           2*[None])
-        #
-        #     serial_time_slice, serial_data_slice = DB_query_data[1]
-        #     feedback_state.serial_start_time_index += len(serial_data_slice)
-        #
-        #     return formatFeedbackDataForSP(machine, axis_sensor_id, serial_time_slice, serial_data_slice)
     else:
         return []
 
@@ -331,41 +328,41 @@ def isMonitoring(synchronizer):
     #return bool(machine.machine_controller_thread_handle.is_alive() & machine.servo_feedback_mode)
 
 ############################# User Functions #############################
-def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    sculptprint_MVC.command_queue.put('CONNECT')
-
-
 # def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-#     #global machine
-#     print('execute enqueueMoves from ' + str(arg0) +' to ' + str(arg1))#(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     #machine_controller.testMachine(1,1,1,1,1)
-#     #machine_controller.motion_controller._running_motion = True
-#     machine.sculptprint_interface.start_file = arg0
-#     machine.sculptprint_interface.end_file = arg1
-#     machine.sculptprint_interface.enqueue_moves_event.set()
+#     sculptprint_MVC.command_queue.put('CONNECT')
+#
+#
+# # def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
+# #     #global machine
+# #     print('execute enqueueMoves from ' + str(arg0) +' to ' + str(arg1))#(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+# #     #machine_controller.testMachine(1,1,1,1,1)
+# #     #machine_controller.motion_controller._running_motion = True
+# #     machine.sculptprint_interface.start_file = arg0
+# #     machine.sculptprint_interface.end_file = arg1
+# #     machine.sculptprint_interface.enqueue_moves_event.set()
+# #     return True;
+#
+# def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
+#     print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+#     sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
 #     return True;
-
-def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
-    print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
-    return True;
-
-def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-    print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    sculptprint_MVC.command_queue.put('EXECUTE')
-    return True;
+#
+# def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
+#     print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+#     sculptprint_MVC.command_queue.put('EXECUTE')
+#     return True;
 
 # def connectToMachine():
 #     sculptprint_MVC.command_queue.put('CONNECT')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
-def stop(synchronizer):
-    #print('closing')
-    #appClose()
-    sculptprint_MVC.command_queue.put('CLOSE')
-    synchronizer.mvc_app_shutdown_event.wait()
-    return True
+# def stop(synchronizer):
+#     #print('closing')
+#     #appClose()
+#     sculptprint_MVC.command_queue.put('CLOSE')
+#     synchronizer.mvc_app_shutdown_event.wait()
+#     return True
 
 # def testMonitoring():
 #     while True:

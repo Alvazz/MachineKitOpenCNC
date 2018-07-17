@@ -4,7 +4,7 @@ from multiprocessing import Process, Event, Lock, Queue, current_process#Value#,
 from multiprocessing.managers import NamespaceProxy
 from threading import Thread, current_thread#, Event as threadEvent
 from queue import Empty
-import time, datetime, collections, numpy as np
+import time, datetime, collections, pickle, numpy as np
 import cProfile, pstats
 
 # Store feedback data from other modules
@@ -129,6 +129,7 @@ class Puller(Thread):
         #     print('break')
         success_flag = True
         with self.data_store_lock:
+            start_time = time.clock()
             for k in range(0,len(data_types)):
                 data_type = data_types[k]
                 data_array = self.data_store.lookupDataType(data_type.upper())
@@ -163,6 +164,7 @@ class Puller(Thread):
                     print('break sdf')
         except:
             print('break ghfdg')
+        #print('in pull operation ' + str(time.clock() - start_time))
         return (success_flag, return_data)
 
     def formatPullRequest(self, data_types, start_indices, end_indices):
@@ -205,6 +207,8 @@ class Pusher(Thread):
     def push(self, push_request):
         records = self.formatPushRequest(push_request[0])
         if push_request[1] == 'numpy':
+            # if len(records) > 1:
+            #     print('multirecord')
             self.appendMachineFeedbackRecords(records)
         elif push_request[1] == 'object':
             self.appendObjects(records)
@@ -220,6 +224,8 @@ class Pusher(Thread):
 
     def appendMachineFeedbackRecords(self, records):
         with self.data_store_lock:
+            if len(records) > 2:
+                print('appending multi record')
             for record in records:
                 for key, value in record.items():
                     try:
@@ -296,6 +302,7 @@ class DatabaseServer(Process):
                     pass
 
                 self.updateMachineState()
+                print('db cmd q size is ' + str(self.synchronizer.q_database_command_queue_proxy.qsize()))
 
 
             pncLibrary.waitForThreadStop(self, self.database_pusher, self.database_puller, self.machine_state_manipulator, self.logging_server)
@@ -336,6 +343,13 @@ class DatabaseServer(Process):
 
     def archiveRecords(self):
         pass
+
+    def writeDatabaseToFile(self):
+        np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
+        np.save(self.machine.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
+        #fh = open(self.machine.database_output_directory + self.machine.database_file_name, 'wb')
+        #fh.write(pickle.dumps(self.data_store))
+        #fh.close()
 
 class DataStore():
     def __init__(self, machine_statics):

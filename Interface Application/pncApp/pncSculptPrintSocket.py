@@ -34,7 +34,7 @@ pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
 
 ############################# Setup Functions #############################
 def monitoredMachineCount():
-    return 2
+    return 1
 
 def setupAuxilary():
     return setupAuxiliary()
@@ -72,31 +72,8 @@ def setupUserDataNames():
 # Returns an array of user defined function names that are displayed on the function buttons in the feature UI. The array affects
 # feature UI functionality only.  The array must be sized on the interval [1,3]. Defining this method is optional.
 def setupUserFunctionNames():
-    stringArray = [r'Initialize Control',r'Enqueue Movements',r'Execute Motion']
+    stringArray = [r'Load and Enqueue Voxelized Points',r'Load and Enqueue Trapezoid Points',r'Execute Motion']
     return stringArray
-
-
-######################## Operation ########################
-# def initializeInterfaceIPC(connection_type):
-#     if connection_type == 'pipe':
-#         try:
-#             print("SCULPTPRINT INTERFACE: Acquiring pipe %s..." % pncLibrary.socket_sculptprint_ipc_pipe_name)
-#             sculptprint_pipe = wpipe.Client(pncLibrary.socket_sculptprint_ipc_pipe_name, wpipe.Mode.Master, maxmessagesz=4096)
-#             pncApp_connection_event.set()
-#             print('SCULPTPRINT INTERFACE: Pipe %s opened successfully' % pncLibrary.socket_sculptprint_ipc_pipe_name)
-#             return sculptprint_pipe
-#         except:
-#             raise ConnectionRefusedError
-#     elif connection_type == 'socket':
-#         try:
-#
-#             sculptprint_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-#             sculptprint_socket.connect(('localhost', pncLibrary.socket_interface_socket_port))
-#             pncApp_connection_event.set()
-#             print('SCULPTPRINT INTERFACE: Socket connected successfully to %s' % 'localhost')
-#             return sculptprint_socket
-#         except:
-#             raise ConnectionRefusedError
 
 def start():
     #global mvc_connection
@@ -124,12 +101,20 @@ def readMachine(axis_sensor_id):
     return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
 
 ############################# User Functions #############################
+# def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
+#     if arg1 == 0:
+#         arg1 = 10
+#     return 'LOAD' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'LOAD_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+    #return 'CONNECT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CONNECT', str, '')
+
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    return 'CONNECT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CONNECT', str, '')
+    if arg1 == 0:
+        arg1 = 10
+    return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    return 'ENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'ENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+    return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
     # if 'ENQUQUE' in ack:
     #     return True
     # else:
@@ -165,15 +150,20 @@ if __name__ != 'machinemonitor':
     time.sleep(1)
 
 if __name__ != 'machinemonitor':
+    # userPythonFunction1(0, 0, 0, 0, 0)
+    # time.sleep(1)
+    # userPythonFunction3(0, 0, 0, 0, 0)
+
     z = isMonitoring()
     print(z)
     yy = readMachine(0)
-    print(yy[0])
+    #print(yy[0])
     # time.sleep(0.1)
     print('encoder data is: ')
     yy = readMachine(1)
-    print(yy[0])
-    userPythonFunction2(5, 7, 0, 0, 0)
+    #print(yy[0])
+    userPythonFunction1(0, 0, 0, 0, 0)
+    time.sleep(1)
     userPythonFunction3(0,0,0,0,0)
 
     #zz = readMachine(1)
@@ -181,11 +171,18 @@ if __name__ != 'machinemonitor':
         z = isMonitoring()
         print(z)
         yy = readMachine(0)
-        print(yy[0])
+        try:
+            print(yy[-1])
+        except:
+            pass
         #time.sleep(0.1)
         print('encoder data is: ')
         yy = readMachine(1)
-        print(yy[0])
+        try:
+            print(yy[-1])
+        except:
+            pass
+            #print("print break")
 
         #userPythonFunction2(5, 7, 0, 0, 0)
         #userPythonFunction3(0,0,0,0,0)

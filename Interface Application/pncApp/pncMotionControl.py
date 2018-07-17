@@ -21,6 +21,9 @@ class MotionController(Thread):
         ### Network control parameters
         self.polylines = self.machine.polylines_per_tx
         self.blocklength = self.machine.points_per_polyline
+        self.prebuffer_size = self.machine.motion_control_data_prebuffer_size
+        self.object_prebuffer = []
+        self.array_prebuffer = []
 
         self.startup_event = Event()
 
@@ -31,7 +34,7 @@ class MotionController(Thread):
 
         while self.synchronizer.t_run_motion_controller_event.is_set():
             if self.synchronizer.mc_run_motion_event.wait(self.machine.thread_queue_wait_timeout):
-
+                #self.machine.motion_controller_clock_offset = time.time()
                 #There are new moves in the queue, find the one to be executed next
                 while not self.synchronizer.mc_rsh_error_event.is_set():
                     motion_block_to_execute = self.motion_queue.get()
@@ -52,6 +55,8 @@ class MotionController(Thread):
                             "MOTION CONTROLLER: Detected RSH error, aborting motion")
                         self.motion_queue = Queue()
                         break
+
+                    self.prebufferAndFlushMotionRecords()
 
                     self.last_move_serial_number = motion_block_to_execute.serial_number
 
@@ -88,18 +93,43 @@ class MotionController(Thread):
             #FIXME check buffer was flushed
             current_BL = self.machine.current_buffer_level
             sleep_time = self.runNetworkPID(int(current_BL), blocklength, polylines, self.machine.buffer_level_setpoint)
-            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
-            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
-                                                                                                      'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
-                                                                                                      'COMMANDED_POSITIONS': servo_points[command], 'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])}]))
+            self.prebufferAndFlushMotionRecords(objects={'COMMANDED_SERVO_POLYLINES': commanded_points},
+                                                arrays={'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
+                                                  'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
+                                                  'COMMANDED_POSITIONS': servo_points[command],
+                                                  'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])})
+            # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
+            # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
+            #                                                                                           'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
+            #                                                                                           'COMMANDED_POSITIONS': servo_points[command], 'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])}]))
             time.sleep(sleep_time)
 
     def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
-            print('WARNING: Buffer finna overflow')
+            print('WARNING: Buffer fidna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)
         sleep_time = max((block_length * poly_lines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000, 0)
         return float(sleep_time)
+
+    def prebufferAndFlushMotionRecords(self, objects = None, arrays = None):
+        if objects is None and arrays is None:
+            if len(self.object_prebuffer) > 0:
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', self.object_prebuffer))
+                self.object_prebuffer = []
+            if len(self.array_prebuffer) > 0:
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', self.array_prebuffer))
+                self.array_prebuffer = []
+        else:
+            if len(self.object_prebuffer) >= self.prebuffer_size:
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', self.object_prebuffer))
+                self.object_prebuffer = [objects]
+            else:
+                self.object_prebuffer.append(objects)
+            if len(self.array_prebuffer) >= self.prebuffer_size:
+                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', self.array_prebuffer))
+                self.array_prebuffer = [arrays]
+            else:
+                self.array_prebuffer.append(arrays)
 
     def adaptNetworkTxGain(self):
         pass
@@ -139,13 +169,6 @@ class MotionQueueFeeder(Thread):
             self.synchronizer.q_database_command_queue_proxy.put(
                 pncLibrary.DatabaseCommand('push_object', [{"PROCESSED_MOVES": move_to_execute}]))
 
-            # if np.shape(move_to_execute.servo_tx_array)[0] < samples_in_block:
-            #     self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array, 1)
-            #     self.insertMotionBlock(move_to_execute,
-            #                            (motion_packet_start_index, motion_packet_start_index + samples_in_block),
-            #                            int(motion_packet_start_index / samples_in_block + 1))
-            #     #self.motion_queue
-            #else:
             for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
                 #self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array[motion_packet_start_index:motion_packet_start_index+samples_in_block], motion_packet_start_index/samples_in_block+1)
                 self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))

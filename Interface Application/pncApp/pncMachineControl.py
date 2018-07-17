@@ -1,4 +1,4 @@
-import pncLibrary, time, paramiko, websocket, json, numpy as np
+import pncLibrary, time, paramiko, websocket, json, base64, numpy as np
 #import websockets
 from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
@@ -19,6 +19,7 @@ class CloudTrajectoryPlanner(Thread):
         #self.client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
         #self.server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
 
+        self.enqueued_sequence_id = 0
         self.current_requested_sequence_id = 0
         self.current_received_sequence_id = 0
 
@@ -26,8 +27,9 @@ class CloudTrajectoryPlanner(Thread):
         self.planned_point_output_queue = Queue()
 
         self.planned_point_payload_buffer = []
-        joint_data_file = "machine"
-        tool_data_file = "tool"
+        self.joint_data_file = "machine.txt"
+        self.tool_data_file = "tool.txt"
+        self.conversion_factor_dist = 1
 
         self.startup_event = Event()
 
@@ -40,12 +42,19 @@ class CloudTrajectoryPlanner(Thread):
         #with websockets.connect("wss://node2.wsninja.io") as self.tp_websocket:
         self.openConnection()
         self.connectToTP()
+
+        self.tool_points, self.machine_points, self.retraction_flags = self.load_sp_data(self.machine.raw_point_files_path, self.joint_data_file, self.tool_data_file)
+        self.contiguous_sequences = self.obtain_contiguous_sequences(self.retraction_flags.astype(int))
+        self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, 0, 10)
+
         while self.synchronizer.t_run_cloud_trajectory_planner_event.is_set() and self.websocket_connected_event.is_set():
             #FIXME use asynchronous receive so can send multiple point sets in one shot
             #self.raw_point_queue.put(np.array([6, 6, 6]))
             #self.raw_point_queue.put([np.array([1]), np.random.rand(10,7), np.random.rand(10,8)])
-            self.raw_point_queue.put([np.array([1]), np.loadtxt(self.machine.raw_point_files_path + 'tool_short.txt', skiprows=1), np.loadtxt(self.machine.raw_point_files_path + 'machine_short.txt', skiprows=1)])
-            self.sendPoints()
+            #self.raw_point_queue.put([np.array([1]), np.loadtxt(self.machine.raw_point_files_path + 'tool_short.txt', skiprows=1), np.loadtxt(self.machine.raw_point_files_path + 'machine_short.txt', skiprows=1)])
+            points_to_plan = self.raw_point_queue.get()
+            self.tp_websocket.timeout = None
+            self.sendPoints(points_to_plan)
             self.receivePoints()
 
         self.tp_websocket.send('FIN')
@@ -60,24 +69,6 @@ class CloudTrajectoryPlanner(Thread):
         ack_message = json.loads(self.tp_websocket.recv())
         if not ack_message['accepted']:
             raise pncLibrary.WebsocketError('Websocket connection failed')
-        #else:
-
-        # try:
-        #     self.tp_websocket.send('HELLO')
-        #     ack_message = self.tp_websocket.recv()
-        #     if ack_message != 'HELLO_ACK':
-        #         raise pncLibrary.WebsocketError('MukulLab not online')
-        #     self.websocket_connected_event.set()
-        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-        #                                                  self.machine.trajectory_planner_connection_string, self.name,
-        #                                                  'MukulLab')
-        # except websocket.WebSocketTimeoutException as error:
-        #     print('MukulLab not online, error: ' + str(error))
-        #     # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-        #     #                                              self.machine.trajectory_planner_connection_failed_string, self.name,
-        #     #                                              'MukulLab')
-        # except pncLibrary.WebsocketError as error:
-        #     print('MukulLab did not ack properly: ' + str(error))
 
     def connectToTP(self):
         try:
@@ -103,13 +94,19 @@ class CloudTrajectoryPlanner(Thread):
     # def unStringifyPoints(self, point_string):
     #     return np.loadtxt(StringIO(point_string))
 
-    def sendPoints(self):
-        points_to_plan = self.raw_point_queue.get()
+    def sendPoints(self, points_to_plan):
+        #points_to_plan = self.raw_point_queue.get()
         data_stream = BytesIO()
         np.savez_compressed(data_stream, pid=points_to_plan[0],
                             tool=points_to_plan[1], joint=points_to_plan[2])
         data_stream.seek(0)
-        self.tp_websocket.send_binary(data_stream.read())
+        encoded_string = base64.b64encode(data_stream.read().decode('utf-8'))
+        self.tp_websocket.send_binary(encoded_string)
+
+    def resetWebsocketBuffer(self):
+        self.tp_websocket.send('RESET')
+        while 'RESET' not in self.tp_websocket.recv():
+            pass
 
     def receivePoints(self):
         payload = self.tp_websocket.recv()
@@ -117,11 +114,12 @@ class CloudTrajectoryPlanner(Thread):
         byte_stream.seek(0)
         planned_point_payload = np.load(byte_stream)
 
-        path_id = planned_point_payload['pid']
-        sequence_id = planned_point_payload['sid']
-        planned_points = planned_point_payload['planned_points']
+        #path_id = planned_point_payload['pid']
+        #sequence_id = planned_point_payload['sid']
+        #planned_points = planned_point_payload['planned_points']
 
         self.planned_point_payload_buffer.append(planned_point_payload)
+        self.current_received_sequence_id = planned_point_payload['pid']
 
     def sortAndOutputPoints(self):
         for p in range(0,len(self.planned_point_payload_buffer)):
@@ -135,9 +133,12 @@ class CloudTrajectoryPlanner(Thread):
             # sequence_id = planned_point_payload['sid']
             # planned_points = planned_point_payload['planned']
 
-    def enqueuePointsForPlanning(self, tool_space_data, joint_space_data):
-        self.raw_point_queue.put((self.path_serial_number, tool_space_data, joint_space_data))
-        return self.path_serial_number
+    def enqueuePointsForPlanning(self, tool_space_data, joint_space_data, sequence_slices, begin_sequence, end_sequence):
+        for k in range(begin_sequence, end_sequence):
+            self.enqueued_sequence_id += 1
+            self.raw_point_queue.put((self.enqueued_sequence_id, tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]))
+            #self.raw_point_queue.put((self.path_serial_number, tool_space_data, joint_space_data))
+        #return self.path_serial_number
 
     # Transform applies f based on file index. First three coordinates are for the translation axis.
     # Rest are rotational, irrespective of the file type.
@@ -195,21 +196,27 @@ class CloudTrajectoryPlanner(Thread):
     # Given data (:, n) and flag(1, n) of bools, split into
     # contiguous set of slices based on flag
     def obtain_contiguous_sequences(self, flag):
+        last_start_index = 0
         switch_indices = np.where((flag[1:] - flag[:-1]) != 0)[0]
         switch_indices = np.hstack((np.array([-1]), switch_indices))
+        if (switch_indices.shape != 0):
+            last_start_index = switch_indices[-1]+1
+
         contiguous_lists = []
         all_same = []
-        for index in np.arange(switch_indices.size - 1):
-            contiguous_lists.append((flag[switch_indices[index] + 1],
-                                     slice(switch_indices[index] + 1,
-                                           switch_indices[index + 1] + 1, None)))
+        for index in np.arange(switch_indices.size-1):
+            contiguous_lists.append((flag[switch_indices[index]+1],
+                                     slice(switch_indices[index]+1,
+                                           switch_indices[index+1]+1, None)))
             if __debug__:
-                all_same.append(np.any(flag[switch_indices[index] + 1:
-                                            switch_indices[index + 1] + 1] -
-                                       flag[switch_indices[index] + 1]))
+               all_same.append(np.any(flag[switch_indices[index]+1:
+                               switch_indices[index+1]+1] -
+                               flag[switch_indices[index]+1]))
         if __debug__:
-            print("All contiguous flags are same", not
-            np.any(np.asarray(all_same)))
+               print("All contiguous flags are same", not
+                     np.any(np.asarray(all_same)))
+        contiguous_lists.append((flag[last_start_index],
+                                 slice(last_start_index, None, None)))
         return contiguous_lists
 
     def get_combined_data(self, joint_data, tool_data):
@@ -251,10 +258,6 @@ class OperatingSystemController(Thread):
             #FIXME log ssh output of open streams
             # self.logStreams()
 
-            #pass
-            # if self._run_ssh_connection:
-            #     while True:
-            #         pass
         self.ssh_client.close()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.ssh_connection_close_string, self.name,
@@ -275,22 +278,9 @@ class OperatingSystemController(Thread):
             self.synchronizer.os_ssh_connected_event.set()
         except (TimeoutError, SocketTimeout) as error:
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         pncLibrary.ssh_connection_failure_string,
+                                                         pncLibrary.printout_ssh_connection_failure_string,
                                                          self.machine.ssh_credentials[0],
                                                          self.machine.ip_address, str(error))
-
-
-        # if self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, self.machine.ssh_credentials[0], self.machine.ssh_credentials[1], timeout=timeout):
-        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-        #                                                  self.machine.ssh_connection_success_string, self.machine.ssh_credentials[0],
-        #                                                  self.machine.ip_address)
-        #     self.synchronizer.os_ssh_connected_event.set()
-        #     return True
-        # else:
-        #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-        #                                                  self.machine.ssh_connection_failure_string, self.machine.ssh_credentials[0],
-        #                                                  self.machine.ip_address)
-        #     return False
 
     def handleCommand(self, command):
         if command.command_type == 'RUN_CNC':
@@ -376,17 +366,23 @@ class MachineController(Process):
         if command.command_type == 'CONNECT':
             self.connectAndLink()
             self.synchronizer.mvc_connect_event.set()
-        elif command.command_type == "ENQUEUE":
+        elif command.command_type == "ENQUEUE_VOXELIZED":
             #self.enqueuePointFiles(command.command_data[0], command.data[2])
             #self.enqueuePointFiles(command.command_data[0], command.command_data[1])
             #self.enqueueTrapezoidalTest()
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
+        elif command.command_type == "ENQUEUE_TRAPEZOID":
+            #self.enqueueTrapezoidalTest(command.command_data[0])
+            self.enqueueTrapezoidalTest(1, 90, 5)
         elif command.command_type == "EXECUTE":
             print('machine mode is ' + self.machine.mode)
             self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
+            #self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
             if self.machine.mode != 'AUTO':
                 print('mode not auto')
             self.synchronizer.mc_run_motion_event.set()
+        elif command.command_type == "PLAN_SEQUENCES":
+            self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":
             pass
 
@@ -397,10 +393,6 @@ class MachineController(Process):
         # if not self.cloud_trajectory_planner.planned_point_queue.empty():
         #     while not self.cloud_trajector
 
-    # path_id = planned_point_payload['pid']
-    # sequence_id = planned_point_payload['sid']
-    # planned_points = planned_point_payload['planned']
-        #if self.cloud_trajectory_planner.is_alive():
     ######################## OS Interface ########################
     def runCNC(self):
         if not self.getRSHStatus()[0]:
@@ -421,20 +413,20 @@ class MachineController(Process):
             print('move exceeds machine limits at point %d for axis ??', limit_check[1])
             return False
 
-    def enqueueTrapezoidalTest(self, iterations=3):
+    def enqueueTrapezoidalTest(self, translational_distance, angular_distance, iterations=3):
         hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5), 'hold')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)), move_type='trapezoidal'), 'trap')
 
         rapid1 = pncLibrary.Move(
             pncLibrary.TP.generateMovePoints(self.machine,
-                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.array([1,1,-1,20,20])),
+                                             pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.array([translational_distance, translational_distance, -translational_distance, angular_distance, angular_distance])),
                                              pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)),
                                              move_type='trapezoidal'), 'trap')
         rapid0 = pncLibrary.Move(
             pncLibrary.TP.generateMovePoints(self.machine,
                                              pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)),
                                              pncLibrary.TP.convertMotionCS(self.machine, 'absolute',
-                                                                           np.array([1, 1, -1, 20, 20])),
+                                                                           np.array([translational_distance, translational_distance, -translational_distance, angular_distance, angular_distance])),
                                              move_type='trapezoidal'), 'trap')
 
         self.insertMove(hold_move)
@@ -447,7 +439,7 @@ class MachineController(Process):
         start_file_number = 1
         end_file_number = 20
         #hold_points = self.generateHoldPositionPoints(1)
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),'hold')
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2),'hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
         first_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'),'trap')
@@ -568,11 +560,6 @@ class MachineController(Process):
         pncLibrary.asynchronousPush(self.synchronizer, {'PINGS': ping_times})
         #self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', {'PINGS': ping_times}))
         return (success_flag, self.machine.mean_network_latency)
-
-            # if self.synchronizer.fb_ping_event.wait(timeout):
-            #     return (True, self.machine.current_estimated_network_latency)
-            # else:
-            #     return (False, self.machine.current_estimated_network_latency)
 
     def getClock(self):
         self.writeLineUTF('get time')
