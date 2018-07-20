@@ -34,7 +34,7 @@ pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
 
 ############################# Setup Functions #############################
 def monitoredMachineCount():
-    return 1
+    return 2
 
 def setupAuxilary():
     return setupAuxiliary()
@@ -123,7 +123,7 @@ def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #return True;
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-    return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
+    return 'PLANEXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLANEXECUTE', str, '')
     # print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
     # sculptprint_MVC.command_queue.put('EXECUTE')
     # return True;
@@ -162,8 +162,8 @@ if __name__ != 'machinemonitor':
     print('encoder data is: ')
     yy = readMachine(1)
     #print(yy[0])
-    userPythonFunction1(0, 0, 0, 0, 0)
-    time.sleep(1)
+    #userPythonFunction1(0, 0, 0, 0, 0)
+    #time.sleep(3)
     userPythonFunction3(0,0,0,0,0)
 
     #zz = readMachine(1)
@@ -182,7 +182,7 @@ if __name__ != 'machinemonitor':
             print(yy[-1])
         except:
             pass
-            #print("print break")
+            print("print break")
 
         #userPythonFunction2(5, 7, 0, 0, 0)
         #userPythonFunction3(0,0,0,0,0)

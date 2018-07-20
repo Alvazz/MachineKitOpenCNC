@@ -48,23 +48,18 @@ class CAM_MVC(Thread):
                 print('PNCAPP CONTROLLER: Connection closed during transfer')
             except Empty:
                 pass
-            # except ConnectionResetError:
-            #     #FIXME move to socket manager thread?
-            #     print('SCULPTPRINT MVC: Client %s forcibly disconnected during transfer' % str(self.CAM_client_address))
 
         self.mvc_pipe.close()
         pncLibrary.waitForThreadStop(self, self.interface_socket_launcher)
-        #pncLibrary.printTerminalString(self.machine.thread_launch_string, current_process().name, self.name)
 
-    def returnAck(self, connection_type, connection):
-        if connection is not None:
-            pncLibrary.sendIPCData(connection_type, 'text', connection, 'ACK')
+    # def returnAck(self, connection_type, connection):
+    #     if connection is not None:
+    #         pncLibrary.sendIPCData(connection_type, 'text', connection, 'ACK')
 
     def handleCommand(self, command):
         print(command.command)
-        command_data = command.command.split('_')
-        #command_type = command_data[0].strip()
-        command_type = command.command
+        #command_data = command.command.split('_')
+        #command_type = command.command
         if command.command == 'INIT':
             self.init_pncApp()
         elif command.command == 'CHECKSTATUS':
@@ -108,18 +103,20 @@ class CAM_MVC(Thread):
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'PLANEXECUTE':
+            self.synchronizer.mvc_connect_event.wait()
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE_WHILE_PLANNING', None))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
         elif command.command == 'READ':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.readMachine(self.synchronizer, self.feedback_state, int(command.command_data[0])))
         elif command.command == 'FASTFORWARD':
-            pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
             pncLibrary.updateInterfaceClockOffsets(self.machine, self.feedback_state.clock_offsets)
-            #pncLibrary.updateMotionControllerClockOffset(self.machine, 'motion_controller_clock_offset', self.machine.pncApp_clock_offset)
-            #if command.connection_format != 'internal'
+            pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'CLOSESPINTERFACE':
-            pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command_type + '_ACK')
+            pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command.command + '_ACK')
             self.CAM_socket_listener.client_connected_event.clear()
             print('SCULPTPRINT MVC: Client %s cleanly disconnected' % str(self.CAM_socket_listener.CAM_client_address))
 
@@ -133,13 +130,11 @@ class CAM_MVC(Thread):
         print('RSH running: ' + str(self.synchronizer.os_linuxcncrsh_running_event.is_set()))
 
         self.pncApp_initialized_event.set()
-        #self.synchronizer.mvc_pncApp_initialized_event.set()
 
     def uninit_pncApp(self):
         pass
 
     def start_pncApp(self):
-        #pncLibrary.printTerminalString(self.machine.sculptprint_interface_initialization_string, self.main_process_name,self.main_process_pid)
         self.database, self.encoder_interface, self.feedback_handler, self.machine_controller = appStart(self.machine_type, self.pnc_app_manager,
                                                                                      self.machine, self.synchronizer)
 
@@ -159,7 +154,6 @@ class PNCAppInterfaceSocketLauncher(Thread):
         self.pncApp_command_queue = self.parent.command_queue
 
         self.interface_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
-        #self.interface_socket.setsockopt(socket.SIO_LOOPBACK_FAST_PATH)
         self.interface_socket.settimeout(pncLibrary.socket_wait_timeout)
 
         self.client_list = []
@@ -171,7 +165,6 @@ class PNCAppInterfaceSocketLauncher(Thread):
 
     def run(self):
         self.interface_socket.bind(('localhost', pncLibrary.socket_interface_socket_port))
-        #self.interface_socket.bind(('0.0.0.0', pncLibrary.socket_interface_socket_port))
         self.interface_socket.listen()
         pncLibrary.printTerminalString(pncLibrary.printout_thread_launch_string, current_process().name, self.name)
         self.startup_event.set()
@@ -256,7 +249,6 @@ class PNCAppInterfaceSocket(Thread):
 
 def startMVC():
     sculptprint_MVC = CAM_MVC()
-    #sculptprint_MVC.feedback_state = pncLibrary.SculptPrintFeedbackState()
     sculptprint_MVC.t_run_CAM_MVC_thread.set()
     sculptprint_MVC.start()
     sculptprint_MVC.startup_event.wait()
@@ -295,15 +287,15 @@ if __name__ == '__main__':
     sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('CONNECT', None, None, None, 'internal'))
 
     #sculptprint_MVC.join()
-    if 0:
-        sculptprint_MVC = startMVC()
-        sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'binary'))
-        sculptprint_MVC.pncApp_initialized_event.wait()
-        # #
-        machine = sculptprint_MVC.machine
-        synchronizer = sculptprint_MVC.synchronizer
-        terminal_printer = sculptprint_MVC.terminal_printer
-        feedback_state = sculptprint_MVC.feedback_state
+    # if 0:
+    #     sculptprint_MVC = startMVC()
+    #     sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'binary'))
+    #     sculptprint_MVC.pncApp_initialized_event.wait()
+    #     # #
+    #     machine = sculptprint_MVC.machine
+    #     synchronizer = sculptprint_MVC.synchronizer
+    #     terminal_printer = sculptprint_MVC.terminal_printer
+    #     feedback_state = sculptprint_MVC.feedback_state
 
     # sculptprint_MVC = startMVC()
     # machine = sculptprint_MVC.machine

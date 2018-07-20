@@ -43,17 +43,23 @@ printout_connection_close_string = "DISCONNECTED from {} on {}"
 printout_connection_failed_string = "CONNECTION FAILED on {}, error: "
 printout_sculptprint_interface_initialization_string = "{} {} PID: {} starting pncApp"
 printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
-printout_trajectory_planner_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
-printout_ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} on {}"
+printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
+printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
+printout_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
+printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
+printout_subsequence_enqueued_string = "TRAJECTORY PLANNER: {} received and enqueued sequence ID {}"
+printout_ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} connected on address {}"
 printout_ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
 printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
 printout_ssh_command_execution_string = "MACHINE OS CONTROLLER: Executing {}"
 printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
 printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with size {}"
 printout_database_object_list_creation_string = "DATABASE CONTROLLER: Creating object list type {} with size {}"
+printout_database_flush_to_websocket_string = "DATABASE CONTROLLER: Writing {} to websocket flush queue"
 
 #Queue operations
 queue_wait_timeout = 1
+move_queue_wait_timeout = 1
 queue_database_command_queue_wait_timeout = 0.05
 
 #SculptPrint Formatting
@@ -65,7 +71,8 @@ SP_pncApp_data_auxes = [['BL', 'BPID'], ['']]
 SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL','BPID'], ['T','X','Z','S','Y','A','B','V','W']]
 
 #SP_clock_data_names = [['RTAPI_CLOCK_TIMES', 'RSH_CLOCK_TIMES'], ['ENCODER_RECEIVED_TIMES']]
-SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+#SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5))]]
 SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1)), ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))], [('', '', (0, 0))]]
 SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
 
@@ -138,6 +145,19 @@ class SculptPrintFeedbackState():
     def buildFeedbackIndexDictionary(self):
         pass
 
+class CloudTrajectoryPlannerState():
+    def __init__(self):
+        self.websocket_connected_event = Event()
+        self.tp_connected_event = Event()
+        self.send_next_block_event = Event()
+        self.point_id_ack_event = Event()
+        self.matching_sequence_received_event = Event()
+
+        self.point_ack_id = 0
+        self.enqueued_sequence_id = 0
+        self.current_requested_sequence_id = 0
+        self.current_received_sequence_id = 0
+
 class PNCAppConnection():
     def __init__(self, connection_type, command_format, feedback_format):
         self.connection = None
@@ -197,7 +217,7 @@ class Synchronizer():
         self.p_run_machine_controller_event = manager.Event()
         self.p_run_feedback_handler_event = manager.Event()
         self.t_run_motion_controller_event = manager.Event()
-        self.t_run_motion_queue_feeder_thread = manager.Event()
+        self.t_run_motion_queue_feeder_event = manager.Event()
         self.t_run_feedback_processor_event = manager.Event()
         self.t_run_logging_server_event = manager.Event()
         self.t_run_database_puller_event = manager.Event()
@@ -205,6 +225,7 @@ class Synchronizer():
         self.t_run_machine_state_manipulator_event = manager.Event()
         self.t_run_print_server_event = manager.Event()
         self.t_run_cloud_trajectory_planner_event = manager.Event()
+        self.t_run_cloud_trajectory_planner_receiver_event = manager.Event()
         self.t_run_operating_system_controller = manager.Event()
 
         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
@@ -242,6 +263,7 @@ class Synchronizer():
         self.ei_encoder_comm_init_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
         self.ei_initial_encoder_position_set_event = manager.Event()
+        self.tp_plan_motion_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
@@ -277,6 +299,8 @@ class Synchronizer():
         self.q_database_output_queue_proxy = manager.Queue()
         self.q_print_server_message_queue = manager.Queue()
         self.q_machine_controller_command_queue = manager.Queue()
+        self.q_trajectory_planner_data_return_queue = manager.Queue()
+        self.q_trajectory_planner_planned_move_queue = manager.Queue()
 
         # Locks
         self.db_data_store_lock = manager.Lock()
@@ -426,7 +450,7 @@ def sendIPCData(connection_type, data_type, connection, message):
         if data_type == 'binary':
             start_time = time.clock()
             connection.send(pickle.dumps(IPCDataWrapper(message)))
-            print('send time is ' + str(time.clock()-start_time))
+            #print('send time is ' + str(time.clock()-start_time))
         elif data_type == 'text':
             connection.send((str(message)+'\n').encode())
         elif data_type == 'internal':
@@ -472,7 +496,7 @@ def waitForIPCDataTransfer(connection_type, connection, timeout = None, wait_int
             socket_data = bytearray()
             while select.select([connection], [], [], 0.001)[0]:
                 socket_data += connection.recv(65536)
-            print('receive time is ' + str(time.clock()-start_time))
+            #print('receive time is ' + str(time.clock()-start_time))
             return socket_data
         else:
             raise TimeoutError
@@ -549,17 +573,12 @@ def updateInterfaceData(update_mode, synchronizer, feedback_state, main_data_str
         data_stream_sizes = [size for size in list(map(lambda stream: stream[2][1], streams)) if size != 0]
         complete_stream_names = clock_stream_names + data_stream_names
         complete_stream_sizes = clock_stream_sizes + data_stream_sizes
-        #complete_stream_names = [name for name in clock_stream_names + data_stream_names if name != '']
-        #complete_stream_names = clock_stream_names + data_stream_names
-        #complete_stream_sizes = [size for size in clock_stream_sizes + data_stream_sizes if size != 0]
-        #complete_stream_sizes = clock_stream_sizes + data_stream_sizes
-
 
         DB_query_data = synchronousPull(synchronizer, complete_stream_names, getFeedbackIndices(feedback_state.feedback_indices, complete_stream_names), len(complete_stream_names) * [None])
         time_slice, data_slice = DB_query_data[1][:len(clock_stream_names)], DB_query_data[1][-len(data_stream_names):]
 
         clock_offsets = getInterfaceClockOffsets(feedback_state.clock_offsets, clock_stream_names)
-        print('interface clock offsets are: ' + str(clock_offsets))
+        #print('interface clock offsets are: ' + str(clock_offsets))
         updateFeedbackIndices(feedback_state.feedback_indices, complete_stream_names, time_slice + data_slice)
         updateFallbackDataPoints(feedback_state.last_values_read, complete_stream_names, complete_stream_sizes, time_slice + data_slice)
 
@@ -622,6 +641,7 @@ def updateInterfaceClockOffsets(machine, clock_offsets):
     clock_offsets['RTAPI_CLOCK_TIMES'] = estimateMachineClock(machine)
     clock_offsets['RSH_CLOCK_TIMES'] = time.time() - machine.pncApp_clock_offset
     clock_offsets['POLYLINE_TRANSMISSION_TIMES'] = time.time() - machine.pncApp_clock_offset
+    clock_offsets['INTERPOLATED_POLYLINE_TRANSMISSION_TIMES'] = time.time() - machine.pncApp_clock_offset
 
 ######################## Database Interaction ########################
 def synchronousPull(synchronizer, data_types, start_indices, end_indices):

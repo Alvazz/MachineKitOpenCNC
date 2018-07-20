@@ -1,232 +1,10 @@
-import pncLibrary, time, paramiko, websocket, json, base64, numpy as np
-#import websockets
+import pncLibrary, time, paramiko, numpy as np
 from multiprocessing import Process, Queue, Event, current_process
 from threading import Thread, current_thread
 from queue import Empty
-from io import StringIO, BytesIO
 from socket import timeout as SocketTimeout
 from pncMotionControl import MotionController
-
-class CloudTrajectoryPlanner(Thread):
-    def __init__(self, parent):
-        super(CloudTrajectoryPlanner, self).__init__()
-        self.name = "cloud_trajectory_planner"
-        self.machine = parent.machine
-        self.synchronizer = parent.synchronizer
-        self.tp_websocket = websocket.WebSocket()
-        self.tp_websocket.timeout = self.machine.websocket_timeout
-        self.websocket_connected_event = Event()
-        #self.client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
-        #self.server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
-
-        self.enqueued_sequence_id = 0
-        self.current_requested_sequence_id = 0
-        self.current_received_sequence_id = 0
-
-        self.raw_point_queue = Queue()
-        self.planned_point_output_queue = Queue()
-
-        self.planned_point_payload_buffer = []
-        self.joint_data_file = "machine.txt"
-        self.tool_data_file = "tool.txt"
-        self.conversion_factor_dist = 1
-
-        self.startup_event = Event()
-
-    def run(self):
-        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     self.machine.thread_launch_string, current_process().name,
-                                                     self.name)
-
-        self.startup_event.set()
-        #with websockets.connect("wss://node2.wsninja.io") as self.tp_websocket:
-        self.openConnection()
-        self.connectToTP()
-
-        self.tool_points, self.machine_points, self.retraction_flags = self.load_sp_data(self.machine.raw_point_files_path, self.joint_data_file, self.tool_data_file)
-        self.contiguous_sequences = self.obtain_contiguous_sequences(self.retraction_flags.astype(int))
-        self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, 0, 10)
-
-        while self.synchronizer.t_run_cloud_trajectory_planner_event.is_set() and self.websocket_connected_event.is_set():
-            #FIXME use asynchronous receive so can send multiple point sets in one shot
-            #self.raw_point_queue.put(np.array([6, 6, 6]))
-            #self.raw_point_queue.put([np.array([1]), np.random.rand(10,7), np.random.rand(10,8)])
-            #self.raw_point_queue.put([np.array([1]), np.loadtxt(self.machine.raw_point_files_path + 'tool_short.txt', skiprows=1), np.loadtxt(self.machine.raw_point_files_path + 'machine_short.txt', skiprows=1)])
-            points_to_plan = self.raw_point_queue.get()
-            self.tp_websocket.timeout = None
-            self.sendPoints(points_to_plan)
-            self.receivePoints()
-
-        self.tp_websocket.send('FIN')
-        self.tp_websocket.close()
-        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     self.machine.thread_terminate_string, current_process().name,
-                                                     self.name)
-
-    def openConnection(self):
-        self.tp_websocket.connect("wss://node2.wsninja.io")
-        self.tp_websocket.send(json.dumps({'guid': self.machine.websocket_client_GUID}))
-        ack_message = json.loads(self.tp_websocket.recv())
-        if not ack_message['accepted']:
-            raise pncLibrary.WebsocketError('Websocket connection failed')
-
-    def connectToTP(self):
-        try:
-            self.tp_websocket.send('HELLO')
-            ack_message = self.tp_websocket.recv()
-            if ack_message != 'HELLO_ACK':
-                raise pncLibrary.WebsocketError('MukulLab not online')
-            self.websocket_connected_event.set()
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         self.machine.trajectory_planner_connection_string, self.name,
-                                                         'MukulLab')
-        except websocket.WebSocketTimeoutException as error:
-            print('MukulLab not online, error: ' + str(error))
-        except pncLibrary.WebsocketError as error:
-            print('MukulLab did not ack properly: ' + str(error))
-
-    # def stringifyPoints(self, point_array):
-    #     #FIXME there is no way this can be this clunky
-    #     points_fh = StringIO()
-    #     np.savetxt(points_fh, point_array)
-    #     return points_fh.getvalue().strip()
-    #
-    # def unStringifyPoints(self, point_string):
-    #     return np.loadtxt(StringIO(point_string))
-
-    def sendPoints(self, points_to_plan):
-        #points_to_plan = self.raw_point_queue.get()
-        data_stream = BytesIO()
-        np.savez_compressed(data_stream, pid=points_to_plan[0],
-                            tool=points_to_plan[1], joint=points_to_plan[2])
-        data_stream.seek(0)
-        encoded_string = base64.b64encode(data_stream.read().decode('utf-8'))
-        self.tp_websocket.send_binary(encoded_string)
-
-    def resetWebsocketBuffer(self):
-        self.tp_websocket.send('RESET')
-        while 'RESET' not in self.tp_websocket.recv():
-            pass
-
-    def receivePoints(self):
-        payload = self.tp_websocket.recv()
-        byte_stream = BytesIO(payload)
-        byte_stream.seek(0)
-        planned_point_payload = np.load(byte_stream)
-
-        #path_id = planned_point_payload['pid']
-        #sequence_id = planned_point_payload['sid']
-        #planned_points = planned_point_payload['planned_points']
-
-        self.planned_point_payload_buffer.append(planned_point_payload)
-        self.current_received_sequence_id = planned_point_payload['pid']
-
-    def sortAndOutputPoints(self):
-        for p in range(0,len(self.planned_point_payload_buffer)):
-            planned_point_payload = self.planned_point_payload_buffer[p]
-            if planned_point_payload['sid'] == self.current_requested_sequence_id:
-                self.current_requested_sequence_id += 1
-                self.planned_point_output_queue.put(self.planned_point_payload_buffer.pop(p))
-                break
-        self.sortAndOutputPoints()
-            # path_id = planned_point_payload['pid']
-            # sequence_id = planned_point_payload['sid']
-            # planned_points = planned_point_payload['planned']
-
-    def enqueuePointsForPlanning(self, tool_space_data, joint_space_data, sequence_slices, begin_sequence, end_sequence):
-        for k in range(begin_sequence, end_sequence):
-            self.enqueued_sequence_id += 1
-            self.raw_point_queue.put((self.enqueued_sequence_id, tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]))
-            #self.raw_point_queue.put((self.path_serial_number, tool_space_data, joint_space_data))
-        #return self.path_serial_number
-
-    # Transform applies f based on file index. First three coordinates are for the translation axis.
-    # Rest are rotational, irrespective of the file type.
-    def _units_transform(self, data, dist_slice=slice(None, 3, None), rot_slice=slice(3, None, None),
-                         correct_dist=True, correct_rot=True):
-        # Convert to radian if rotational axis
-        if correct_rot:
-            data[rot_slice, :] = (data[rot_slice, :] * np.pi) / 180
-        if correct_dist:
-            data[dist_slice, :] = data[dist_slice, :] * self.conversion_factor_dist
-        return data
-
-    # Returns desired slices of tool and joint data files.
-    # Tool file order - x,y,z,volume,a,b
-    # Joint file order - X,Y,Z,A,B,S
-    def load_sp_data(self, data_folder, joint_data_file, tool_data_file,
-                     data_slice=slice(None, None, None),
-                     subsample_slice=slice(None, None, None)):
-        tool_data = np.loadtxt(data_folder + tool_data_file, skiprows=1)
-        joint_data = np.loadtxt(data_folder + joint_data_file, skiprows=1)
-
-        return self.load_sp_data_from_arrays(joint_data, tool_data, subsample_slice)
-
-    # Load SculptPrint data from numpy arrays
-    def load_sp_data_from_arrays(self, joint_data, tool_data,
-                                 subsample_slice=slice(None, None, None)):
-        # Joint file indexing order is a mapping from n+1 -> n+1 that maps coordinate order -> index in file
-        # The last index is for the spindle coordinate.
-        joint_file_indexing_order = [1, 4, 2, 5, 6, 3]
-        # Joint file indexing order is a mapping from n -> n that maps
-        # coordinate order -> index in file -- in the file written out by
-        # SculptPrint, the 6th index is the volumes, and the 5th is if this is
-        # a flag or not.
-        tool_file_indexing_order = [0, 1, 2, 6, 3, 4, 5]
-
-        tool_temp_data = tool_data.T
-        joint_temp_data = joint_data.T
-
-        tool_analysis_data = np.zeros((len(tool_file_indexing_order), tool_temp_data.shape[1]))
-        for index in np.arange(len(tool_file_indexing_order)):
-            tool_analysis_data[index] = tool_temp_data[tool_file_indexing_order[index]]
-        tool_analysis_data = self._units_transform(tool_analysis_data,
-                                                   dist_slice=slice(None, 4, None),
-                                                   rot_slice=slice(4, 5, None), correct_rot=False)
-
-        joint_analysis_data = np.zeros((len(joint_file_indexing_order), joint_temp_data.shape[1]))
-        for index in np.arange(len(joint_file_indexing_order)):
-            joint_analysis_data[index] = joint_temp_data[joint_file_indexing_order[index]]
-        joint_analysis_data = self._units_transform(joint_analysis_data)
-
-        return (tool_analysis_data[:, subsample_slice],
-                joint_analysis_data[:, subsample_slice],
-                tool_analysis_data[-1, subsample_slice].astype(dtype=bool))
-
-    # Given data (:, n) and flag(1, n) of bools, split into
-    # contiguous set of slices based on flag
-    def obtain_contiguous_sequences(self, flag):
-        last_start_index = 0
-        switch_indices = np.where((flag[1:] - flag[:-1]) != 0)[0]
-        switch_indices = np.hstack((np.array([-1]), switch_indices))
-        if (switch_indices.shape != 0):
-            last_start_index = switch_indices[-1]+1
-
-        contiguous_lists = []
-        all_same = []
-        for index in np.arange(switch_indices.size-1):
-            contiguous_lists.append((flag[switch_indices[index]+1],
-                                     slice(switch_indices[index]+1,
-                                           switch_indices[index+1]+1, None)))
-            if __debug__:
-               all_same.append(np.any(flag[switch_indices[index]+1:
-                               switch_indices[index+1]+1] -
-                               flag[switch_indices[index]+1]))
-        if __debug__:
-               print("All contiguous flags are same", not
-                     np.any(np.asarray(all_same)))
-        contiguous_lists.append((flag[last_start_index],
-                                 slice(last_start_index, None, None)))
-        return contiguous_lists
-
-    def get_combined_data(self, joint_data, tool_data):
-        return (np.vstack((tool_data[:3], tool_data[4:6],
-                           tool_data[3], joint_data[:6],
-                           tool_data[6])))
-
-    def write_combined_data(self, joint_data, tool_data, filename):
-        combined_analysis_data = self.get_combined_data(joint_data, tool_data).T
-        np.savetxt(filename, combined_analysis_data)
+from pncWebInterface import CloudTrajectoryPlannerInterface
 
 class OperatingSystemController(Thread):
     def __init__(self, parent):
@@ -244,7 +22,7 @@ class OperatingSystemController(Thread):
 
     def run(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     self.machine.thread_launch_string, current_process().name,
+                                                     pncLibrary.printout_thread_launch_string, current_process().name,
                                                      self.name)
         self.startup_event.set()
         self.connectToOperatingSystem(pncLibrary.ssh_wait_timeout)
@@ -260,27 +38,11 @@ class OperatingSystemController(Thread):
 
         self.ssh_client.close()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     self.machine.ssh_connection_close_string, self.name,
+                                                     pncLibrary.printout_ssh_connection_close_string, self.name,
                                                      self.machine.ssh_credentials[0])
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     self.machine.thread_terminate_string, current_process().name,
+                                                     pncLibrary.printout_thread_terminate_string, current_process().name,
                                                      self.name)
-
-    def connectToOperatingSystem(self, timeout):
-        #FIXME raise exception if this doesn't work
-        self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
-        try:
-            self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, username=self.machine.ssh_credentials[0],
-                                    password=self.machine.ssh_credentials[1], allow_agent=False, look_for_keys=False, timeout=timeout)
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         self.machine.ssh_connection_success_string,
-                                                         self.machine.ssh_credentials[0], self.machine.ip_address)
-            self.synchronizer.os_ssh_connected_event.set()
-        except (TimeoutError, SocketTimeout) as error:
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         pncLibrary.printout_ssh_connection_failure_string,
-                                                         self.machine.ssh_credentials[0],
-                                                         self.machine.ip_address, str(error))
 
     def handleCommand(self, command):
         if command.command_type == 'RUN_CNC':
@@ -296,6 +58,22 @@ class OperatingSystemController(Thread):
             self.open_streams.append(stdout)
         elif command.command_type == 'KILL_RSH':
             stdin, stdout, stderr = self.ssh_client.exec_command('sudo pkill linuxcncrsh')
+
+    def connectToOperatingSystem(self, timeout):
+        #FIXME raise exception if this doesn't work
+        self.ssh_client.set_missing_host_key_policy(paramiko.AutoAddPolicy)
+        try:
+            self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, username=self.machine.ssh_credentials[0],
+                                    password=self.machine.ssh_credentials[1], allow_agent=False, look_for_keys=False, timeout=timeout)
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_ssh_connection_success_string,
+                                                         self.machine.ssh_credentials[0], self.machine.ip_address)
+            self.synchronizer.os_ssh_connected_event.set()
+        except (TimeoutError, SocketTimeout) as error:
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_ssh_connection_failure_string,
+                                                         self.machine.ssh_credentials[0],
+                                                         self.machine.ip_address, str(error))
 
     def runCNC(self):
         if not self.getRSHStatus()[0]:
@@ -320,7 +98,6 @@ class MachineController(Process):
         self.main_thread_name = self.name + ".MainThread"
         self.machine = machine
         self.feed_pipe = pipe
-        #self.command_queue = synchronizer.q_machine_controller_command_queue
 
         self.planned_point_buffer = []
         self.support_threads = [OperatingSystemController, MotionController]
@@ -329,7 +106,7 @@ class MachineController(Process):
         current_thread().name = self.main_thread_name
         pncLibrary.getSynchronizer(self, self.feed_pipe)
         #FIXME detect thread launch failure
-        pncLibrary.waitForThreadStart(self, MotionController, CloudTrajectoryPlanner)
+        pncLibrary.waitForThreadStart(self, MotionController, CloudTrajectoryPlannerInterface)
 
         self.synchronizer.mc_startup_event.set()
         self.synchronizer.process_start_signal.wait()
@@ -351,7 +128,7 @@ class MachineController(Process):
                 except Exception as error:
                     self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: Had error: " + str(error))
 
-                #self.updateTrajectory()
+                #self.updateTrajectoryFromTP()
 
                 if self.synchronizer.mc_rsh_error_event.is_set():
                     pncLibrary.waitForErrorReset()
@@ -367,9 +144,6 @@ class MachineController(Process):
             self.connectAndLink()
             self.synchronizer.mvc_connect_event.set()
         elif command.command_type == "ENQUEUE_VOXELIZED":
-            #self.enqueuePointFiles(command.command_data[0], command.data[2])
-            #self.enqueuePointFiles(command.command_data[0], command.command_data[1])
-            #self.enqueueTrapezoidalTest()
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "ENQUEUE_TRAPEZOID":
             #self.enqueueTrapezoidalTest(command.command_data[0])
@@ -385,13 +159,15 @@ class MachineController(Process):
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":
             pass
+        elif command.command_type == 'EXECUTE_WHILE_PLANNING':
+            self.beginPlanningAndExecution()
 
-    def updateTrajectory(self):
-        while not self.cloud_trajectory_planner.planned_point_queue.empty():
-            planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
-            self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['sid']))
-        # if not self.cloud_trajectory_planner.planned_point_queue.empty():
-        #     while not self.cloud_trajector
+    # def updateTrajectoryFromTP(self):
+    #     while not self.cloud_trajectory_planner.planned_point_queue.empty():
+    #         planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
+    #         self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['pid']))
+    #     # if not self.cloud_trajectory_planner.planned_point_queue.empty():
+    #     #     while not self.cloud_trajector
 
     ######################## OS Interface ########################
     def runCNC(self):
@@ -437,7 +213,7 @@ class MachineController(Process):
 
     def enqueuePointFiles(self,start_file_number=5,end_file_number=10):
         start_file_number = 1
-        end_file_number = 20
+        end_file_number = 8
         #hold_points = self.generateHoldPositionPoints(1)
         hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2),'hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
@@ -455,6 +231,28 @@ class MachineController(Process):
                 self.insertMove(imported_move)
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))
+
+    def beginPlanningAndExecution(self):
+        if not self.cloud_trajectory_planner.tp_state.tp_connected_event.wait(self.machine.event_wait_timeout):
+            print("TP connection timed out")
+
+        self.synchronizer.tp_plan_motion_event.set()
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_waiting_for_first_move_string,
+                                                         self.cloud_trajectory_planner.remote_tp_name)
+
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), 'hold')
+        first_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get()
+        rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'), 'trap')
+
+        self.insertMove(hold_move)
+        self.insertMove(rapid_to_start)
+        self.insertMove(first_move)
+
+        self.motion_controller.motion_queue_feeder.linkToTP()
+        #self.motion_controller.mc_run_motion_event.set()
+        self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
+
 
     ######################## Writing Functions ########################
     def socketLockedWrite(self, data):
@@ -816,5 +614,3 @@ class MachineController(Process):
 
     def prepareMachineForDisconnect(self):
         return self.waitForSet(self.setEstop, 1, self.getEstop, 1)
-
-

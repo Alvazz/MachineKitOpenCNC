@@ -1,11 +1,13 @@
 import pncLibrary, struct, time, numpy as np
 from multiprocessing import Queue, Event, current_process
 from threading import Thread
+from queue import Empty
 
 class MotionController(Thread):
     def __init__(self, parent):
         super(MotionController, self).__init__()
         #self.parent = current_thread()
+        self.parent = parent
         self.name = "motion_controller"
         self.machine = parent.machine
         self.synchronizer = parent.synchronizer
@@ -28,7 +30,10 @@ class MotionController(Thread):
         self.startup_event = Event()
 
     def run(self):
-        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
+        #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.thread_launch_string, current_process().name, self.name)
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     pncLibrary.printout_subthread_launch_string, self.parent.name,
+                                                     self.name)
         pncLibrary.waitForThreadStart(self, MotionQueueFeeder)
         self.startup_event.set()
 
@@ -93,10 +98,11 @@ class MotionController(Thread):
             #FIXME check buffer was flushed
             current_BL = self.machine.current_buffer_level
             sleep_time = self.runNetworkPID(int(current_BL), blocklength, polylines, self.machine.buffer_level_setpoint)
-            self.prebufferAndFlushMotionRecords(objects={'COMMANDED_SERVO_POLYLINES': commanded_points},
+            self.prebufferAndFlushMotionRecords(objects={'COMMANDED_SERVO_POLYLINE_OBJECTS': commanded_points},
                                                 arrays={'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
                                                   'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
-                                                  'COMMANDED_POSITIONS': servo_points[command],
+                                                  'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]) + np.array([np.arange(0,polylines*blocklength)/1e3]).T,
+                                                  'COMMANDED_SERVO_POSITIONS': servo_points[command],
                                                   'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])})
             # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
             # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
@@ -146,6 +152,7 @@ class MotionQueueFeeder(Thread):
         self.move_queue = parent.move_queue
         self.motion_queue = parent.motion_queue
         self.startup_event = Event()
+        self.tp_link_event = Event()
 
         self.processed_move_serial_number = 0
 
@@ -155,23 +162,29 @@ class MotionQueueFeeder(Thread):
                                                      self.name)
         self.startup_event.set()
 
-        while self.synchronizer.t_run_motion_queue_feeder_thread.is_set():
-            move_to_execute = self.move_queue.get()
-            self.processed_move_serial_number += 1
-            move_to_execute.serial_number = self.processed_move_serial_number
-            samples_in_block = self.max_motion_block_size/move_to_execute.blocklength
+        while self.synchronizer.t_run_motion_queue_feeder_event.is_set():
 
-            if samples_in_block != int(samples_in_block):
-                print('division problem')
+            self.updateTrajectoryFromTP()
 
-            samples_in_block = int(samples_in_block)
+            try:
+                move_to_execute = self.move_queue.get(pncLibrary.move_queue_wait_timeout)
+                self.processed_move_serial_number += 1
+                move_to_execute.serial_number = self.processed_move_serial_number
+                samples_in_block = self.max_motion_block_size/move_to_execute.blocklength
 
-            self.synchronizer.q_database_command_queue_proxy.put(
-                pncLibrary.DatabaseCommand('push_object', [{"PROCESSED_MOVES": move_to_execute}]))
+                if samples_in_block != int(samples_in_block):
+                    print('division problem')
 
-            for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
-                #self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array[motion_packet_start_index:motion_packet_start_index+samples_in_block], motion_packet_start_index/samples_in_block+1)
-                self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))
+                samples_in_block = int(samples_in_block)
+
+                self.synchronizer.q_database_command_queue_proxy.put(
+                    pncLibrary.DatabaseCommand('push_object', [{"PROCESSED_MOVES": move_to_execute}]))
+
+                for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
+                    #self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array[motion_packet_start_index:motion_packet_start_index+samples_in_block], motion_packet_start_index/samples_in_block+1)
+                    self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))
+            except Empty:
+                pass
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.subthread_terminate_string, self.parent.name,
@@ -191,3 +204,16 @@ class MotionQueueFeeder(Thread):
         motion_block.subserial_number = motion_block_id
 
         self.motion_queue.put(motion_block)
+
+    def updateTrajectoryFromTP(self):
+        while not self.synchronizer.q_trajectory_planner_planned_move_queue.empty() and self.tp_link_event.is_set():
+            remotely_planned_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get_nowait()
+            self.move_queue.put(remotely_planned_move)
+        # while not self.cloud_trajectory_planner.planned_point_queue.empty():
+        #     planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
+        #     self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['pid']))
+
+    def linkToTP(self):
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     pncLibrary.printout_trajectory_planner_motion_queues_linked_string, self.parent.parent.cloud_trajectory_planner.name)
+        self.tp_link_event.set()

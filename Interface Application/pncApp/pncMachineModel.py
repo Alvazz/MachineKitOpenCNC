@@ -81,6 +81,7 @@ class MachineModel():
 
         #Thread/Process Parameters
         self.thread_queue_wait_timeout = 0.1
+        self.move_queue_wait_timeout = 1
         self.process_queue_wait_timeout = 0.1
         self.event_wait_timeout = 5
         self.encoder_event_wait_timeout = 30
@@ -152,8 +153,6 @@ class MachineModel():
         self.axes = ['X','Y','Z','A','B']
 
         #Stepgen calibration
-        #self.axis_offsets = [-0.00085, 2.5, .0013, .114, -.002]
-        #self.axis_offsets = [-2.5, -2.5, -0.1, 0.0, 0.0]
         self.axis_offsets = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.table_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
 
@@ -248,16 +247,18 @@ class MachineModel():
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
         self.serial_read_timeout = 0.5
-        self.websocket_timeout = 2
-        self.websocket_client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
-        self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
+        self.websocket_timeout = 5
+        #self.websocket_client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
+        #self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
+        self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
+        self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
         self.ssh_port = 22
         self.ssh_credentials = ('pocketnc', 'pocketnc')
         self.ssh_opts = '-X'
         self.ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
         #TCP Control Parameters
-        self.polylines_per_tx = 2
+        self.polylines_per_tx = 1
         self.points_per_polyline = 25
         self.max_motion_block_size = 1000
         self.buffer_level_setpoint = 1000

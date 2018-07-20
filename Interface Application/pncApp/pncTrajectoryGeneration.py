@@ -42,6 +42,94 @@ def formatPoints(points, polylines, block_length):
         axis_coords.append(padAndShapeAxisPoints(np.asarray([points[:, axis]]).T, polylines, block_length))
     return np.asarray(axis_coords).transpose(1, 2, 0)
 
+def _units_transform(data, dist_slice=slice(None, 3, None), rot_slice=slice(3, None, None),
+                     correct_dist=True, correct_rot=True, conversion_factor_dist = 1):
+    # Convert to radian if rotational axis
+    if correct_rot:
+        data[rot_slice, :] = (data[rot_slice, :] * np.pi) / 180
+    if correct_dist:
+        data[dist_slice, :] = data[dist_slice, :] * conversion_factor_dist
+    return data
+
+# Returns desired slices of tool and joint data files.
+# Tool file order - x,y,z,volume,a,b
+# Joint file order - X,Y,Z,A,B,S
+def load_sp_data(data_folder, joint_data_file, tool_data_file,
+                 data_slice=slice(None, None, None),
+                 subsample_slice=slice(None, None, None)):
+    tool_data = np.loadtxt(data_folder + tool_data_file, skiprows=1)
+    joint_data = np.loadtxt(data_folder + joint_data_file, skiprows=1)
+
+    return load_sp_data_from_arrays(joint_data, tool_data, subsample_slice)
+
+# Load SculptPrint data from numpy arrays
+def load_sp_data_from_arrays(joint_data, tool_data,
+                             subsample_slice=slice(None, None, None)):
+    # Joint file indexing order is a mapping from n+1 -> n+1 that maps coordinate order -> index in file
+    # The last index is for the spindle coordinate.
+    joint_file_indexing_order = [1, 4, 2, 5, 6, 3]
+    # Joint file indexing order is a mapping from n -> n that maps
+    # coordinate order -> index in file -- in the file written out by
+    # SculptPrint, the 6th index is the volumes, and the 5th is if this is
+    # a flag or not.
+    tool_file_indexing_order = [0, 1, 2, 6, 3, 4, 5]
+
+    tool_temp_data = tool_data.T
+    joint_temp_data = joint_data.T
+
+    tool_analysis_data = np.zeros((len(tool_file_indexing_order), tool_temp_data.shape[1]))
+    for index in np.arange(len(tool_file_indexing_order)):
+        tool_analysis_data[index] = tool_temp_data[tool_file_indexing_order[index]]
+    tool_analysis_data = _units_transform(tool_analysis_data,
+                                               dist_slice=slice(None, 4, None),
+                                               rot_slice=slice(4, 5, None), correct_rot=False)
+
+    joint_analysis_data = np.zeros((len(joint_file_indexing_order), joint_temp_data.shape[1]))
+    for index in np.arange(len(joint_file_indexing_order)):
+        joint_analysis_data[index] = joint_temp_data[joint_file_indexing_order[index]]
+    joint_analysis_data = _units_transform(joint_analysis_data)
+
+    return (tool_analysis_data[:, subsample_slice],
+            joint_analysis_data[:, subsample_slice],
+            tool_analysis_data[-1, subsample_slice].astype(dtype=bool))
+
+# Given data (:, n) and flag(1, n) of bools, split into
+# contiguous set of slices based on flag
+def obtain_contiguous_sequences(flag):
+    last_start_index = 0
+    switch_indices = np.where((flag[1:] - flag[:-1]) != 0)[0]
+    switch_indices = np.hstack((np.array([-1]), switch_indices))
+    if (switch_indices.shape != 0):
+        last_start_index = switch_indices[-1]+1
+
+    contiguous_lists = []
+    all_same = []
+    for index in np.arange(switch_indices.size-1):
+        contiguous_lists.append((flag[switch_indices[index]+1],
+                                 slice(switch_indices[index]+1,
+                                       switch_indices[index+1]+1, None)))
+        if __debug__:
+           all_same.append(np.any(flag[switch_indices[index]+1:
+                           switch_indices[index+1]+1] -
+                           flag[switch_indices[index]+1]))
+    if __debug__:
+           print("All contiguous flags are same", not
+                 np.any(np.asarray(all_same)))
+    contiguous_lists.append((flag[last_start_index],
+                             slice(last_start_index, None, None)))
+    return contiguous_lists
+
+def get_combined_data(joint_data, tool_data):
+    return (np.vstack((tool_data[:3], tool_data[4:6],
+                       tool_data[3], joint_data[:6],
+                       tool_data[6])))
+
+def write_combined_data(joint_data, tool_data, filename):
+    combined_analysis_data = get_combined_data(joint_data, tool_data).T
+    np.savetxt(filename, combined_analysis_data)
+
+################### TRAJECTORY GENERATION ###################
+
 def generateHoldPositionPoints(machine, hold_time=1, position = [np.nan]):
     if any(np.isnan(position)):
         position_to_hold = machine.current_stepgen_position

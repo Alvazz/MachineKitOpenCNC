@@ -280,14 +280,14 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
 def readMachine(synchronizer, feedback_state, axis_sensor_id):
     data_format = pncLibrary.SP_pncApp_time + pncLibrary.SP_pncApp_machine_axes + pncLibrary.SP_pncApp_data_auxes[axis_sensor_id]
     if synchronizer.mvc_run_feedback_event.is_set():
-        #FIXME add clock offset
-        #if axis_sensor_id == 0 or 1:
+        if axis_sensor_id == 1:
+            print('brealpull')
         start_time = time.clock()
         time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateInterfaceData('pull', synchronizer, feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, [axis_sensor_id])
-        print('pull took ' + str(time.clock()-start_time))
+        #print('pull took ' + str(time.clock()-start_time))
         start_time = time.clock()
         merged_data = mergeSort(feedback_state, time_slice[0], data_slice[0], pncLibrary.getFallbackDataPoints(feedback_state.last_values_read, data_stream_names, data_stream_sizes), [], [])
-        print('MS ' + str(time.clock() - start_time))
+        #print('MS ' + str(time.clock() - start_time))
         #FIXME this iteration here is probably not good
         return formatFeedbackData(axis_sensor_id, data_format, [[merged_data[0][k]] + merged_data[1][k] for k in range(0,len(merged_data[0]))])
 

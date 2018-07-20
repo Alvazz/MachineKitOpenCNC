@@ -141,7 +141,7 @@ class Puller(Thread):
                     success_flag = success_flag and False
                 elif np.shape(data_array)[0] == 0:
                     if self.machine.current_buffer_level > 0:
-                        print('pull break')
+                        print('pull break on ' + str(data_type[k]))
                     #return_data.append(None)
                     return_data.append(np.empty((0,data_array.shape[1])))
                     success_flag = success_flag and False
@@ -233,7 +233,7 @@ class Pusher(Thread):
                         setattr(self.data_store, key, np.append(getattr(self.data_store, key),value,0))
                     except AttributeError:
                         pncLibrary.printTerminalString(pncLibrary.printout_database_field_creation_string, key, value.size)
-                        setattr(self.data_store, key, np.append(np.empty((0, value.size), float), value, 0))
+                        setattr(self.data_store, key, np.append(np.empty((0, value.shape[1]), float), value, 0))
                         self.data_store.data_descriptors.append(key)
                     except Exception as error:
                         print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
@@ -302,7 +302,8 @@ class DatabaseServer(Process):
                     pass
 
                 self.updateMachineState()
-                print('db cmd q size is ' + str(self.synchronizer.q_database_command_queue_proxy.qsize()))
+                if self.synchronizer.q_database_command_queue_proxy.qsize() > 0:
+                    print('db cmd q size is ' + str(self.synchronizer.q_database_command_queue_proxy.qsize()))
 
 
             pncLibrary.waitForThreadStop(self, self.database_pusher, self.database_puller, self.machine_state_manipulator, self.logging_server)
@@ -331,6 +332,9 @@ class DatabaseServer(Process):
         elif command.command_type == 'update':
             self.updateMachineState()
 
+        elif command.command_type == 'flush_to_websocket':
+            self.writeDatabaseToWebsocket()
+
     def updateMachineState(self):
         #state_updates = self.database_puller.pull(self.synchronizer.state_streams, -1, None)
         #for state_update in state_updates:
@@ -343,6 +347,9 @@ class DatabaseServer(Process):
 
     def archiveRecords(self):
         pass
+
+    def writeDatabaseToWebsocket(self):
+        self.synchronizer.q_trajectory_planner_data_return_queue.put({'stepgen': self.data_store.STEPGEN_FEEDBACK_POSITIONS, 'commanded': self.data_store.COMMANDED_SERVO_POSITIONS})
 
     def writeDatabaseToFile(self):
         np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
@@ -381,13 +388,13 @@ class DataStore():
         self.HIGHRES_TC_QUEUE_LENGTH = np.empty((0, 1), float)
 
         #Positions from stepgen and encoders
-        self.COMMANDED_SERVO_POLYLINES = []
+        self.COMMANDED_SERVO_POLYLINE_OBJECTS = []
         #self.sent_servo_commands = []
 
         self.RTAPI_FEEDBACK_INDICES = np.empty((0, 1), float)
         self.STEPGEN_FEEDBACK_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
         self.ENCODER_FEEDBACK_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
-        self.COMMANDED_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
+        self.COMMANDED_SERVO_POSITIONS = np.empty((0, machine_statics.number_of_joints), float)
 
         #Thread counter
         #self.rt_thread_num_executions_delta = np.zeros(1,dtype=int)
@@ -408,7 +415,7 @@ class DataStore():
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
                                  'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH', 'RTAPI_CLOCK_TIMES',
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
-                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINES',
+                                 'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINE_OBJECTS',
                                  'NETWORK_PID_DELAYS', 'POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_POSITIONS']
 
     def lookupDataType(self, data_type):
