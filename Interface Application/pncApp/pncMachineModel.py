@@ -81,7 +81,7 @@ class MachineModel():
 
         #Thread/Process Parameters
         self.thread_queue_wait_timeout = 0.1
-        self.move_queue_wait_timeout = 1
+        self.queue_move_queue_wait_timeout = 1
         self.process_queue_wait_timeout = 0.1
         self.event_wait_timeout = 5
         self.encoder_event_wait_timeout = 30
@@ -167,6 +167,7 @@ class MachineModel():
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
         self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / 172, -1.0 / 167]
+        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / (8000 * 2 / 90), -1.0 / (8000 * 2 / 90)]
         self.max_encoder_transmission_length = 1+4*6+1
         self.encoder_command_strings = ['S', 'G', 'R', 'B']
         self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n', '&']
@@ -226,7 +227,7 @@ class MachineModel():
         self.servo_log_num_axes = 5
         self.servo_log_sub_sample_rate = 10
         #self.servo_log_buffer_size = 50
-        self.servo_log_buffer_size = 10
+        self.servo_log_buffer_size = 25
 
         #Comm parameters
         self.rsh_socket = None
@@ -252,6 +253,7 @@ class MachineModel():
         #self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
         self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
         self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
+        self.websocket_block_length = 10000
         self.ssh_port = 22
         self.ssh_credentials = ('pocketnc', 'pocketnc')
         self.ssh_opts = '-X'
@@ -273,14 +275,17 @@ class MachineModel():
         self.current_jerk = [0.0]*self.number_of_joints
         self.current_buffer_level = 0
         #self.motion_states = [self.current_stepgen_position, self.current_encoder_position, self.current_buffer_level]
-        self.motion_states = ['current_stepgen_position', 'current_encoder_position', 'current_buffer_level']
-        self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
+        #self.motion_states = ['current_stepgen_position', 'current_encoder_position', 'current_buffer_level']
+        self.motion_states = ['current_stepgen_position']#, 'current_encoder_position']
+        #self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
+        self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS']#, 'ENCODER_FEEDBACK_POSITIONS']
         self.state_initialization_events = ['mc_initial_stepgen_position_set_event', 'ei_initial_encoder_position_set_event', 'mc_initial_buffer_level_set_event']
 
         #File Handling
         #self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
         self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
         self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\Raw\\'
+        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
         self.point_file_prefix = 'opt_code'
         self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
         self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'

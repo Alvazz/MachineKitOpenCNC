@@ -14,6 +14,8 @@ class MotionController(Thread):
 
         self.move_queue = Queue()
         self.motion_queue = Queue()
+        self.interrupt_motion_event = Event()
+
         self.move_in_progress = 0
         self.last_move_serial_number = 0
         self.current_move_serial_number = 0
@@ -55,9 +57,8 @@ class MotionController(Thread):
                     try:
                         print('buffer level at start is ' + str(self.machine.current_buffer_level))
                         self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
-                    except pncLibrary.RSHError:
-                        self.synchronizer.q_print_server_message_queue.put(
-                            "MOTION CONTROLLER: Detected RSH error, aborting motion")
+                    except pncLibrary.RSHError as error_message:
+                        self.synchronizer.q_print_server_message_queue.put(error_message.message)
                         self.motion_queue = Queue()
                         break
 
@@ -88,8 +89,8 @@ class MotionController(Thread):
 
             binary_command += self.machine.binary_line_terminator
 
-            if self.synchronizer.mc_rsh_error_event.is_set():
-                raise pncLibrary.RSHError("Detected RSH error after " + str(command) + " commands", command)
+            if self.interrupt_motion_event.is_set():
+                raise pncLibrary.RSHError("MOTION CONTROLLER: Detected RSH error after " + str(command) + " commands", command)
                 #return
 
             tx_time = time.time()
@@ -167,7 +168,9 @@ class MotionQueueFeeder(Thread):
             self.updateTrajectoryFromTP()
 
             try:
-                move_to_execute = self.move_queue.get(pncLibrary.move_queue_wait_timeout)
+                print('motion queue size is ' + str(self.parent.motion_queue.qsize()))
+                print('move queue size is ' + str(self.parent.move_queue.qsize()))
+                move_to_execute = self.move_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
                 self.processed_move_serial_number += 1
                 move_to_execute.serial_number = self.processed_move_serial_number
                 samples_in_block = self.max_motion_block_size/move_to_execute.blocklength
@@ -208,7 +211,9 @@ class MotionQueueFeeder(Thread):
     def updateTrajectoryFromTP(self):
         while not self.synchronizer.q_trajectory_planner_planned_move_queue.empty() and self.tp_link_event.is_set():
             remotely_planned_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get_nowait()
-            self.move_queue.put(remotely_planned_move)
+            #print('TP putting move on motion queue')
+            self.parent.parent.insertMove(remotely_planned_move)
+            #self.move_queue.put(remotely_planned_move)
         # while not self.cloud_trajectory_planner.planned_point_queue.empty():
         #     planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
         #     self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['pid']))

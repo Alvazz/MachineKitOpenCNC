@@ -64,14 +64,14 @@ class FeedbackProcessor(Thread):
         #     pass
 
     def handleRSHError(self):
-        self.synchronizer.mc_rsh_error_event.set()
+        #self.synchronizer.mc_rsh_error_event.set()
         self.synchronizer.q_print_server_message_queue.put("FEEDBACK HANDLER: RSH error detected by feedback_processor")
-        print('flag set')
+        #print('flag set')
 
     def processFeedbackData(self, feedback_encoding, feedback_type, feedback_data, rx_received_time, transmission_length = -1):
         if feedback_type.upper() == 'COMMAND ECHO':
             if self.machine.ascii_rsh_feedback_strings[-1] in feedback_data:
-                print('RSH error')
+                #print('FEEDBACK PROCESSOR: RSH error')
                 self.handleRSHError()
             else:
                 print('got echo data')
@@ -96,7 +96,7 @@ class FeedbackProcessor(Thread):
             elif self.machine.ascii_rsh_feedback_strings[3] == feedback_type:
                 # Machine Mode
                 # print('mode set')
-                #print('got mode ' + feedback_data[0])
+                print('got mode ' + feedback_data[0])
                 self.machine.mode = feedback_data[0]
                 self.synchronizer.fb_mode_change_event.set()
             elif self.machine.ascii_rsh_feedback_strings[4] == feedback_type:
@@ -386,8 +386,10 @@ class MachineFeedbackHandler(Process):
         if self.machine.rsh_error_string.encode('utf-8') in byte_string:
             #Byte string matches, flag possible error
             #FIXME implement this!
-            print('potential RSH error detected')
-            self.rsh_error_check = True
+            #print('potential RSH error detected')
+            print('FEEDBACK HANDLER: Detected RSH error in feedback header for message ', byte_string.decode())
+            self.synchronizer.mc_rsh_error_event.set()
+            #self.rsh_error_check = True
 
         #FIXME don't make feedback_type an index
         #Check for binary/ascii/ascii echo

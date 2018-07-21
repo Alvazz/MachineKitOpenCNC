@@ -109,12 +109,9 @@ def obtain_contiguous_sequences(flag):
                                  slice(switch_indices[index]+1,
                                        switch_indices[index+1]+1, None)))
         if __debug__:
-           all_same.append(np.any(flag[switch_indices[index]+1:
-                           switch_indices[index+1]+1] -
-                           flag[switch_indices[index]+1]))
-    if __debug__:
-           print("All contiguous flags are same", not
-                 np.any(np.asarray(all_same)))
+           all_same.append(np.any(flag[switch_indices[index]+1: switch_indices[index+1]+1] - flag[switch_indices[index]+1]))
+    # if __debug__:
+    #        print("All contiguous flags are same", not np.any(np.asarray(all_same)))
     contiguous_lists.append((flag[last_start_index],
                              slice(last_start_index, None, None)))
     return contiguous_lists
@@ -182,7 +179,8 @@ def generateMovePoints(machine, end_points, start_points = [np.nan], move_veloci
                 math.fabs(move_vector[joint]) / max_joint_accelerations[joint])
             if move_vector[joint] == 0:
                 #Do not move this joint
-                print('joint ' + str(joint) + ' holding position')
+                #print('joint ' + str(joint) + ' holding position')
+                pass
             elif (max_joint_accelerations[joint] * no_cruise_time_to_center) >= max_joint_velocities[joint]:
                 #We can reach cruise phase
                 max_move_velocity[joint] = max_joint_velocities[joint]
@@ -204,7 +202,7 @@ def generateMovePoints(machine, end_points, start_points = [np.nan], move_veloci
             else:
                 #Time and distance to cruise velocity, t1
                 time_points[0][joint] = max_move_velocity[joint] / max_joint_accelerations[joint]
-                print('joint ' + str(joint) + ' can reach cruise')
+                #print('joint ' + str(joint) + ' can reach cruise')
                 #End of move
                 time_points[2][joint] = (np.fabs(move_vector[joint]) + (max_move_velocity[joint]*time_points[0][joint]))/max_move_velocity[joint]
                 #Start of deceleration phase

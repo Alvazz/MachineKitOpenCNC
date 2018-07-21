@@ -329,7 +329,7 @@ def isMonitoring(synchronizer):
 
 ############################# User Functions #############################
 # def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-#     sculptprint_MVC.command_queue.put('CONNECT')
+#     pncApp_controller.command_queue.put('CONNECT')
 #
 #
 # # def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
@@ -344,23 +344,23 @@ def isMonitoring(synchronizer):
 #
 # def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
 #     print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
+#     pncApp_controller.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
 #     return True;
 #
 # def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
 #     print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     sculptprint_MVC.command_queue.put('EXECUTE')
+#     pncApp_controller.command_queue.put('EXECUTE')
 #     return True;
 
 # def connectToMachine():
-#     sculptprint_MVC.command_queue.put('CONNECT')
+#     pncApp_controller.command_queue.put('CONNECT')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
 # def stop(synchronizer):
 #     #print('closing')
 #     #appClose()
-#     sculptprint_MVC.command_queue.put('CLOSE')
+#     pncApp_controller.command_queue.put('CLOSE')
 #     synchronizer.mvc_app_shutdown_event.wait()
 #     return True
 

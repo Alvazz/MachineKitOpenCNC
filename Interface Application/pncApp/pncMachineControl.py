@@ -120,6 +120,10 @@ class MachineController(Process):
             while self.synchronizer.p_run_machine_controller_event.is_set():
 
                 try:
+                    #Handle any errors first
+                    if self.synchronizer.mc_rsh_error_event.is_set():
+                        self.handleRSHError()
+
                     #FIXME don't catch errors from handleCommand
                     command = self.synchronizer.q_machine_controller_command_queue.get(True, self.machine.process_queue_wait_timeout)
                     self.handleCommand(command)
@@ -162,6 +166,10 @@ class MachineController(Process):
         elif command.command_type == 'EXECUTE_WHILE_PLANNING':
             self.beginPlanningAndExecution()
 
+    def handleRSHError(self):
+        self.synchronizer.mc_rsh_error_event.clear()
+        self.motion_controller.interrupt_motion_event.set()
+
     # def updateTrajectoryFromTP(self):
     #     while not self.cloud_trajectory_planner.planned_point_queue.empty():
     #         planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
@@ -183,14 +191,14 @@ class MachineController(Process):
             move.blocklength = self.motion_controller.blocklength
             move.servo_tx_array = pncLibrary.TP.formatPoints(pncLibrary.TP.convertMotionCS(self.machine, 'table center', move.point_samples), move.polylines, move.blocklength)
             self.motion_controller.move_queue.put(move)
-            print('Put move ' + str(move.serial_number) + ' with type \"' + str(move.move_type) + '\" on motion controller queue')
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_move_queue_insertion_string, str(move.serial_number), move.move_type)
             return True
         else:
-            print('move exceeds machine limits at point %d for axis ??', limit_check[1])
+            print('MACHINE CONTROLLER: Move exceeds machine limits at point %d for axis ??', limit_check[1])
             return False
 
     def enqueueTrapezoidalTest(self, translational_distance, angular_distance, iterations=3):
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5), 'hold')
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), 'hold')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)), move_type='trapezoidal'), 'trap')
 
         rapid1 = pncLibrary.Move(
@@ -205,17 +213,21 @@ class MachineController(Process):
                                                                            np.array([translational_distance, translational_distance, -translational_distance, angular_distance, angular_distance])),
                                              move_type='trapezoidal'), 'trap')
 
+        hold1 = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2, np.array([translational_distance, translational_distance, -translational_distance, angular_distance, angular_distance])))
+        hold0 = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2, np.zeros(5)))
         self.insertMove(hold_move)
         self.insertMove(rapid_to_start)
         for k in range(0, iterations):
             self.insertMove(rapid1)
+            self.insertMove(hold1)
             self.insertMove(rapid0)
+            self.insertMove(hold0)
 
     def enqueuePointFiles(self,start_file_number=5,end_file_number=10):
         start_file_number = 1
         end_file_number = 8
         #hold_points = self.generateHoldPositionPoints(1)
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2),'hold')
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),'hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
         first_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'),'trap')
@@ -251,7 +263,11 @@ class MachineController(Process):
 
         self.motion_controller.motion_queue_feeder.linkToTP()
         #self.motion_controller.mc_run_motion_event.set()
-        self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
+        #while self.motion_controller.motion_queue.qsize() < 50:
+        while self.cloud_trajectory_planner.tp_state.current_received_sequence_id < 10:
+            time.sleep(0.1)
+            #print('move queue size is: ' + str(self.motion_controller.motion_queue.qsize()))
+        #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
 
 
     ######################## Writing Functions ########################

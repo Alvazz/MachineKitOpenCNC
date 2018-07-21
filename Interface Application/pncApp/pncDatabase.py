@@ -141,7 +141,7 @@ class Puller(Thread):
                     success_flag = success_flag and False
                 elif np.shape(data_array)[0] == 0:
                     if self.machine.current_buffer_level > 0:
-                        print('pull break on ' + str(data_type[k]))
+                        print('pull break on ' + str(data_type))
                     #return_data.append(None)
                     return_data.append(np.empty((0,data_array.shape[1])))
                     success_flag = success_flag and False
@@ -302,9 +302,8 @@ class DatabaseServer(Process):
                     pass
 
                 self.updateMachineState()
-                if self.synchronizer.q_database_command_queue_proxy.qsize() > 0:
+                if self.synchronizer.q_database_command_queue_proxy.qsize() > 10:
                     print('db cmd q size is ' + str(self.synchronizer.q_database_command_queue_proxy.qsize()))
-
 
             pncLibrary.waitForThreadStop(self, self.database_pusher, self.database_puller, self.machine_state_manipulator, self.logging_server)
 
@@ -339,7 +338,7 @@ class DatabaseServer(Process):
         #state_updates = self.database_puller.pull(self.synchronizer.state_streams, -1, None)
         #for state_update in state_updates:
 
-        for k in range(0, len(self.machine.motion_states)-1):
+        for k in range(0, len(self.machine.motion_states)):
             state_update = self.database_puller.pull(self.machine.state_streams[k], -1, None)
             if state_update[0]:
                 setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])

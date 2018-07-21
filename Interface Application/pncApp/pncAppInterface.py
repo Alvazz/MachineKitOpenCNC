@@ -6,11 +6,11 @@ from pncMachineControl import OperatingSystemController
 import numpy as np
 
 pncLibrary.updatePath()
-sculptprint_MVC = None
+pncApp_controller = None
 
-class CAM_MVC(Thread):
+class PNCAppController(Thread):
     def __init__(self):
-        super(CAM_MVC, self).__init__()
+        super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
         self.main_thread_name = self.name + ".MainThread"
@@ -18,7 +18,7 @@ class CAM_MVC(Thread):
 
         self.command_queue = Queue()
         self.startup_event = Event()
-        self.t_run_CAM_MVC_thread = Event()
+        self.t_run_pncApp_controller_thread = Event()
         self.pncApp_initialized_event = Event()
         self.pncApp_started_event = Event()
         self.feedback_fast_forward_event = Event()
@@ -38,7 +38,7 @@ class CAM_MVC(Thread):
         #current_process().name = self.name
         pncLibrary.waitForThreadStart(self, PNCAppInterfaceSocketLauncher)
         self.startup_event.set()
-        while self.t_run_CAM_MVC_thread.is_set():
+        while self.t_run_pncApp_controller_thread.is_set():
             try:
                 command = self.command_queue.get(pncLibrary.queue_wait_timeout)
                 self.handleCommand(command)
@@ -126,10 +126,16 @@ class CAM_MVC(Thread):
         self.terminal_printer = pncLibrary.startPrintServer(self.machine, self.synchronizer)
 
         pncLibrary.waitForThreadStart(self, OperatingSystemController)
-        self.operating_system_controller.command_queue.put(pncLibrary.OSCommand('CHECK_RSH_RUN'))
-        print('RSH running: ' + str(self.synchronizer.os_linuxcncrsh_running_event.is_set()))
+        linuxcnc_RSH_status = self.getRSHStatus(pncLibrary.ssh_wait_timeout)
+        #print('RSH status is: ' + str(linuxcnc_RSH_status))
+        #self.operating_system_controller.command_queue.put(pncLibrary.OSCommand('CHECK_RSH_RUN'))
+        #print('RSH running: ' + str(self.synchronizer.os_linuxcncrsh_running_event.is_set()))
 
-        self.pncApp_initialized_event.set()
+        if linuxcnc_RSH_status[1]:
+            pncLibrary.printTerminalString(pncLibrary.printout_ssh_process_ready_string, 'linuxcncrsh')
+            self.pncApp_initialized_event.set()
+        else:
+            pncLibrary.printTerminalString(pncLibrary.printout_ssh_bad_state_string, 'linuxcncrsh')
 
     def uninit_pncApp(self):
         pass
@@ -145,6 +151,16 @@ class CAM_MVC(Thread):
         # FIXME do something about MVC still running
         appClose(self.pnc_app_manager, self.synchronizer)
         print('closed')
+
+
+    #################### OS INTERFACE ####################
+    def getRSHStatus(self, timeout = 0.5):
+        self.synchronizer.os_linuxcncrsh_running_event.clear()
+        self.operating_system_controller.command_queue.put(pncLibrary.OSCommand('CHECK_RSH_RUN'))
+        if self.synchronizer.os_linuxcncrsh_running_event.wait(timeout):
+            return (True, self.synchronizer.os_linuxcncrsh_running_event.is_set())
+        else:
+            return (False, self.synchronizer.os_linuxcncrsh_running_event.is_set())
 
 class PNCAppInterfaceSocketLauncher(Thread):
     def __init__(self, parent):
@@ -247,29 +263,31 @@ class PNCAppInterfaceSocket(Thread):
         except Exception as error:
             print("I dont know what error type this is, so you should fill it in when this error inevitably happens: " + str(error))
 
-def startMVC():
-    sculptprint_MVC = CAM_MVC()
-    sculptprint_MVC.t_run_CAM_MVC_thread.set()
-    sculptprint_MVC.start()
-    sculptprint_MVC.startup_event.wait()
+def startPncAppController():
+    pncApp_controller = PNCAppController()
+    pncApp_controller.t_run_pncApp_controller_thread.set()
+    pncApp_controller.start()
+    pncApp_controller.startup_event.wait()
 
-    return sculptprint_MVC
+    return pncApp_controller
 
 def startPncApp():
-    global sculptprint_MVC, machine, synchronizer, terminal_printer, feedback_state
-    if sculptprint_MVC is None:
-        sculptprint_MVC = startMVC()
+    global pncApp_controller, machine, synchronizer, terminal_printer, feedback_state
+    if pncApp_controller is None:
+        pncApp_controller = startPncAppController()
 
-        sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'internal'))
-        sculptprint_MVC.pncApp_initialized_event.wait()
+        pncApp_controller.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'internal'))
+        if not pncApp_controller.pncApp_initialized_event.wait(pncLibrary.pncApp_init_wait_timeout):
+            print('PNCAPP CONTROLLER: Initialization failed')
+            return False
 
-        machine = sculptprint_MVC.machine
-        synchronizer = sculptprint_MVC.synchronizer
-        terminal_printer = sculptprint_MVC.terminal_printer
-        feedback_state = sculptprint_MVC.feedback_state
+        machine = pncApp_controller.machine
+        synchronizer = pncApp_controller.synchronizer
+        terminal_printer = pncApp_controller.terminal_printer
+        feedback_state = pncApp_controller.feedback_state
 
-    sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('START', None, None, None, 'internal'))
-    pncLibrary.printTerminalString(pncLibrary.printout_sculptprint_interface_initialization_string, sculptprint_MVC.name, sculptprint_MVC.main_process_name, sculptprint_MVC.main_process_pid)
+    pncApp_controller.command_queue.put(pncLibrary.PNCAppCommand('START', None, None, None, 'internal'))
+    pncLibrary.printTerminalString(pncLibrary.printout_sculptprint_interface_initialization_string, pncApp_controller.name, pncApp_controller.main_process_name, pncApp_controller.main_process_pid)
     print('PNCAPP CONTROLLER: Waiting for startup...')
     try:
         synchronizer.mvc_pncApp_started_event.wait(machine.max_mvc_startup_wait_time)
@@ -283,27 +301,27 @@ if __name__ == '__main__':
     #multiprocessing.log_to_stderr(logging.ERROR)
     #start()
 
-    startPncApp()
-    sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('CONNECT', None, None, None, 'internal'))
+    if startPncApp():
+        pncApp_controller.command_queue.put(pncLibrary.PNCAppCommand('CONNECT', None, None, None, 'internal'))
 
-    #sculptprint_MVC.join()
+    #pncApp_controller.join()
     # if 0:
-    #     sculptprint_MVC = startMVC()
-    #     sculptprint_MVC.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'binary'))
-    #     sculptprint_MVC.pncApp_initialized_event.wait()
+    #     pncApp_controller = startMVC()
+    #     pncApp_controller.command_queue.put(pncLibrary.PNCAppCommand('INIT', None, None, None, 'binary'))
+    #     pncApp_controller.pncApp_initialized_event.wait()
     #     # #
-    #     machine = sculptprint_MVC.machine
-    #     synchronizer = sculptprint_MVC.synchronizer
-    #     terminal_printer = sculptprint_MVC.terminal_printer
-    #     feedback_state = sculptprint_MVC.feedback_state
+    #     machine = pncApp_controller.machine
+    #     synchronizer = pncApp_controller.synchronizer
+    #     terminal_printer = pncApp_controller.terminal_printer
+    #     feedback_state = pncApp_controller.feedback_state
 
-    # sculptprint_MVC = startMVC()
-    # machine = sculptprint_MVC.machine
-    # synchronizer = sculptprint_MVC.synchronizer
-    # terminal_printer = sculptprint_MVC.terminal_printer
-    # feedback_state = sculptprint_MVC.feedback_state
-    # sculptprint_MVC.init_pncApp()
-    # sculptprint_MVC.start_pncApp()
+    # pncApp_controller = startMVC()
+    # machine = pncApp_controller.machine
+    # synchronizer = pncApp_controller.synchronizer
+    # terminal_printer = pncApp_controller.terminal_printer
+    # feedback_state = pncApp_controller.feedback_state
+    # pncApp_controller.init_pncApp()
+    # pncApp_controller.start_pncApp()
 
     #connectToMachine()
     #userPythonFunction1(0,0,0,0,0)

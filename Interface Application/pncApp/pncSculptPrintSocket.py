@@ -119,17 +119,17 @@ def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #     return True
     # else:
     #     return False
-    #sculptprint_MVC.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
+    #pncApp_controller.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
     #return True;
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
     return 'PLANEXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLANEXECUTE', str, '')
     # print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    # sculptprint_MVC.command_queue.put('EXECUTE')
+    # pncApp_controller.command_queue.put('EXECUTE')
     # return True;
 
 # def connectToMachine():
-#     sculptprint_MVC.command_queue.put('CONNECT')
+#     pncApp_controller.command_queue.put('CONNECT')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
@@ -167,7 +167,7 @@ if __name__ != 'machinemonitor':
     userPythonFunction3(0,0,0,0,0)
 
     #zz = readMachine(1)
-    while 1:
+    while 0:
         z = isMonitoring()
         print(z)
         yy = readMachine(0)

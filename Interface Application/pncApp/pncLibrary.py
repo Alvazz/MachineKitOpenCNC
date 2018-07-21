@@ -14,7 +14,7 @@ socket_wait_timeout = 2
 socket_wait_interval = 0.01
 
 #SSH Parameters
-ssh_wait_timeout = 1
+ssh_wait_timeout = 2
 ssh_port = 22
 ssh_credentials = ('pocketnc', 'pocketnc')
 ssh_opts = '-X'
@@ -47,11 +47,17 @@ printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} 
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
 printout_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
-printout_subsequence_enqueued_string = "TRAJECTORY PLANNER: {} received and enqueued sequence ID {}"
+printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
+printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} received and enqueued sequence ID {}"
+printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received subsequence {} of sequence ID {} from {}"
+printout_bad_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed sequence ID {}"
+printout_move_queue_insertion_string = "MACHINE CONTROLLER: Placed move ID {} with type \"{}\" on motion controller queue"
 printout_ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} connected on address {}"
 printout_ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
 printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
 printout_ssh_command_execution_string = "MACHINE OS CONTROLLER: Executing {}"
+printout_ssh_bad_state_string = "MACHINE OS CONTROLLER: {} not ready"
+printout_ssh_process_ready_string = "MACHINE OS CONTROLLER: {} is ready, proceeding with INIT"
 printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
 printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with size {}"
 printout_database_object_list_creation_string = "DATABASE CONTROLLER: Creating object list type {} with size {}"
@@ -59,8 +65,11 @@ printout_database_flush_to_websocket_string = "DATABASE CONTROLLER: Writing {} t
 
 #Queue operations
 queue_wait_timeout = 1
-move_queue_wait_timeout = 1
+queue_move_queue_wait_timeout = 1
 queue_database_command_queue_wait_timeout = 0.05
+
+#Event parameters
+pncApp_init_wait_timeout = 10
 
 #SculptPrint Formatting
 SP_axis_sensor_IDs = [0, 1]
@@ -150,13 +159,14 @@ class CloudTrajectoryPlannerState():
         self.websocket_connected_event = Event()
         self.tp_connected_event = Event()
         self.send_next_block_event = Event()
-        self.point_id_ack_event = Event()
+        self.sequence_id_ack_event = Event()
         self.matching_sequence_received_event = Event()
 
-        self.point_ack_id = 0
+        self.sequence_ack_id = 0
         self.enqueued_sequence_id = 0
         self.current_requested_sequence_id = 0
-        self.current_received_sequence_id = 0
+        self.current_received_sequence_id = -1
+        self.incoming_number_of_sub_sequences = 0
 
 class PNCAppConnection():
     def __init__(self, connection_type, command_format, feedback_format):
