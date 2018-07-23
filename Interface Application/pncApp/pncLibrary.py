@@ -48,7 +48,7 @@ printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FA
 printout_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
 printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
-printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} received and enqueued sequence ID {}"
+printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued sequence ID {}"
 printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received subsequence {} of sequence ID {} from {}"
 printout_bad_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed sequence ID {}"
 printout_move_queue_insertion_string = "MACHINE CONTROLLER: Placed move ID {} with type \"{}\" on motion controller queue"
@@ -70,6 +70,7 @@ queue_database_command_queue_wait_timeout = 0.05
 
 #Event parameters
 pncApp_init_wait_timeout = 10
+event_wait_timeout = 2
 
 #SculptPrint Formatting
 SP_axis_sensor_IDs = [0, 1]
@@ -161,6 +162,8 @@ class CloudTrajectoryPlannerState():
         self.send_next_block_event = Event()
         self.sequence_id_ack_event = Event()
         self.matching_sequence_received_event = Event()
+        self.first_trajectory_received_event = Event()
+        self.planning_finished_event = Event()
 
         self.sequence_ack_id = 0
         self.enqueued_sequence_id = 0
@@ -270,6 +273,7 @@ class Synchronizer():
         self.mc_motion_complete_event = manager.Event()
         self.mc_rsh_error_event = manager.Event()
         self.mc_socket_connected_event = manager.Event()
+        #self.mc_motion_queue_feeder_enqueue_blocks_event = Event()
         self.ei_encoder_comm_init_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
         self.ei_initial_encoder_position_set_event = manager.Event()
@@ -330,10 +334,15 @@ class Synchronizer():
 
 ######################## Commands ########################
 class Move():
-    def __init__(self,point_samples,move_type = None, sequence_id = None):
-        super(Move, self).__init__()
+    def __init__(self, point_samples, move_type = None, sequence_id = None, machine = None, offset_axes = False):
+        #super(Move, self).__init__()
         self.serial_number = -1
-        self.point_samples = point_samples
+        #self.point_samples = TP.wrapRotaryAxis(point_samples, slice(None,4))
+        if offset_axes:
+            self.point_samples = TP.offsetAxes(point_samples, machine=machine)
+        else:
+            self.point_samples = point_samples
+
         self.move_type = move_type
         self.sequence_id = sequence_id
 

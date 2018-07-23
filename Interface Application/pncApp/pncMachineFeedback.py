@@ -387,7 +387,7 @@ class MachineFeedbackHandler(Process):
             #Byte string matches, flag possible error
             #FIXME implement this!
             #print('potential RSH error detected')
-            print('FEEDBACK HANDLER: Detected RSH error in feedback header for message ', byte_string.decode())
+            print('FEEDBACK HANDLER: Detected RSH error in feedback header for message ', str(byte_string))
             self.synchronizer.mc_rsh_error_event.set()
             #self.rsh_error_check = True
 

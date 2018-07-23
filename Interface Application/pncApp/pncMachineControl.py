@@ -100,6 +100,7 @@ class MachineController(Process):
         self.feed_pipe = pipe
 
         self.planned_point_buffer = []
+        self.enqueued_move_serial_number = 0
         self.support_threads = [OperatingSystemController, MotionController]
 
     def run(self):
@@ -162,6 +163,7 @@ class MachineController(Process):
         elif command.command_type == "PLAN_SEQUENCES":
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":
+            self.motion_controller.motion_queue = Queue()
             pass
         elif command.command_type == 'EXECUTE_WHILE_PLANNING':
             self.beginPlanningAndExecution()
@@ -169,6 +171,8 @@ class MachineController(Process):
     def handleRSHError(self):
         self.synchronizer.mc_rsh_error_event.clear()
         self.motion_controller.interrupt_motion_event.set()
+        self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
+        self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
 
     # def updateTrajectoryFromTP(self):
     #     while not self.cloud_trajectory_planner.planned_point_queue.empty():
@@ -190,6 +194,8 @@ class MachineController(Process):
             move.polylines = self.motion_controller.polylines
             move.blocklength = self.motion_controller.blocklength
             move.servo_tx_array = pncLibrary.TP.formatPoints(pncLibrary.TP.convertMotionCS(self.machine, 'table center', move.point_samples), move.polylines, move.blocklength)
+            move.serial_number = self.enqueued_move_serial_number
+            self.enqueued_move_serial_number += 1
             self.motion_controller.move_queue.put(move)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_move_queue_insertion_string, str(move.serial_number), move.move_type)
             return True
@@ -198,7 +204,7 @@ class MachineController(Process):
             return False
 
     def enqueueTrapezoidalTest(self, translational_distance, angular_distance, iterations=3):
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), 'hold')
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, pncLibrary.TP.convertMotionCS(self.machine, 'absolute', np.zeros(5)), move_type='trapezoidal'), 'trap')
 
         rapid1 = pncLibrary.Move(
@@ -227,7 +233,7 @@ class MachineController(Process):
         start_file_number = 1
         end_file_number = 8
         #hold_points = self.generateHoldPositionPoints(1)
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),'hold')
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 5),move_type='hold')
         #first_move_points = self.importAxesPoints(self.machine.point_files_path + self.machine.point_file_prefix + str(start_file))
         first_move = pncLibrary.Move(pncLibrary.TP.importPoints(self.machine, self.machine.point_files_path + self.machine.point_file_prefix + str(start_file_number)), 'imported')
         rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'),'trap')
@@ -253,19 +259,36 @@ class MachineController(Process):
                                                          pncLibrary.printout_waiting_for_first_move_string,
                                                          self.cloud_trajectory_planner.remote_tp_name)
 
-        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), 'hold')
-        first_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get()
-        rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, first_move.start_points, move_type='trapezoidal'), 'trap')
+        self.cloud_trajectory_planner.tp_state.first_trajectory_received_event.wait()
+        #first_move_start_points = pncLibrary.TP.offsetAxes(self.machine, self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0))
+        #first_move_start_points = self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)
 
-        self.insertMove(hold_move)
+        #first_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get()
+        pncLibrary.TP.updateAxisOffset(self.machine, 4, pncLibrary.TP.calculateRotaryAxisOffset(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], 4))
+        shifted_first_move_start_points = pncLibrary.TP.offsetAxes(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], machine=self.machine)
+        #self.machine.axis_offsets[4] = pncLibrary.TP.calculateRotaryAxisOffset(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], 4)
+
+
+        hold_position = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
+        print('generated hold')
+        rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(self.machine, shifted_first_move_start_points, move_type='trapezoidal'), machine=self.machine, direction=1), move_type='trapezoidal', offset_axes=False)
+        print('generated rapid')
+        #rapid_to_start = pncLibrary.Move(pncLibrary.TP.generateMovePoints(self.machine, np.hstack((first_move.start_points[0:4], first_move.start_points[4]%360*np.sign(first_move.start_points[4]))), move_type='trapezoidal'), move_type='trapezoidal')
+        #self.machine.axis_offsets[4] = pncLibrary.calculateAxisOffsets()
+
+        #self.insertMove(hold_move.shiftAxes(self.machine.axis_offsets))
+        #self.insertMove(pncLibrary.TP.offsetAxes(self.machine.axis_offsets, hold_move))
+        self.insertMove(hold_position)
         self.insertMove(rapid_to_start)
-        self.insertMove(first_move)
+        #self.insertMove(first_move)
 
         self.motion_controller.motion_queue_feeder.linkToTP()
+        self.motion_controller.motion_queue_feeder.startFeed()
+
         #self.motion_controller.mc_run_motion_event.set()
         #while self.motion_controller.motion_queue.qsize() < 50:
-        while self.cloud_trajectory_planner.tp_state.current_received_sequence_id < 10:
-            time.sleep(0.1)
+        # while self.cloud_trajectory_planner.tp_state.current_received_sequence_id < 10:
+        #     time.sleep(0.1)
             #print('move queue size is: ' + str(self.motion_controller.motion_queue.qsize()))
         #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
 

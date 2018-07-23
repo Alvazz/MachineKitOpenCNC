@@ -19,7 +19,7 @@ class WebsocketReceiver(Thread):
         self.current_requested_sequence_id = 0
         self.current_received_sequence_id = 0
 
-        self.assembled_payload_points = np.empty((1,6))
+        self.assembled_payload_points = np.empty((0,6))
         self.planned_point_output_queue = Queue()
         self.planned_point_payload_buffer = []
 
@@ -46,18 +46,26 @@ class WebsocketReceiver(Thread):
                             self.tp_state.sequence_id_ack_event.set()
                     elif 'hello_ack' in keys:
                         self.tp_state.tp_connected_event.set()
+                    elif 'metadata_ack' in keys:
+                        #print('TP got metadata')
+                        pass
                     elif 'error' in keys:
                         print('TP got error')
+                    elif 'reset_connection_ack' in keys:
+                        pass
                     elif 'planned_points' in keys:
                         payload.planning_time = time.time()-self.parent.send_time
                         self.planned_point_payload_buffer.append(payload)
 
-                        #self.tp_state.incoming_number_of_sids = 0
-
                         if not (payload['planned_points'] == -1).all() and not payload['planned_points'].size == 1:
+                            self.tp_state.first_trajectory_received_event.set()
                             if 'num_sub_seqs' in keys:
+                                #self.tp_state.send_next_block_event.set()
                                 self.tp_state.incoming_number_of_sub_sequences = payload['num_sub_seqs'].item()
                                 self.tp_state.current_sub_sid = payload['sub_sid'].item()
+                                #Only plan one move ahead of current position
+                                if self.tp_state.current_sub_sid == 0:
+                                    self.tp_state.send_next_block_event.set()
                                 self.assembled_payload_points = np.vstack((self.assembled_payload_points, payload['planned_points']))
                                 pncLibrary.printStringToTerminalMessageQueue(
                                     self.synchronizer.q_print_server_message_queue,
@@ -77,15 +85,15 @@ class WebsocketReceiver(Thread):
                                 # if payload['planned_points'].size == 1:
                                 #     print('bad traj')
                                 self.tp_state.current_received_sequence_id = payload['sid'].item()
-                                self.synchronizer.q_trajectory_planner_planned_move_queue.put(pncLibrary.Move(self.assembled_payload_points[:, 0:self.machine.number_of_joints],'remotely_planned'))
-                                self.assembled_payload_points = np.empty((1, 6))
+                                self.synchronizer.q_trajectory_planner_planned_move_queue.put(pncLibrary.Move(self.assembled_payload_points[:, 0:self.machine.number_of_joints],move_type='remotely_planned', sequence_id=payload['sid'].item()))
+                                self.assembled_payload_points = np.empty((0, 6))
                                 pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                                              pncLibrary.printout_trajectory_planner_sequence_enqueued_string, self.name,
                                                                              self.tp_state.current_received_sequence_id)
 
                         else:
                             self.tp_state.current_received_sequence_id = payload['sid'].item()
-                            self.assembled_payload_points = np.empty((1, 6))
+                            self.assembled_payload_points = np.empty((0, 6))
                             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                                          pncLibrary.printout_bad_sequence_received_string,
                                                                          self.parent.remote_tp_name,
@@ -96,7 +104,7 @@ class WebsocketReceiver(Thread):
                             self.tp_state.send_next_block_event.set()
 
                 except websocket.WebSocketTimeoutException:
-                    print('WEBSOCKET TIMEOUT')
+                    #print('WEBSOCKET TIMEOUT')
                     pass
                 except websocket.WebSocketPayloadException:
                     #Bad transmission
@@ -114,8 +122,12 @@ class WebsocketReceiver(Thread):
         byte_stream.seek(0)
         try:
             decoded_payload = np.load(byte_stream)
-        except Exception as error:
+        except np.BadZipFile:
             print('break load')
+            self.parent.sendMessage(reset_connection='')
+        except Exception as error:
+            print('error: ' + str(error))
+            #self.parent.sendMessage(reset_connection='')
         return decoded_payload, decoded_payload.keys()
 
     def plotPlanningTime(self):
@@ -125,6 +137,10 @@ class WebsocketReceiver(Thread):
                  [self.planned_point_payload_buffer[k].planning_time for k in
                   range(0, len(self.planned_point_payload_buffer))], 'ro')
         plt.show()
+
+    def extractStartingPoints(self, payload_index):
+        return self.planned_point_payload_buffer[payload_index]['planned_points'][0,:]
+
 
 class CloudTrajectoryPlannerInterface(Thread):
     def __init__(self, parent):
@@ -140,12 +156,18 @@ class CloudTrajectoryPlannerInterface(Thread):
 
         self.raw_point_queue = Queue()
         self.planned_point_output_queue = Queue()
-        self.planning_finished_event = Event()
+        #self.first_trajectory_received_event = Event()
+        #self.planning_finished_event = Event()
 
         self.planned_point_payload_buffer = []
+        self.requested_point_payload_buffer = []
         self.planning_time_log = []
-        self.joint_data_file = "machine"
-        self.tool_data_file = "tool"
+        self.sp_file_name = 'pass4complete.scpr'
+        self.path_id = 3
+        self.joint_data_file = "pass3_machine"
+        self.tool_data_file = "pass3_tool"
+        self.starting_sequence_id = 4
+        self.ending_sequence_id = 7
         self.conversion_factor_dist = 1
         self.send_time = 0
 
@@ -164,10 +186,13 @@ class CloudTrajectoryPlannerInterface(Thread):
         if self.connectToTP():
             self.tool_points, self.machine_points, self.retraction_flags = pncLibrary.TP.load_sp_data(self.machine.raw_point_files_path, self.joint_data_file, self.tool_data_file)
             self.contiguous_sequences = pncLibrary.TP.obtain_contiguous_sequences(self.retraction_flags.astype(int))
-            self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, 0, len(self.contiguous_sequences))
+            self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, self.starting_sequence_id, self.ending_sequence_id if self.ending_sequence_id >= 0 else len(self.contiguous_sequences))
             #self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, 136, len(self.contiguous_sequences))
             #self.enqueuePointsForPlanning(self.tool_points, self.machine_points, self.contiguous_sequences, 134, 137)
-
+            self.sendMessage(metadata='', file_name=self.sp_file_name, path_id=np.array([self.path_id]),
+                             block_length=np.array([self.machine.websocket_block_length]),
+                             velocity_limit=np.asarray(self.machine.tp_max_joint_velocity)*1,
+                             acceleration_limit=np.asarray(self.machine.tp_max_joint_acceleration)*1)
             while self.synchronizer.t_run_cloud_trajectory_planner_event.is_set() and self.tp_state.tp_connected_event.is_set():
                 try:
                     if self.tp_state.send_next_block_event.wait(self.machine.event_wait_timeout) and self.synchronizer.tp_plan_motion_event.wait(self.machine.event_wait_timeout):
@@ -175,19 +200,20 @@ class CloudTrajectoryPlannerInterface(Thread):
                         self.tp_state.matching_sequence_received_event.clear()
 
                         points_to_plan = self.raw_point_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
-                        self.planning_finished_event.clear()
+                        self.tp_state.planning_finished_event.clear()
 
                         self.tp_state.current_requested_sequence_id = points_to_plan[0]
                         self.send_time = time.time()
                         self.tp_state.send_next_block_event.clear()
                         self.sendPlanningRequest(points_to_plan)
+                        self.requested_point_payload_buffer.append(points_to_plan)
 
                         self.flushDataFeedbackToTP()
 
                 except Empty:
-                    if self.tp_state.current_received_sequence_id == self.tp_state.current_requested_sequence_id and not self.planning_finished_event.is_set():
+                    if self.tp_state.current_received_sequence_id == self.tp_state.current_requested_sequence_id and not self.tp_state.planning_finished_event.is_set():
                         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_trajectory_planning_finished_string, self.tp_state.current_received_sequence_id)
-                        self.planning_finished_event.set()
+                        self.tp_state.planning_finished_event.set()
 
                     # while not self.synchronizer.q_trajectory_planner_data_return_queue.empty():
                     #     data_to_return = self.synchronizer.q_trajectory_planner_data_return_queue.get()
@@ -213,7 +239,7 @@ class CloudTrajectoryPlannerInterface(Thread):
             return True
 
     def connectToTP(self):
-        self.sendMessage(hello='HELLO', blocklength=np.array([self.machine.websocket_block_length]))
+        self.sendMessage(hello='HELLO')
         if self.tp_state.tp_connected_event.wait(self.machine.event_wait_timeout):
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_trajectory_planner_connection_string,
@@ -265,11 +291,42 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.sortAndOutputPoints()
 
     def enqueuePointsForPlanning(self, tool_space_data, joint_space_data, sequence_slices, begin_sequence, end_sequence):
+        #enqueue_point_list = []
         for k in range(begin_sequence, end_sequence):
-            self.tp_state.enqueued_sequence_id += 1
+            move_type = sequence_slices[k][0]
+            #self.tp_state.enqueued_sequence_id += 1
             self.tp_state.enqueued_sequence_id = k
-            self.raw_point_queue.put((np.array([self.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]))
+            points_to_enqueue = [np.array([self.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]]
+
+            #Hack hack the start/end points of cuts into the rapids
+            if move_type == 1 and k-begin_sequence > 0:
+                #tool_start_points = enqueue_point_list[k-begin_sequence-1][1][0]
+                tool_start_points = tool_space_data[:, sequence_slices[k-1][1]].T[-1]
+                tool_start_points[-1] = move_type
+                #joint_start_points = enqueue_point_list[k - begin_sequence - 1][2][0]
+                joint_start_points = joint_space_data[:, sequence_slices[k-1][1]].T[-1]
+                joint_start_points[-1] = move_type
+                points_to_enqueue[1] = np.hstack((np.array([tool_start_points]).T, points_to_enqueue[1]))
+                points_to_enqueue[2] = np.hstack((np.array([joint_start_points]).T, points_to_enqueue[2]))
+
+                if k < end_sequence-1:
+                    tool_end_points = tool_space_data[:, sequence_slices[k+1][1]].T[0]
+                    tool_end_points[-1] = move_type
+                    joint_end_points = joint_space_data[:, sequence_slices[k+1][1]].T[0]
+                    joint_end_points[-1] = move_type
+                    points_to_enqueue[1] = np.hstack((points_to_enqueue[1], np.array([tool_end_points]).T))
+                    points_to_enqueue[2] = np.hstack((points_to_enqueue[2], np.array([joint_end_points]).T))
+
+            #enqueue_point_list.append(points_to_enqueue)
+
+            #self.raw_point_queue.put((np.array([self.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]))
+            self.raw_point_queue.put(points_to_enqueue)
             #self.raw_point_queue.put((self.path_serial_number, tool_space_data, joint_space_data))
+
+    def extractLatestPlanRequest(self, requested_sequence_id):
+        for request in self.requested_point_payload_buffer:
+            if request[0] == requested_sequence_id:
+                return request
 
     def flushDataFeedbackToTP(self):
         while not self.synchronizer.q_trajectory_planner_data_return_queue.empty():

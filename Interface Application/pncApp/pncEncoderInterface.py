@@ -206,7 +206,7 @@ class EncoderInterface(Process):
             time.sleep(0.05)
             axis_index = self.machine.axes.index(axis)
             while not self.setAxisEncoderCount(axis_index+1,counts[axis_index]):
-                print('Retrying set axis encoder count for axis ' + axis)
+                print('ENCODER INTERFACE: Retrying set axis encoder count for axis ' + axis)
 
     def getEncoderCounts(self, request_type):
         #print('requesting encoder count')

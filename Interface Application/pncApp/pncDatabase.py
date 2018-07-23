@@ -353,6 +353,7 @@ class DatabaseServer(Process):
     def writeDatabaseToFile(self):
         np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
         np.save(self.machine.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
+        np.save(self.machine.database_output_directory + 'commanded', self.data_store.COMMANDED_SERVO_POSITIONS)
         #fh = open(self.machine.database_output_directory + self.machine.database_file_name, 'wb')
         #fh.write(pickle.dumps(self.data_store))
         #fh.close()

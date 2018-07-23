@@ -153,7 +153,7 @@ class MachineModel():
         self.axes = ['X','Y','Z','A','B']
 
         #Stepgen calibration
-        self.axis_offsets = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.axis_offsets = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
         self.table_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
 
         #Encoder calibration
@@ -182,7 +182,9 @@ class MachineModel():
         #self.absolute_axis_travel_limits = [[0, 0, -3.55, -5, -99999], [4.3, 5, 0, 95, 99999]]
         self.absolute_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
+        self.tp_max_joint_velocity = [0.6666, 0.6666, 0.6666, 20 * np.pi / 180, 20 * np.pi / 180]
         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
+        self.tp_max_joint_acceleration = [30, 30, 30, 1500 * np.pi / 180, 1500 * np.pi / 180]
         self.max_joint_jerk = [100, 100, 100, 100, 100]
         self.fk = []
         self.ik = []
@@ -253,7 +255,7 @@ class MachineModel():
         #self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
         self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
         self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
-        self.websocket_block_length = 10000
+        self.websocket_block_length = 20000
         self.ssh_port = 22
         self.ssh_credentials = ('pocketnc', 'pocketnc')
         self.ssh_opts = '-X'

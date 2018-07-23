@@ -23,6 +23,25 @@ def convertMotionCS(machine, mode, points):
     elif mode == 'absolute':
         return points - machine.machine_table_center_zero
 
+#def wrapRotaryAxis(servo_points, slice_obj):
+def wrapRotaryAxis(servo_points, axis):
+    #servo_points[slice_obj] = servo_points[slice_obj] % (np.sign(servo_points[slice_obj][0])*360)
+    servo_points[:,axis] = servo_points[:,axis] % (np.sign(servo_points[0,axis]) * 360)
+    return servo_points
+
+def calculateRotaryAxisOffset(servo_point, axis):
+    return -(np.sign(servo_point[axis]) * np.floor(abs(servo_point[axis])/360.0))*360.
+
+def offsetAxes(servo_points, machine=None, direction=-1):
+    #servo_points[:,axis] = servo_points[:,axis] - axis_offset
+    return servo_points - direction*machine.axis_offsets
+    #return servo_points
+
+def updateAxisOffset(machine, axis, offset):
+    current_offsets = machine.axis_offsets
+    current_offsets[axis] = offset
+    machine.axis_offsets = current_offsets
+
 def importPoints(machine, file):
     ##FIXME check for overtravel
     points = convertMotionCS(machine, 'absolute', np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints])
