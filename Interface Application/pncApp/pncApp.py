@@ -6,7 +6,7 @@ from pncMachineModel import MachineModel, MachineModelStatics, MachineModelProxy
 from pncDatabase import DatabaseServer
 from pncMachineControl import MachineController
 from pncMachineFeedback import MachineFeedbackHandler
-from pncEncoderInterface import EncoderInterface
+from pncDeviceInterface import DeviceInterface
 #from pncLibrary import SculptPrintInterface
 import pncLibrary
 
@@ -88,13 +88,13 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
     #test.start()
 
     database, db_pipe_sender = startProcess(machine, synchronizer, DatabaseServer)
-    encoder_interface, ei_pipe_sender = startProcess(machine, synchronizer, EncoderInterface)
+    device_interface, di_pipe_sender = startProcess(machine, synchronizer, DeviceInterface)
     feedback_handler, fb_pipe_sender = startProcess(machine, synchronizer, MachineFeedbackHandler)
     machine_controller, mc_pipe_sender = startProcess(machine, synchronizer, MachineController)
 
     pnc_app_manager.machine = machine
     pnc_app_manager.database = database
-    pnc_app_manager.encoder_interface = encoder_interface
+    pnc_app_manager.device_interface = device_interface
     pnc_app_manager.machine_controller = machine_controller
     pnc_app_manager.feedback_handler = feedback_handler
 
@@ -116,9 +116,9 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
 
     #pncLibrary.printTerminalString(machine.pncApp_launch_string, multiprocessing.cpu_count())
     synchronizer.mvc_pncApp_started_event.set()
-    closePipes(db_pipe_sender, ei_pipe_sender, mc_pipe_sender, fb_pipe_sender)
+    closePipes(db_pipe_sender, di_pipe_sender, mc_pipe_sender, fb_pipe_sender)
 
-    return database, encoder_interface, feedback_handler, machine_controller
+    return database, device_interface, feedback_handler, machine_controller
 
 def appStop(pnc_app_manager):
     #FIXME just pause activity, don't actually shut down
@@ -143,7 +143,7 @@ def appClose(pnc_app_manager, synchronizer):
 def checkSuccessfulStart(pnc_app_manager, synchronizer):
     try:
         synchronizer.db_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
-        synchronizer.ei_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
+        synchronizer.di_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
         synchronizer.fb_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
         synchronizer.mc_successful_start_event.wait(pnc_app_manager.machine.event_wait_timeout)
         return True
@@ -152,7 +152,7 @@ def checkSuccessfulStart(pnc_app_manager, synchronizer):
 
 def waitForAppStart(synchronizer):
     synchronizer.db_startup_event.wait()
-    synchronizer.ei_startup_event.wait()
+    synchronizer.di_startup_event.wait()
     synchronizer.fb_startup_event.wait()
     synchronizer.mc_startup_event.wait()
 
@@ -206,9 +206,9 @@ def closeRSHSocket(pnc_app_manager, synchronizer):
 
     #print('active threads are ' + str(threading.enumerate()))
 
-if __name__ == '__main__' and 0:
-    pnc_app_manager, machine, synchronizer = appInit()
-    database, encoder_interface, feedback_handler, machine_controller = appStart('pocketnc',pnc_app_manager,machine,synchronizer)
+# if __name__ == '__main__' and 0:
+#     pnc_app_manager, machine, synchronizer = appInit()
+#     database, device_interface, feedback_handler, machine_controller = appStart('pocketnc',pnc_app_manager,machine,synchronizer)
 
     #appStart('pocketnc')
 #     appStart()

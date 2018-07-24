@@ -163,15 +163,18 @@ class MachineModel():
         self.machine_table_center_zero = [0.0, 0.0, 0.0, 0.0, 0.0]
         self.encoder_read_buffer_size = 10
         self.encoder_init = 1000000
-        #self.encoder_offset = [155836, 180838, 2283, 9121, 0]
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
-        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / 172, -1.0 / 167]
+        #self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / 172, -1.0 / 167]
         self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / (8000 * 2 / 90), -1.0 / (8000 * 2 / 90)]
         self.max_encoder_transmission_length = 1+4*6+1
         self.encoder_command_strings = ['S', 'G', 'R', 'B']
         self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n', '&']
         self.encoder_nak_strings = ['F&\r\n']
+
+        #Spindle parameters
+        self.spindle_encoder_resolution = 8192
+        self.spindle_max_rpm = 3000
 
         #Machine kinematics
         self.number_of_joints = 5

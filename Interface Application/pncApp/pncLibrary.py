@@ -38,6 +38,7 @@ printout_thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
 printout_subthread_terminate_string = "SUBTHREAD STOPPED: {} thread stopped {}"
 printout_device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
 printout_device_comm_initialization_string = "DEVICE COMMUNICATION INITIALIZED: {} comm running on {} process"
+printout_device_comm_initialization_failed_string = "DEVICE COMMUNICATION INITIALIZATION FAILURE: {} could not connect to {}"
 printout_connection_open_string = "CONNECTED to {} on {}"
 printout_connection_close_string = "DISCONNECTED from {} on {}"
 printout_connection_failed_string = "CONNECTION FAILED on {}, error: "
@@ -71,6 +72,9 @@ queue_database_command_queue_wait_timeout = 0.05
 #Event parameters
 pncApp_init_wait_timeout = 10
 event_wait_timeout = 2
+
+#Device parameters
+device_search_timeout = 20
 
 #SculptPrint Formatting
 SP_axis_sensor_IDs = [0, 1]
@@ -222,11 +226,12 @@ class Synchronizer():
     def __init__(self, manager):
         #Process run events
         self.p_enable_database_event = manager.Event()
-        self.p_enable_encoder_event = manager.Event()
+        self.p_enable_device_interface_event = manager.Event()
         self.p_enable_feedback_handler_event = manager.Event()
         self.p_enable_machine_controller_event = manager.Event()
         self.p_run_database_event = manager.Event()
-        self.p_run_encoder_interface_event = manager.Event()
+        #self.p_run_encoder_interface_event = manager.Event()
+        self.p_run_device_interface_event = manager.Event()
         self.p_run_machine_controller_event = manager.Event()
         self.p_run_feedback_handler_event = manager.Event()
         self.t_run_motion_controller_event = manager.Event()
@@ -240,6 +245,7 @@ class Synchronizer():
         self.t_run_cloud_trajectory_planner_event = manager.Event()
         self.t_run_cloud_trajectory_planner_receiver_event = manager.Event()
         self.t_run_operating_system_controller = manager.Event()
+        self.t_run_spindle_interface_event = manager.Event()
 
         #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
         self.fb_connection_change_event = manager.Event()
@@ -277,20 +283,25 @@ class Synchronizer():
         self.ei_encoder_comm_init_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
         self.ei_initial_encoder_position_set_event = manager.Event()
+        self.di_spindle_drive_connected_event = manager.Event()
+        self.di_encoder_comm_init_failed_event = manager.Event()
         self.tp_plan_motion_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
         self.ei_startup_event = manager.Event()
+        self.di_startup_event = manager.Event()
         self.db_startup_event = manager.Event()
         self.mc_successful_start_event = manager.Event()
         self.fb_successful_start_event = manager.Event()
         self.ei_successful_start_event = manager.Event()
+        self.di_successful_start_event = manager.Event()
         self.db_successful_start_event = manager.Event()
         #self.pnc_app_initialized_event = manager.Event()
         self.mc_running_event = manager.Event()
         self.fb_running_event = manager.Event()
         self.ei_running_event = manager.Event()
+        self.di_running_event = manager.Event()
         self.db_running_event = manager.Event()
 
         self.os_linuxcnc_running_event = manager.Event()
@@ -313,6 +324,7 @@ class Synchronizer():
         self.q_database_output_queue_proxy = manager.Queue()
         self.q_print_server_message_queue = manager.Queue()
         self.q_machine_controller_command_queue = manager.Queue()
+        self.q_device_interface_command_queue = manager.Queue()
         self.q_trajectory_planner_data_return_queue = manager.Queue()
         self.q_trajectory_planner_planned_move_queue = manager.Queue()
 
@@ -358,10 +370,11 @@ class Move():
 
 class MachineCommand():
     #Class for RSH commands, mode switches, etc
-    def __init__(self, command_type, command_data):
+    def __init__(self, command_type, command_data, target_device=None):
         #super(MachineCommand, self).__init__()
         self.command_type = command_type
         self.command_data = command_data
+        self.target_device = target_device
 
 class DatabaseCommand():
     def __init__(self, command_type, records, parameters = None, time = None):
