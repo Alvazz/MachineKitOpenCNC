@@ -135,8 +135,9 @@ class MachineModel():
         self.rsh_feedback_strings = ['*', 'bL=', 'bT=', 'PROGRAM_STATUS', 'MODE', 'ON', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'NAK']
         self.rsh_error_string = 'NAK'
         self.rsh_echo_strings = ['SET', 'GET', 'DM']
-        self.ascii_rsh_feedback_strings = ['*', 'BTBL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'BUFFER_LEVEL_FEEDBACK', 'NAK']
+        self.ascii_rsh_feedback_strings = ['*', 'BTBL', 'PROGRAM_STATUS', 'MODE', 'SERVO_LOG_PARAMS', 'MACHINE', 'ECHO', 'HELLO', 'ENABLE', 'ESTOP', 'JOINT_HOMED', 'PING', 'TIME', 'COMM_MODE', 'BUFFER_LEVEL_FEEDBACK', 'SET_TIMEOUT', 'NAK']
         self.binary_rsh_feedback_strings = ['SF', 'BL']
+        self.servo_log_types = ['COMMANDED', 'MEASURED']
         self.minimum_header_length = 3
         self.ascii_header_delimiter = ' '
         self.ascii_line_terminator = '\r\n'
@@ -173,12 +174,18 @@ class MachineModel():
         self.encoder_nak_strings = ['F&\r\n']
 
         #Spindle parameters
+        self.spindle_axis = 'axis1'
+        self.spindle_current_feed_forward = 1
+        self.spindle_velocity_gain = 0.0012
+        self.spindle_position_gain = 100
+        self.spindle_motor_current_limit = 20
+
         self.spindle_encoder_resolution = 8192
         self.spindle_max_rpm = 3000
 
         #Machine kinematics
         self.number_of_joints = 5
-        self.servo_dt = 0.001
+        self.servo_dt = 0.002
         #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
@@ -206,6 +213,7 @@ class MachineModel():
         self.buffer_level_feedback_mode = 0
         self.buffer_level_feedback_period_us = 1e6/20
         self.units = 'inch'
+        self.emc_timeout = 0
 
         #self.rsh_error = 0
         self.rsh_error = 0
@@ -227,12 +235,15 @@ class MachineModel():
         self.motion_controller_clock_offset = 0
         self.last_unix_time = 0
         self.clock_sync_received_time = 0
+        self.motion_start_time = -1
 
         # Servo log parameters
+        self.servo_log_type = self.servo_log_types.index('COMMANDED')
+        self.servo_log_type = self.servo_log_types.index('MEASURED')
         self.servo_log_num_axes = 5
-        self.servo_log_sub_sample_rate = 10
+        self.servo_log_sub_sample_rate = 2
         #self.servo_log_buffer_size = 50
-        self.servo_log_buffer_size = 25
+        self.servo_log_buffer_size = 50
 
         #Comm parameters
         self.rsh_socket = None
@@ -266,9 +277,9 @@ class MachineModel():
 
         #TCP Control Parameters
         self.polylines_per_tx = 1
-        self.points_per_polyline = 25
+        self.points_per_polyline = 20
         self.max_motion_block_size = 1000
-        self.buffer_level_setpoint = 1000
+        self.buffer_level_setpoint = 500
         self.max_buffer_level = 2000
         self.motion_control_data_prebuffer_size = 20
 

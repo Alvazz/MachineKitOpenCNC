@@ -152,34 +152,31 @@ class MachineController(Process):
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "ENQUEUE_TRAPEZOID":
             #self.enqueueTrapezoidalTest(command.command_data[0])
-            self.enqueueTrapezoidalTest(1, 90, 5)
+            self.enqueueTrapezoidalTest(1, 90, 2)
         elif command.command_type == "EXECUTE":
             print('machine mode is ' + self.machine.mode)
-            self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
+            #self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
             #self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
-            if self.machine.mode != 'AUTO':
-                print('mode not auto')
-            self.synchronizer.mc_run_motion_event.set()
+            # if self.machine.mode != 'AUTO':
+            #     print('mode not auto')
+            #self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
+            #self.synchronizer.mc_run_motion_event.set()
+            self.beginMotionExecution()
         elif command.command_type == "PLAN_SEQUENCES":
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":
             self.motion_controller.motion_queue = Queue()
             pass
-        elif command.command_type == 'EXECUTE_WHILE_PLANNING':
-            self.beginPlanningAndExecution()
+        elif command.command_type == 'PLAN':
+            self.beginPlanningTrajectory(command.command_data[0])
 
     def handleRSHError(self):
         self.synchronizer.mc_rsh_error_event.clear()
         self.motion_controller.interrupt_motion_event.set()
+        self.synchronizer.mc_motion_complete_event.clear()
+        self.waitForSet(self.setEstop, 0, self.getEstop)
         self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
-
-    # def updateTrajectoryFromTP(self):
-    #     while not self.cloud_trajectory_planner.planned_point_queue.empty():
-    #         planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
-    #         self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['pid']))
-    #     # if not self.cloud_trajectory_planner.planned_point_queue.empty():
-    #     #     while not self.cloud_trajector
 
     ######################## OS Interface ########################
     def runCNC(self):
@@ -250,31 +247,84 @@ class MachineController(Process):
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))
 
-    def beginPlanningAndExecution(self):
+    def initializeTrajectory(self):
+        hold_move = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(
+            self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
+        print('generated hold')
+        rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(
+            self.machine, self.motion_controller.motion_queue_feeder.shifted_motion_start_points,
+            move_type='trapezoidal'), machine=self.machine, direction=1),
+            move_type='trapezoidal', offset_axes=False)
+        print('generated rapid')
+
+        self.motion_controller.buffer_precharge = hold_move
+        self.motion_controller.initial_position_rapid_move = rapid_to_start
+
+
+    def beginPlanningTrajectory(self, number_of_sequences):
         if not self.cloud_trajectory_planner.tp_state.tp_connected_event.wait(self.machine.event_wait_timeout):
             print("TP connection timed out")
 
+        self.cloud_trajectory_planner.plan_to_index_delta = number_of_sequences
+
+        self.motion_controller.motion_queue_feeder.clearReceivedTrajectories()
+
+        self.cloud_trajectory_planner.enqueueSequencesForPlanning(self.cloud_trajectory_planner.tool_points,
+                                                                  self.cloud_trajectory_planner.machine_points,
+                                                                  self.cloud_trajectory_planner.contiguous_sequences,
+                                                                  self.cloud_trajectory_planner.starting_sequence_id,
+                                                                  self.cloud_trajectory_planner.starting_sequence_id +
+                                                                  number_of_sequences - 1 if number_of_sequences >= 1
+                                                                  else len(self.cloud_trajectory_planner.contiguous_sequences))
         self.synchronizer.tp_plan_motion_event.set()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_waiting_for_first_move_string,
                                                          self.cloud_trajectory_planner.remote_tp_name)
 
-        self.cloud_trajectory_planner.tp_state.first_trajectory_received_event.wait()
+        self.synchronizer.tp_first_trajectory_received_event.wait()
 
         pncLibrary.TP.updateAxisOffset(self.machine, 4, pncLibrary.TP.calculateRotaryAxisOffset(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], 4))
-        shifted_first_move_start_points = pncLibrary.TP.offsetAxes(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], machine=self.machine)
+        #shifted_first_move_start_points = pncLibrary.TP.offsetAxes(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], machine=self.machine)
+        self.motion_controller.motion_queue_feeder.shifted_motion_start_points = pncLibrary.TP.offsetAxes(
+            self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5],
+            machine=self.machine)
 
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_trajectory_initialization_string)
+        #self.motion_controller.buffer_precharge, self.motion_controller.initial_position_rapid_move = self.initializeTrajectory()
+        self.initializeTrajectory()
+        # hold_position = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(
+        #     self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
+        # print('generated hold')
+        # rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(
+        #     self.machine, self.motion_controller.motion_queue_feeder.shifted_motion_start_points,
+        #     move_type='trapezoidal'), machine=self.machine, direction=1),
+        #     move_type='trapezoidal', offset_axes=False)
+        # print('generated rapid')
 
-        hold_position = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
-        print('generated hold')
-        rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(self.machine, shifted_first_move_start_points, move_type='trapezoidal'), machine=self.machine, direction=1), move_type='trapezoidal', offset_axes=False)
-        print('generated rapid')
+        #self.insertMove(hold_move)
+        #self.insertMove(rapid_to_start)
 
-        self.insertMove(hold_position)
-        self.insertMove(rapid_to_start)
+    def beginMotionExecution(self):
+        if self.synchronizer.tp_first_trajectory_received_event.is_set():
+            self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
+            self.synchronizer.mc_motion_complete_event.clear()
+            self.cloud_trajectory_planner.tp_state.data_flushed_to_websocket_event.clear()
 
-        self.motion_controller.motion_queue_feeder.linkToTP()
-        self.motion_controller.motion_queue_feeder.startFeed()
+            if not self.cloud_trajectory_planner.tp_state.all_moves_consumed_event.is_set():
+                self.insertMove(self.motion_controller.buffer_precharge)
+                self.insertMove(self.motion_controller.initial_position_rapid_move)
+                self.motion_controller.motion_queue_feeder.linkToTP()
+            else:
+                self.initializeTrajectory()
+                self.insertMove(self.motion_controller.buffer_precharge)
+                self.insertMove(self.motion_controller.initial_position_rapid_move)
+                self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
+
+            self.motion_controller.motion_queue_feeder.startFeed()
+            self.synchronizer.mc_run_motion_event.set()
+        else:
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_machine_not_ready_for_motion_string)
 
 
     ######################## Writing Functions ########################
@@ -283,7 +333,6 @@ class MachineController(Process):
             self.machine.rsh_socket.send(data)
 
     def writeLineUTF(self,data):
-        #FIXME protect with mutex?
         self.socketLockedWrite((data+'\r\n').encode('utf-8'))
 
     ######################## Setup Functions ########################
@@ -313,10 +362,11 @@ class MachineController(Process):
                  print('waiting for clock sync')
 
             if not self.synchronizer.ei_encoder_init_event.is_set() and self.synchronizer.ei_encoder_comm_init_event.is_set():
-                print('MACHINE CONTROLLER: Waiting for encoder inital position set')
+                print('MACHINE CONTROLLER: Waiting for encoder initial position set')
                 self.synchronizer.ei_encoder_init_event.wait()
 
             self.waitForSet(self.setCommMode, 1, self.getCommMode)
+            self.waitForSet(self.setEMCTimeout, 0.01, self.getEMCTimeout)
 
         self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: Control initialization successful")
         self.synchronizer.mvc_connected_event.set()
@@ -469,6 +519,17 @@ class MachineController(Process):
         else:
             return (False, self.machine.comm_mode)
 
+    def getEMCTimeout(self, timeout = 0.5):
+        self.writeLineUTF('get timeout')
+        if self.synchronizer.fb_emc_timeout_change_event.wait(timeout):
+            return (True, self.machine.emc_timeout)
+        else:
+            return (False, self.machine.emc_timeout)
+
+    def getEMCReceiptMode(self):
+        self.synchronizer.fb_emc_receipt_mode_change_event.clear()
+        self.writeLineUTF('get set_wait')
+
     ############################# SETs #############################
     def startLinuxCNC(self):
         self.operating_system_controller.command_queue.put(pncLibrary.OSCommand('RUN_CNC'))
@@ -491,6 +552,14 @@ class MachineController(Process):
             sendstr += 'ascii'
         self.synchronizer.fb_comm_mode_change_event.clear()
         self.writeLineUTF(sendstr)
+
+    def setEMCTimeout(self, timeout):
+        self.synchronizer.fb_emc_timeout_change_event.clear()
+        self.writeLineUTF('set timeout ' + str(timeout))
+
+    def setEMCReceiptMode(self, mode):
+        self.synchronizer.fb_emc_receipt_mode_change_event.clear()
+        self.writeLineUTF('set set_wait ' + str(mode))
 
     def setMachineMode(self, mode):
         self.synchronizer.fb_mode_change_event.clear()
@@ -535,18 +604,21 @@ class MachineController(Process):
         self.synchronizer.fb_estop_change_event.clear()
         self.writeLineUTF(sendstr)
 
-    def setServoFeedbackMode(self, flag, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
+    def setServoFeedbackMode(self, flag, log_type=0, sub_sample_rate=0, buffer_size=0, axes=0, dump_flag=0, write_buffer=0):
         if not sub_sample_rate:
             sub_sample_rate = self.machine.servo_log_sub_sample_rate
         if not buffer_size:
             buffer_size = self.machine.servo_log_buffer_size
         if not axes:
             axes = self.machine.servo_log_num_axes
+        if not log_type:
+            log_type = self.machine.servo_log_type
 
         self.synchronizer.fb_servo_logging_mode_change_event.clear()
-        self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) +
-                          ' ' + str(sub_sample_rate) + ' ' + str(buffer_size) +
-                          ' ' + str(dump_flag) + ' ' + str(write_buffer))
+        self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(log_type) + ' ' + str(axes) + ' ' + str(
+            sub_sample_rate) + ' ' + str(buffer_size) + ' ' + str(dump_flag) + ' ' + str(write_buffer))
+        # self.writeLineUTF('set servo_log_params ' + str(flag) + ' ' + str(axes) + ' ' + str(
+        #     sub_sample_rate) + ' ' + str(buffer_size) + ' ' + str(dump_flag) + ' ' + str(write_buffer))
 
     def setBufferLevelFeedbackMode(self, flag, feedback_period = None):
         if feedback_period is None:

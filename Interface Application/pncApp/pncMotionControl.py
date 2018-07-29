@@ -29,6 +29,9 @@ class MotionController(Thread):
         self.object_prebuffer = []
         self.array_prebuffer = []
 
+        self.buffer_precharge = None
+        self.initial_position_rapid_move = None
+
         self.startup_event = Event()
 
     def run(self):
@@ -40,32 +43,49 @@ class MotionController(Thread):
         self.startup_event.set()
 
         while self.synchronizer.t_run_motion_controller_event.is_set():
-            if self.synchronizer.mc_run_motion_event.wait(self.machine.thread_queue_wait_timeout):
+            if self.synchronizer.mc_run_motion_event.wait(self.machine.event_wait_timeout):
+                self.motion_queue_feeder.enqueue_blocks_event.set()
                 #self.machine.motion_controller_clock_offset = time.time()
                 #There are new moves in the queue, find the one to be executed next
                 while not self.synchronizer.mc_rsh_error_event.is_set():
-                    motion_block_to_execute = self.motion_queue.get()
-                    self.current_move_serial_number = motion_block_to_execute.serial_number
-                    self.current_move_subserial_number = motion_block_to_execute.subserial_number
-
-                    self.current_motion_block_serial_number += 1
-                    motion_block_to_execute.motion_block_serial_number = self.current_motion_block_serial_number
-
-                    self.synchronizer.q_database_command_queue_proxy.put(
-                        pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOTION_BLOCKS": motion_block_to_execute}]))
-
                     try:
-                        print('buffer level at start of move subserial ' +str(self.current_move_subserial_number) + ' is ' + str(self.machine.current_buffer_level))
-                        self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
-                    except pncLibrary.RSHError as error_message:
-                        self.synchronizer.q_print_server_message_queue.put(str(error_message))
-                        self.motion_queue = Queue()
-                        self.synchronizer.mc_run_motion_event.clear()
-                        break
+                        motion_block_to_execute = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
+                        self.synchronizer.mc_motion_complete_event.clear()
 
-                    self.prebufferAndFlushMotionRecords()
+                        if not self.synchronizer.mc_motion_started_event.is_set():
+                            self.machine.motion_start_time = time.time()-self.machine.pncApp_clock_offset
+                            self.synchronizer.mc_motion_started_event.set()
 
-                    self.last_move_serial_number = motion_block_to_execute.serial_number
+                        self.current_move_serial_number = motion_block_to_execute.serial_number
+                        self.current_move_subserial_number = motion_block_to_execute.subserial_number
+
+                        self.current_motion_block_serial_number += 1
+                        motion_block_to_execute.motion_block_serial_number = self.current_motion_block_serial_number
+
+                        self.synchronizer.q_database_command_queue_proxy.put(
+                            pncLibrary.DatabaseCommand('push_object', [{"EXECUTED_MOTION_BLOCKS": motion_block_to_execute}]))
+
+                        try:
+                            print('buffer level at start of move subserial ' + str(self.current_move_subserial_number) + ' is ' + str(self.machine.current_buffer_level))
+                            self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
+                        except pncLibrary.RSHError as error_message:
+                            self.synchronizer.q_print_server_message_queue.put(str(error_message))
+                            #self.motion_queue = Queue()
+                            self.emptyMotionQueue()
+                            self.interrupt_motion_event.clear()
+                            self.synchronizer.mc_run_motion_event.clear()
+                            break
+
+                        self.prebufferAndFlushMotionRecords()
+
+                        self.last_move_serial_number = motion_block_to_execute.serial_number
+                    except Empty:
+                        if self.machine.current_buffer_level == 0:
+                            time.sleep(self.machine.servo_dt*self.machine.max_buffer_level)
+                            self.synchronizer.mc_motion_complete_event.set()
+                            self.synchronizer.mc_run_motion_event.clear()
+                            print('MOTION CONTROLLER: Motion complete, waiting for next set of motion blocks')
+                            break
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      self.machine.thread_terminate_string, current_process().name,
@@ -106,10 +126,7 @@ class MotionController(Thread):
                                                   'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]) + np.array([np.arange(0,polylines*blocklength)/1e3]).T,
                                                   'COMMANDED_SERVO_POSITIONS': servo_points[command],
                                                   'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])})
-            # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{'COMMANDED_SERVO_POLYLINES': commanded_points}]))
-            # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push', [{'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
-            #                                                                                           'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
-            #                                                                                           'COMMANDED_POSITIONS': servo_points[command], 'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])}]))
+
             time.sleep(sleep_time)
 
     def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
@@ -142,6 +159,11 @@ class MotionController(Thread):
     def adaptNetworkTxGain(self):
         pass
 
+    def emptyMotionQueue(self):
+        print('MOTION CONTROLLER: Dumping motion queue')
+        while not self.motion_queue.empty():
+            block = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
+
 class MotionQueueFeeder(Thread):
     def __init__(self, parent):
         super(MotionQueueFeeder, self).__init__()
@@ -151,6 +173,7 @@ class MotionQueueFeeder(Thread):
 
         self.max_motion_block_size = self.parent.machine.max_motion_block_size
 
+        self.received_moves = []
         self.move_queue = parent.move_queue
         self.motion_queue = parent.motion_queue
         self.startup_event = Event()
@@ -158,6 +181,7 @@ class MotionQueueFeeder(Thread):
         self.enqueue_blocks_event = Event()
 
         self.processed_move_serial_number = 0
+        self.shifted_motion_start_points = None
 
     def run(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
@@ -166,12 +190,12 @@ class MotionQueueFeeder(Thread):
         self.startup_event.set()
 
         while self.synchronizer.t_run_motion_queue_feeder_event.is_set():
+            print('motion queue size is ' + str(self.parent.motion_queue.qsize()))
+            print('move queue size is ' + str(self.parent.move_queue.qsize()))
             if self.enqueue_blocks_event.wait(pncLibrary.event_wait_timeout):
                 self.updateTrajectoryFromTP()
 
                 try:
-                    print('motion queue size is ' + str(self.parent.motion_queue.qsize()))
-                    print('move queue size is ' + str(self.parent.move_queue.qsize()))
                     move_to_execute = self.move_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
                     self.processed_move_serial_number += 1
                     move_to_execute.serial_number = self.processed_move_serial_number
@@ -186,9 +210,12 @@ class MotionQueueFeeder(Thread):
                         pncLibrary.DatabaseCommand('push_object', [{"PROCESSED_MOVES": move_to_execute}]))
 
                     for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
-                        #self.insertMotionBlock(move_to_execute, move_to_execute.servo_tx_array[motion_packet_start_index:motion_packet_start_index+samples_in_block], motion_packet_start_index/samples_in_block+1)
                         self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))
                 except Empty:
+                    if self.synchronizer.tp_planning_finished_event.is_set():
+                        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_motion_queue_feeder_pausing_string)
+                        self.unlinkFromTP()
+                        self.stopFeed()
                     pass
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
@@ -196,7 +223,6 @@ class MotionQueueFeeder(Thread):
                                                      self.name)
 
     def insertMotionBlock(self, original_move, indices, motion_block_id):
-        #motion_block = pncLibrary.Move(original_move.point_samples[original_move.blocklength*indices[0]:original_move.blocklength*indices[1]], 'block')
         point_samples_flat = original_move.servo_tx_array.reshape((np.shape(original_move.servo_tx_array)[0] * np.shape(original_move.servo_tx_array)[1], -1))
         try:
             motion_block = pncLibrary.Move(point_samples_flat[original_move.blocklength*indices[0]:original_move.blocklength*indices[1]], machine=self.parent.machine, move_type='block', offset_axes=True)
@@ -216,15 +242,30 @@ class MotionQueueFeeder(Thread):
             remotely_planned_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get_nowait()
             #print('TP putting move on motion queue')
             self.parent.parent.insertMove(remotely_planned_move)
-            #self.move_queue.put(remotely_planned_move)
-        # while not self.cloud_trajectory_planner.planned_point_queue.empty():
-        #     planned_move = self.cloud_trajectory_planner.planned_point_queue.get()
-        #     self.insertMove(pncLibrary.Move(planned_move['planned'], 'remotely_planned', planned_move['pid']))
+            self.received_moves.append(remotely_planned_move)
 
     def linkToTP(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                     pncLibrary.printout_trajectory_planner_motion_queues_linked_string, self.parent.parent.cloud_trajectory_planner.name)
+                                                     pncLibrary.printout_trajectory_planner_motion_queues_linked_string,
+                                                     self.parent.parent.cloud_trajectory_planner.name)
         self.tp_link_event.set()
+
+    def unlinkFromTP(self):
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                     pncLibrary.printout_trajectory_planner_motion_queues_unlinked_string,
+                                                     self.parent.parent.cloud_trajectory_planner.name)
+        self.tp_link_event.clear()
 
     def startFeed(self):
         self.enqueue_blocks_event.set()
+
+    def stopFeed(self):
+        self.enqueue_blocks_event.clear()
+
+    def reenqueueTPMoves(self):
+        for move in self.received_moves:
+            self.parent.parent.insertMove(move)
+
+    def clearReceivedTrajectories(self):
+        self.synchronizer.tp_first_trajectory_received_event.clear()
+        self.received_moves = []

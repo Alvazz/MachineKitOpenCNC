@@ -47,12 +47,19 @@ printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connect
 printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
 printout_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
+printout_trajectory_initialization_string = "MACHINE CONTROLLER: Initializing trajectory"
+printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for sequence {}"
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
+printout_trajectory_planner_motion_queues_unlinked_string = "MOTION QUEUE FEEDER: Primary move queue unlinked from {} move queue"
 printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
 printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued sequence ID {}"
-printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received subsequence {} of sequence ID {} from {}"
+printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received {} byte subsequence {} of sequence ID {} from {}"
+printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER: Enqueueing {} sequences from {}"
+printout_machine_not_ready_for_motion_string = "MACHINE CONTROLLER: No trajectories available for execution, aborting motion"
 printout_bad_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed sequence ID {}"
+printout_websocket_motion_data_sent_string = "TRAJECTORY PLANNER: {} flushing {} bytes of data for sequences {} thru {} to websocket"
 printout_move_queue_insertion_string = "MACHINE CONTROLLER: Placed move ID {} with type \"{}\" on motion controller queue"
+printout_motion_queue_feeder_pausing_string = "MOTION CONTROLLER: Pausing motion block feed"
 printout_ssh_connection_success_string = "SSH CONNECTION SUCCESS: User {} connected on address {}"
 printout_ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {} had error: {}"
 printout_ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
@@ -70,7 +77,7 @@ queue_move_queue_wait_timeout = 1
 queue_database_command_queue_wait_timeout = 0.05
 
 #Event parameters
-pncApp_init_wait_timeout = 10
+pncApp_init_wait_timeout = 15
 event_wait_timeout = 2
 
 #Device parameters
@@ -114,47 +121,27 @@ def updatePath():
         sys.path.append(dir_pncApp_project_path)
 
 ######################## Useful Classes ########################
-class SculptPrintInterface():
-    #MVC for SculptPrint UI
-    def __init__(self):
-        #super(SculptPrintInterface, self).__init__()
-        #self.machine = machine
-        self.connected = False
-
-        #Flags for user events
-        self.enqueue_moves = False
-
-        #UI Data Fields
-        self.start_file = 0
-        self.end_file = 0
-
-        #Events
-        # self.connect_event = threading.Event()
-        # self.enqueue_moves_event = threading.Event()
-        # self.moves_queued_event = threading.Event()
-        # self.run_motion_event = threading.Event()
+# class SculptPrintInterface():
+#     #MVC for SculptPrint UI
+#     def __init__(self):
+#         #super(SculptPrintInterface, self).__init__()
+#         #self.machine = machine
+#         self.connected = False
+#
+#         #Flags for user events
+#         self.enqueue_moves = False
+#
+#         #UI Data Fields
+#         self.start_file = 0
+#         self.end_file = 0
 
 class SculptPrintFeedbackState():
     def __init__(self):
-        #Data Handling
-        #self.LF_start_time_index = 0
-        #self.HF_start_time_index = 0
-        #self.serial_start_time_index = 0
 
-        #self.last_time_reading = 0
-        #FIXME set this up parametrically
-        #self.last_position_reading = [0]*5
-        #self.last_buffer_level_reading = 0
-
-        #self.last_values_read = [[0]*len(SP_data_formats[k]) for k in range(0,len(SP_data_formats))]
-        #self.feedback_indices = [[0]*(len(SP_pncApp_machine_axes)+len(SP_pncApp_data_auxes[k])) for k in range(0,len(SP_data_formats))]
         self.CAM_clock_offsets = dict()
         self.last_values_read = dict()
         self.feedback_indices = dict()
         self.clock_offsets = dict()
-
-        #self.machine_feedback_record_id = 0
-        #self.encoder_feedback_record_id = 0
 
     def buildFeedbackIndexDictionary(self):
         pass
@@ -166,8 +153,11 @@ class CloudTrajectoryPlannerState():
         self.send_next_block_event = Event()
         self.sequence_id_ack_event = Event()
         self.matching_sequence_received_event = Event()
-        self.first_trajectory_received_event = Event()
-        self.planning_finished_event = Event()
+        #self.tp_first_trajectory_received_event = Event()
+        #self.tp_planning_finished_event = Event()
+        self.metadata_ack_event = Event()
+        self.data_flushed_to_websocket_event = Event()
+        self.all_moves_consumed_event = Event()
 
         self.sequence_ack_id = 0
         self.enqueued_sequence_id = 0
@@ -246,8 +236,9 @@ class Synchronizer():
         self.t_run_cloud_trajectory_planner_receiver_event = manager.Event()
         self.t_run_operating_system_controller = manager.Event()
         self.t_run_spindle_interface_event = manager.Event()
+        self.t_run_encoder_interface_event = manager.Event()
 
-        #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface
+        #State Switch Events: fb_ for feedback, mc_ for machine_controller, mvc_ for UI, ei_ for encoder_interface, di_ for device interface
         self.fb_connection_change_event = manager.Event()
         self.fb_link_change_event = manager.Event()
         self.fb_echo_change_event = manager.Event()
@@ -266,6 +257,7 @@ class Synchronizer():
         self.fb_buffer_level_reception_event = manager.Event()
         self.fb_servo_feedback_reception_event = manager.Event()
         self.fb_feedback_data_initialized_event = manager.Event()
+        self.fb_emc_timeout_change_event = manager.Event()
 
         # #FIXME implement this
         self.fb_position_change_event = manager.Event()
@@ -276,6 +268,7 @@ class Synchronizer():
         self.mc_clock_sync_event = manager.Event()
         self.mc_xenomai_clock_sync_event = manager.Event()
         self.mc_run_motion_event = manager.Event()
+        self.mc_motion_started_event = manager.Event()
         self.mc_motion_complete_event = manager.Event()
         self.mc_rsh_error_event = manager.Event()
         self.mc_socket_connected_event = manager.Event()
@@ -285,7 +278,10 @@ class Synchronizer():
         self.ei_initial_encoder_position_set_event = manager.Event()
         self.di_spindle_drive_connected_event = manager.Event()
         self.di_encoder_comm_init_failed_event = manager.Event()
+        #self.db_write_to_websocket_event = manager.Event()
         self.tp_plan_motion_event = manager.Event()
+        self.tp_planning_finished_event = manager.Event()
+        self.tp_first_trajectory_received_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
@@ -441,6 +437,8 @@ def waitForThreadStart(caller, *args):
 def waitForThreadStop(caller, *args):
     stopped_threads = []
     for thread in args:
+        if thread is None:
+            continue
         getattr(caller.synchronizer, 't_run_' + thread.name + '_event').clear()
         stopped_threads.append(thread)
 

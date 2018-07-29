@@ -57,7 +57,7 @@ class PNCAppController(Thread):
     #         pncLibrary.sendIPCData(connection_type, 'text', connection, 'ACK')
 
     def handleCommand(self, command):
-        print(command.command)
+        print('PNCAPP CONTROLLER: Received ' + command.command)
         #command_data = command.command.split('_')
         #command_type = command.command
         if command.command == 'INIT':
@@ -103,9 +103,9 @@ class PNCAppController(Thread):
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
-        elif command.command == 'PLANEXECUTE':
+        elif command.command == 'PLAN':
             self.synchronizer.mvc_connect_event.wait()
-            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE_WHILE_PLANNING', None))
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('PLAN', [int(data) for data in command.command_data]))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
@@ -187,6 +187,12 @@ class PNCAppInterfaceSocketLauncher(Thread):
         while self.t_run_interface_socket_launcher_event.is_set():
             try:
                 (client_connection, client_address) = self.interface_socket.accept()
+                if not self.parent.pncApp_initialized_event.is_set():
+                    self.parent.pncApp_initialized_event.wait()
+                    if not self.parent.synchronizer.mvc_pncApp_started_event.is_set():
+                        print("PNCAPP CONTROLLER: Waiting for pncApp startup before launching client")
+                        self.parent.synchronizer.mvc_pncApp_started_event.wait()
+
                 self.pncApp_command_queue.put(pncLibrary.PNCAppCommand('FASTFORWARD', [0, 1], client_connection, 'socket', 'internal'))
                 self.launchClient(client_connection, client_address)
             except socket.timeout:

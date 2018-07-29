@@ -334,6 +334,9 @@ class DatabaseServer(Process):
         elif command.command_type == 'flush_to_websocket':
             self.writeDatabaseToWebsocket()
 
+        elif command.command_type == 'flush_to_file':
+            self.writeDatabaseToFile()
+
     def updateMachineState(self):
         #state_updates = self.database_puller.pull(self.synchronizer.state_streams, -1, None)
         #for state_update in state_updates:
@@ -344,19 +347,38 @@ class DatabaseServer(Process):
                 setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])
                 getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
 
+    # def updateRemoteData(self):
+    #     with self.synchronizer.db_data_store_lock:
+    #         self.writeDatabaseToFile()
+    #         self.writeDatabaseToWebsocket()
+
     def archiveRecords(self):
         pass
 
     def writeDatabaseToWebsocket(self):
-        self.synchronizer.q_trajectory_planner_data_return_queue.put({'stepgen': self.data_store.STEPGEN_FEEDBACK_POSITIONS, 'commanded': self.data_store.COMMANDED_SERVO_POSITIONS})
+        with self.synchronizer.db_data_store_lock:
+            self.synchronizer.q_trajectory_planner_data_return_queue.put({'executed_points': self.data_store.STEPGEN_FEEDBACK_POSITIONS,
+                                                                          'planned_points': self.data_store.COMMANDED_SERVO_POSITIONS,
+                                                                          'rt_time': self.data_store.RTAPI_CLOCK_TIMES,
+                                                                          'nonrt_time': self.data_store.RSH_CLOCK_TIMES,
+                                                                          'buffer_level': self.data_store.HIGHRES_TC_QUEUE_LENGTH})
 
     def writeDatabaseToFile(self):
         np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
         np.save(self.machine.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
         np.save(self.machine.database_output_directory + 'commanded', self.data_store.COMMANDED_SERVO_POSITIONS)
+        np.save(self.machine.database_output_directory + 'commanded_time', self.data_store.POLYLINE_TRANSMISSION_TIMES)
+        np.save(self.machine.database_output_directory + 'buffer_level', self.data_store.HIGHRES_TC_QUEUE_LENGTH)
         #fh = open(self.machine.database_output_directory + self.machine.database_file_name, 'wb')
         #fh.write(pickle.dumps(self.data_store))
         #fh.close()
+
+    def plotData(self):
+        import matplotlib.pyplot as plt
+        plt.plot(self.data_store.STEPGEN_FEEDBACK_POSITIONS[:, 1])
+        plt.plot(self.data_store.RTAPI_CLOCK_TIMES)
+        plt.show()
+        pass
 
 class DataStore():
     def __init__(self, machine_statics):

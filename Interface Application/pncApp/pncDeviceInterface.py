@@ -25,22 +25,26 @@ class SpindleInterface(Thread):
         self.startup_event.set()
         #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_spindle_drive_search_string)
         print('SPINDLE CONTROLLER: Looking for ODrive...')
-        self.connectToODrive()
-        self.configureSpindle()
+        return
+        if self.connectToODrive():
+            self.configureSpindle()
 
-        while self.synchronizer.t_run_spindle_interface_event.is_set():
-            try:
-                command = self.command_queue.get(True, pncLibrary.queue_wait_timeout)
-                self.handleCommand(command)
-            except Empty:
-                self.setSpindleSpeed(1000)
-                while True:
-                    start = time.clock()
-                    print(self.spindle_drive.axis0.encoder.pos_estimate)
-                    print(time.clock()-start)
-                pass
-            finally:
-                self.setSpindleSpeed(0)
+            ramp_thread = Thread(target=self.rampSpindle, args=(100,1000))
+            ramp_thread.start()
+
+            while self.synchronizer.t_run_spindle_interface_event.is_set():
+                try:
+                    command = self.command_queue.get(True, pncLibrary.queue_wait_timeout)
+                    self.handleCommand(command)
+                except Empty:
+                    self.setSpindleSpeed(1000)
+                    while True:
+                        start = time.clock()
+                        print(self.spindle_drive.axis0.encoder.pos_estimate)
+                        print(time.clock()-start)
+                    #pass
+                finally:
+                    self.setSpindleSpeed(0)
 
     def handleCommand(self, command):
         if command.command_type == 'SETSPEED':
@@ -49,11 +53,14 @@ class SpindleInterface(Thread):
     def connectToODrive(self):
         try:
             self.spindle_drive = odrive.find_any(timeout=pncLibrary.device_search_timeout)
+            #self.spindle_drive.reboot()
+            #self.spindle_drive = odrive.find_any(timeout=pncLibrary.device_search_timeout)
             #if self.spindle_drive is not None:
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_device_comm_initialization_string,
                                                          self.device_name, self.name)
             self.synchronizer.di_spindle_drive_connected_event.set()
+            return True
             # else:
             #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
             #                                                  pncLibrary.printout_device_comm_initialization_failed_string,
@@ -62,25 +69,59 @@ class SpindleInterface(Thread):
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_device_comm_initialization_failed_string,
                                                          self.name, self.device_name)
+            return False
             # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
             #                                              pncLibrary.printout_device_comm_initialization_failed_string,
             #                                              self.name, self.device_name)
 
     def configureSpindle(self):
+        self.setControllerGains()
         self.setMaximumSpindleSpeed(self.machine.spindle_max_rpm)
         self.setSpindleSpeed(0)
 
+    def setControllerGains(self):
+        getattr(self.spindle_drive, self.machine.spindle_axis).motor.config.current_lim = self.machine.spindle_motor_current_limit
+        getattr(self.spindle_drive, self.machine.spindle_axis).controller.config.vel_gain = self.machine.spindle_velocity_gain
+        getattr(self.spindle_drive, self.machine.spindle_axis).controller.config.pos_gain = self.machine.spindle_position_gain
+        getattr(self.spindle_drive, self.machine.spindle_axis).controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+
     def setSpindleSpeed(self, speed_in_rpm):
-        self.spindle_drive.axis0.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
-        self.spindle_drive.axis0.controller.vel_setpoint = (self.rpmToCountFrequency(speed_in_rpm))
+        #self.spindle_drive.axis0.controller.config.control_mode = CTRL_MODE_VELOCITY_CONTROL
+        #self.spindle_drive.axis1.controller.vel_setpoint = (self.rpmToCountFrequency(speed_in_rpm))
+        #getattr(self.spindle_drive, self.machine.spindle_axis).controller.set_vel_setpoint(self.rpmToCountFrequency(speed_in_rpm), self.machine.spindle_current_feed_forward)
+        getattr(self.spindle_drive, self.machine.spindle_axis).controller.vel_setpoint = self.rpmToCountFrequency(speed_in_rpm)
+
+    def rampSpindle(self, acceleration, target_rpm):
+        #accel_cps = self.rpmToCountFrequency(acceleration)
+        target_velocity = self.rpmToCountFrequency(target_rpm)
+        loop_delay = 0.1
+        loop_time = time.time()
+
+        vel = self.countFrequencyToRPM(self.spindle_drive.axis1.encoder.pll_vel)
+        while self.spindle_drive.axis1.encoder.pll_vel <= target_velocity:
+            #self.setSpindleSpeed(acceleration * loop_delay)
+            dt = time.time()-loop_time
+            loop_time = time.time()
+            vel += dt*acceleration
+            #vel = self.spindle_drive.axis1.encoder.pll_vel + accel_cps * dt
+            #self.spindle_drive.axis1.controller.set_vel_setpoint(vel, self.machine.spindle_current_feed_forward)
+            self.setSpindleSpeed(vel)
+            time.sleep(loop_delay)
+
+        self.setSpindleSpeed(target_rpm)
+        print('RAMP COMPLETE')
+        #time.sleep(1)
+        #self.spindle_drive.axis1.controller.set_vel_setpoint(target_velocity, self.machine.spindle_current_feed_forward)
 
     def setMaximumSpindleSpeed(self, speed_in_rpm):
-        self.spindle_drive.axis0.controller.config.vel_limit = self.rpmToCountFrequency(speed_in_rpm)
+        getattr(self.spindle_drive, self.machine.spindle_axis).controller.config.vel_limit = self.rpmToCountFrequency(speed_in_rpm)
+        #self.spindle_drive.axis0.controller.config.vel_limit = self.rpmToCountFrequency(speed_in_rpm)
 
     def rpmToCountFrequency(self, rpm):
         return self.machine.spindle_encoder_resolution * rpm/60
 
-
+    def countFrequencyToRPM(self, f):
+        return f/self.machine.spindle_encoder_resolution * 60
 
     def syncStateMachine(self):
         pass
@@ -128,35 +169,35 @@ class EncoderInterface(Thread):
 
             self.initializeBaudrate(self.machine.target_baudrate)
 
-            if self.synchronizer.p_enable_encoder_event.is_set():
-                #self.synchronizer.ei_successful_start_event.set()
-                #self.synchronizer.p_run_encoder_interface_event.wait()
-                pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name,
-                                               self.name)
-                while self.synchronizer.p_run_encoder_interface_event.is_set():
-                    raise serial.SerialException
+            #if self.synchronizer.p_enable_encoder_event.is_set():
+            #self.synchronizer.ei_successful_start_event.set()
+            #self.synchronizer.p_run_encoder_interface_event.wait()
+            pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name,
+                                           self.name)
+            while self.synchronizer.t_run_encoder_interface_event.is_set():
+                #raise serial.SerialException
 
-                    encoder_buffer_data_flag = True
-                    for read_count in range(0, self.machine.encoder_read_buffer_size):
-                        request_time = time.time()
-                        encoder_counts = self.getEncoderCounts('current')
+                encoder_buffer_data_flag = True
+                for read_count in range(0, self.machine.encoder_read_buffer_size):
+                    request_time = time.time()
+                    encoder_counts = self.getEncoderCounts('current')
 
-                        if encoder_counts[0]:
-                            self.encoder_position_buffer[read_count] = np.asarray(
-                                self.countsToPositions(self.machine.axes, encoder_counts[1]))
-                            self.encoder_time_buffer[read_count] = np.asarray(
-                                pncLibrary.estimateMachineClock(self.machine, encoder_counts[2]))
-                            encoder_buffer_data_flag = encoder_buffer_data_flag and True
-                        else:
-                            print('had bad encoder reading')
-                            encoder_buffer_data_flag = False
+                    if encoder_counts[0]:
+                        self.encoder_position_buffer[read_count] = np.asarray(
+                            self.countsToPositions(self.machine.axes, encoder_counts[1]))
+                        self.encoder_time_buffer[read_count] = np.asarray(
+                            pncLibrary.estimateMachineClock(self.machine, encoder_counts[2]))
+                        encoder_buffer_data_flag = encoder_buffer_data_flag and True
+                    else:
+                        print('had bad encoder reading')
+                        encoder_buffer_data_flag = False
 
-                    if self.synchronizer.mc_xenomai_clock_sync_event.is_set() and encoder_buffer_data_flag:
-                        # encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
-                        encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': self.encoder_position_buffer,
-                                               'SERIAL_RECEIVED_TIMES': self.encoder_time_buffer}
-                        self.synchronizer.q_database_command_queue_proxy.put(
-                            pncLibrary.DatabaseCommand('push', [encoder_data_record]))
+                if self.synchronizer.mc_xenomai_clock_sync_event.is_set() and encoder_buffer_data_flag:
+                    # encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
+                    encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': self.encoder_position_buffer,
+                                           'SERIAL_RECEIVED_TIMES': self.encoder_time_buffer}
+                    self.synchronizer.q_database_command_queue_proxy.put(
+                        pncLibrary.DatabaseCommand('push', [encoder_data_record]))
             # else:
             #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, 'ENCODER INTERFACE: Decoder board not responsive, terminating thread')
 
@@ -189,8 +230,13 @@ class EncoderInterface(Thread):
 
         except serial.serialutil.SerialException as error:
             print('Encoder interface error: ' + str(error))
+            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_device_comm_initialization_failed_string,
+                                                         self.name, self.device_name)
+            #self.synchronizer.ei_startup_event.set()
         except serial.SerialException as error:
-            self.synchronizer.ei_startup_event.set()
+            #self.synchronizer.ei_startup_event.set()
+#           pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_device_comm_initialization_failed_string, self.name, self.device_name)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, self.machine.connection_failed_string+str(error), self.machine.comm_port)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          self.machine.process_self_terminate_string,
@@ -365,7 +411,7 @@ class DeviceInterface(Process):
         self.synchronizer.di_startup_event.set()
         self.synchronizer.process_start_signal.wait()
         time.clock()
-
+        #return
         while self.synchronizer.p_run_device_interface_event.is_set():
             try:
                 command = self.synchronizer.q_device_interface_command_queue.get(True, pncLibrary.queue_wait_timeout)

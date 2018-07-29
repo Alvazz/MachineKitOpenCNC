@@ -108,13 +108,16 @@ def readMachine(axis_sensor_id):
     #return 'CONNECT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CONNECT', str, '')
 
 def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    if arg1 == 0:
-        arg1 = 10
-    return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+    if arg0 == 0:
+        arg0 = 5
+    # return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+    return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
+
 
 def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
+    #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
+    return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
     # if 'ENQUQUE' in ack:
     #     return True
     # else:
@@ -123,7 +126,7 @@ def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
     #return True;
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-    return 'PLANEXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLANEXECUTE', str, '')
+    return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
     # print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
     # pncApp_controller.command_queue.put('EXECUTE')
     # return True;
@@ -163,8 +166,11 @@ if __name__ != 'machinemonitor':
     yy = readMachine(1)
     #print(yy[0])
     #userPythonFunction1(0, 0, 0, 0, 0)
+    #time.sleep(5)
+    #userPythonFunction2(0, 0, 0, 0, 0)
+    userPythonFunction3(2,0,0,0,0)
     #time.sleep(3)
-    userPythonFunction3(0,0,0,0,0)
+    #userPythonFunction3(0,0,0,0,0)
 
     #zz = readMachine(1)
     while 0:

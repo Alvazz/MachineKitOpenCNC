@@ -164,6 +164,9 @@ class FeedbackProcessor(Thread):
                 self.machine.buffer_level_feedback_mode = pncLibrary.checkOnOff(self.machine, feedback_data[0])
                 self.machine.buffer_level_feedback_period = int(feedback_data[1])
                 self.synchronizer.fb_buffer_level_feedback_mode_change_event.set()
+            elif self.machine.ascii_rsh_feedback_strings[15] == feedback_type:
+                self.machine.emc_timeout = float(feedback_data[0])
+                self.synchronizer.fb_emc_timeout_change_event.set()
             else:
                 print('received unrecognized ascii string for header ' + str(feedback_type) + 'with data ' + str(feedback_data))
         elif feedback_encoding == 'binary':
@@ -255,8 +258,8 @@ class FeedbackProcessor(Thread):
             record['RTAPI_feedback_indices'] = RTAPI_feedback_indices
             record['RTAPI_clock_times'] = (RTAPI_clock_times-self.machine.RT_clock_offset)/self.machine.clock_resolution
             record['stepgen_feedback_positions'] = pncLibrary.TP.convertMotionCS(self.machine, 'absolute', stepgen_feedback_positions)
-            if type(stepgen_feedback_positions[0]) == int:
-                print('break')
+            # if type(stepgen_feedback_positions[0]) == int:
+            #     print('break')
             record['lowfreq_ethernet_received_times'] = lowfreq_ethernet_received_times
 
             if self.synchronizer.fb_feedback_data_initialized_event.is_set():
@@ -331,7 +334,6 @@ class MachineFeedbackHandler(Process):
                 #First parse the header
                 bytes_received = self.machine.rsh_socket.recv(self.machine.bytes_to_receive)
                 self.byte_string.extend(bytes_received)
-                #print('byte_string length is now ' + str(len(self.byte_string)))
                 self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log', bytes_received, None, rx_received_time))
 
             if len(self.byte_string) >= self.machine.minimum_header_length and not self.header_processed:
@@ -357,7 +359,6 @@ class MachineFeedbackHandler(Process):
                     self.header_processing_error = False
                     self.feedback_data_processed = False
                     self.feedback_data_processing_error = False
-                    # self.last_processed_byte_string = self.byte_string
 
         #Flag set, shutdown. Handle socket closure in machine_controller
         pncLibrary.waitForThreadStop(self, self.feedback_processor)
@@ -381,27 +382,20 @@ class MachineFeedbackHandler(Process):
             print('MACHINE FEEDBACK LISTENER: Had error processing feedback header: ' + str(error))
             return False, True, None, None, header_delimiter_index
 
-        #print('got header data ' + header_string)
         #First check for RSH error
         if self.machine.rsh_error_string.encode('utf-8') in byte_string:
-            #Byte string matches, flag possible error
-            #FIXME implement this!
-            #print('potential RSH error detected')
             print('FEEDBACK HANDLER: Detected RSH error in feedback header for message ', str(byte_string))
             self.synchronizer.mc_rsh_error_event.set()
-            #self.rsh_error_check = True
 
         #FIXME don't make feedback_type an index
         #Check for binary/ascii/ascii echo
         if any(s in header_string for s in self.machine.ascii_rsh_feedback_strings):
             feedback_encoding = 'ascii'
             if header_string != '*':
-                print(header_string)
-            #feedback_type = self.machine.ascii_rsh_feedback_strings.index([s for s in self.machine.ascii_rsh_feedback_strings if header_string in s][0])
+                print('the header string is: ' + header_string)
             feedback_type = header_string.upper()
         elif any(s in header_string for s in self.machine.binary_rsh_feedback_strings):
             feedback_encoding = 'binary'
-            #feedback_type = self.machine.binary_rsh_feedback_strings.index([s for s in self.machine.binary_rsh_feedback_strings if header_string in s][0])
             feedback_type = header_string.upper()
             header_delimiter_index += pncLibrary.countTerminatorsToGobble(byte_string[header_delimiter_index:],self.machine.binary_header_delimiter)*len(self.machine.binary_header_delimiter)
         elif any(s in header_string for s in self.machine.rsh_echo_strings):
@@ -413,14 +407,10 @@ class MachineFeedbackHandler(Process):
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('log',errmsg))
             return False, True, None, None, None, None
 
-            # if self.rsh_error_check:
-            #     print('definite error')
-
         return True, False, feedback_encoding, feedback_type, header_delimiter_index, rx_received_time
 
     def assembleAndProcessFeedbackData(self, feedback_encoding, feedback_type, byte_string, rx_received_time):
         # Now split the command at the delimiter depending on the type
-        #if feedback_type.upper() == 'ECHO':
         if feedback_encoding == 'ascii':
             line_terminator = self.machine.ascii_line_terminator.encode('utf-8')
             # Check length of transmission for a complete command
@@ -428,8 +418,6 @@ class MachineFeedbackHandler(Process):
                 # We have enough data to form a complete transmission
                 line_terminator_index = byte_string.index(self.machine.ascii_line_terminator.encode('utf-8'))
                 feedback_data = byte_string[:line_terminator_index].decode('utf-8').split()
-                # FIXME send to feedback_processor thread
-                #self.processFeedbackData(feedback_encoding, feedback_type, feedback_data, rx_received_time)
                 self.feedback_processor.process_queue.put((feedback_encoding, feedback_type, feedback_data, rx_received_time))
 
                 # Drop this command from the buffer and gobble remaining terminators
@@ -453,8 +441,6 @@ class MachineFeedbackHandler(Process):
                     if transmission_length <= len(self.machine.binary_line_terminator):
                         print('break')
                     #Now we have a full transmission and can process it
-                    #byte_string = byte_string[:transmission_length+len(self.machine.binary_line_terminator)]
-                    #byte_string = byte_string[:transmission_length]
                     byte_string = byte_string[:self.incoming_transmission_length]
                     #Check for complete transmission with terminator
                     try:
@@ -485,11 +471,4 @@ class MachineFeedbackHandler(Process):
                 print('waiting for transmission length')
                 self.feedback_state.multiple_socket_passes_required = True
                 return False, False, None, None
-
-    # def handleRSHError(self):
-    #     self.machine.rsh_error = 1
-    #
-    # def close(self):
-    #     self._running = True
-    #     self._running = False
 
