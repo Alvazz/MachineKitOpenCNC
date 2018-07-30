@@ -1,35 +1,35 @@
 import numpy as np
 from multiprocessing.managers import NamespaceProxy
 
-class MachineModelStatics():
-    def __init__(self):
-        self.name = None#Jokes
-        self.machine_name = "PocketVMC"
-        self.simulator_name = "the_danke$t"
-
-        #Terminal printouts
-        self.connection_string = "CONNECTED to {} remote shell at {}:{}"
-        self.failed_connection_string = "Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
-        self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
-        self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
-        self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
-        self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
-        self.pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
-        self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
-        self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
-        self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
-        self.connection_open_string = "CONNECTED to {} on {}"
-        self.connection_close_string = "DISCONNECTED from {} on {}"
-
-        #Machine kinematics
-        self.number_of_joints = 5
-        self.servo_dt = 0.001
-        self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
-        self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
-        self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
-        self.max_joint_jerk = [100, 100, 100, 100, 100]
-        self.fk = []
-        self.ik = []
+# class MachineModelStatics():
+#     def __init__(self):
+#         self.name = None#Jokes
+#         self.machine_name = "PocketVMC"
+#         self.simulator_name = "the_danke$t"
+#
+#         #Terminal printouts
+#         self.connection_string = "CONNECTED to {} remote shell at {}:{}"
+#         self.failed_connection_string = "Could not connect to {0} remote shell at {1}:{2}. Is {0} ON?"
+#         self.manager_launch_string = "PROCESS LAUNCHED: {} PID: {}"
+#         self.process_launch_string = "PROCESS LAUNCHED: {} PID: {} from master {} PID: {}"
+#         self.process_terminate_string = "PROCESS STOPPED: {} PID: {}"
+#         self.pncApp_launch_string = "SUCCESS: pncApp launched on {} CPUs..."
+#         self.pncApp_terminate_string = "SUCCESS: pncApp terminated without mess"
+#         self.thread_launch_string = "THREAD LAUNCHED: {} process started {}"
+#         self.thread_terminate_string = "THREAD STOPPED: {} process stopped {}"
+#         self.device_boot_string = "DEVICE BOOTSTRAPPED: {} on {}"
+#         self.connection_open_string = "CONNECTED to {} on {}"
+#         self.connection_close_string = "DISCONNECTED from {} on {}"
+#
+#         #Machine kinematics
+#         self.number_of_joints = 5
+#         self.servo_dt = 0.001
+#         self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
+#         self.max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
+#         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
+#         self.max_joint_jerk = [100, 100, 100, 100, 100]
+#         self.fk = []
+#         self.ik = []
 
 
 class MachineModelState():
@@ -79,6 +79,15 @@ class MachineModel():
     def __init__(self):
         self.name = None
 
+        # File Handling
+        self.work_transformation_file = 'machine_tableToPart.txt'
+        self.tool_transformation_file = 'machine_toolToHolder.txt'
+        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
+        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
+        self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        self.database_file_name = 'database_output'
+
         #Thread/Process Parameters
         self.thread_queue_wait_timeout = 0.1
         self.queue_move_queue_wait_timeout = 1
@@ -119,12 +128,7 @@ class MachineModel():
         self.ssh_connection_failure_string = "SSH CONNECTION FAILURE: User {} on {}"
         self.ssh_connection_close_string = "DISCONNECTED: {} ended SSH connection for user {}"
 
-        # self.feedback_listener_thread_handle = None
-        # self.machine_controller_thread_handle = None
-        # self.encoder_thread_handle = None
-        # self.data_store_manager_thread_handle = None
-        # self.system_controller_thread_handle = None
-        self.sculptprint_interface = None
+        #self.sculptprint_interface = None
 
         #State variables
         self.modes = ['MANUAL', 'MDI', 'AUTO']
@@ -196,8 +200,15 @@ class MachineModel():
         self.max_joint_acceleration = [30, 30, 30, 1500, 1500]
         self.tp_max_joint_acceleration = [30, 30, 30, 1500 * np.pi / 180, 1500 * np.pi / 180]
         self.max_joint_jerk = [100, 100, 100, 100, 100]
-        self.fk = []
-        self.ik = []
+        #self.fk = []
+        #self.ik = []
+        #self.kinematic_translation = np.array([0, 0, 0])
+        self.tool_axis_transformation_vector = np.array([[0, 0, 0, 1]]).T
+        self.work_transformation_matrix = np.loadtxt(
+            self.raw_point_files_path + self.work_transformation_file, skiprows=2).T
+        self.workpiece_translation_vector = np.dot(self.work_transformation_matrix, np.array([1,1,1,1]))[:-1]
+        self.tool_transformation_matrix = np.loadtxt(
+            self.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
 
         #Init states
         self.local_epoch = 0
@@ -235,7 +246,7 @@ class MachineModel():
         self.motion_controller_clock_offset = 0
         self.last_unix_time = 0
         self.clock_sync_received_time = 0
-        self.motion_start_time = -1
+        self.motion_start_time = 0
 
         # Servo log parameters
         self.servo_log_type = self.servo_log_types.index('COMMANDED')
@@ -297,15 +308,71 @@ class MachineModel():
         self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS']#, 'ENCODER_FEEDBACK_POSITIONS']
         self.state_initialization_events = ['mc_initial_stepgen_position_set_event', 'ei_initial_encoder_position_set_event', 'mc_initial_buffer_level_set_event']
 
-        #File Handling
-        #self.point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Sampling\\Diva Head\\Longest Path Yet\\'
-        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
-        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\Raw\\'
-        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
-        self.point_file_prefix = 'opt_code'
-        self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
-        self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
-        self.database_file_name = 'database_output'
+    # def loadTransformations(self):
+    #     self.work_transformation_matrix = np.loadtxt(
+    #         self.raw_point_files_path + self.work_transformation_file, skiprows=2).T
+    #     self.tool_transformation_matrix = np.loadtxt(
+    #         self.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
+
+    # Take a point xin, yin, zin expressed in local coordinates attached to
+    # cutting tool holder to tool space coordinates in world frame
+    def FK(self, X, Y, Z, A, B, S, xin, yin, zin, translation):
+        X, Y, Z, A, B, S, xin, yin, zin = tuple(np.atleast_1d(X, Y, Z, A, B, S, xin, yin, zin))
+        return (1.0 * X * np.sin(B) - 1.0 * Y * np.sin(A) * np.cos(B) + 1.0 * Z * np.cos(A) * np.cos(B) + 1.0 * xin * np.sin(A) * np.sin(
+            S) * np.cos(B) -
+                1.0 * xin * np.sin(B) * np.cos(S) + 1.0 * yin * np.sin(A) * np.cos(B) * np.cos(S) + 1.0 * yin * np.sin(B) * np.sin(
+            S) - 1.0 * zin * np.cos(A) * np.cos(B)
+                - 0.000135 * np.sin(A) * np.cos(B) - 0.000291 * np.sin(B) +
+                4.069679 * np.cos(A) * np.cos(B) - 1.002354 + translation[0],
+
+                1.0 * X * np.cos(B) + 1.0 * Y * np.sin(A) * np.sin(B) - 1.0 * Z * np.sin(B) * np.cos(A) - 1.0 * xin * np.sin(A) * np.sin(
+                    B) * np.sin(S) -
+                1.0 * xin * np.cos(B) * np.cos(S) - 1.0 * yin * np.sin(A) * np.sin(B) * np.cos(S) + 1.0 * yin * np.sin(S) * np.cos(B) +
+                1.0 * zin * np.sin(B) * np.cos(A) + 0.000135 * np.sin(A) * np.sin(B) -
+                4.069679 * np.sin(B) * np.cos(A) - 0.000291 * np.cos(B) + 1.0e-6 +
+                translation[1],
+
+                1.0 * Y * np.cos(A) + 1.0 * Z * np.sin(A) - 1.0 * xin * np.sin(S) * np.cos(A) - 1.0 * yin * np.cos(A) * np.cos(
+                    S) - 1.0 * zin * np.sin(A) +
+                4.069679 * np.sin(A) + 0.000135 * np.cos(A) + 0.372 + translation[2],
+
+                -B,
+
+                np.pi / 2 - A)
+
+    # Take a point having local coordinates local, and world coordinates world
+    # (both in tool space) to joint space
+    def IK(self, world, local, theta, phi, S, translation):
+        A = np.pi / 2 - phi
+        B = -theta
+        IK_matrix = np.array(
+            [[np.sin(B), np.cos(B), np.zeros_like(B)],
+             [-np.sin(A) * np.cos(B), np.sin(A) * np.sin(B), np.cos(A)],
+             [np.cos(A) * np.cos(B), -np.sin(B) * np.cos(A), np.sin(A)]]).transpose()
+
+        xin, yin, zin = local
+        b_vector = np.array(
+            [world[0, :] - translation[0] - (
+                        1.0 * xin * np.sin(A) * np.sin(S) * np.cos(B) - 1.0 * xin * np.sin(B) * np.cos(S) + 1.0 * yin * np.sin(
+                    A) * np.cos(B) * np.cos(S) + 1.0 * yin * np.sin(B) * np.sin(S) -
+                        1.0 * zin * np.cos(A) * np.cos(B) - 0.000135 * np.sin(A) * np.cos(B) - 0.000291 * np.sin(
+                    B) + 4.069679 * np.cos(A) * np.cos(B) - 1.002354),
+             world[1, :] - translation[1] - (
+                         - 1.0 * xin * np.sin(A) * np.sin(B) * np.sin(S) - 1.0 * xin * np.cos(B) * np.cos(S) - 1.0 * yin * np.sin(
+                     A) * np.sin(B) * np.cos(S) + 1.0 * yin * np.sin(S) * np.cos(B) +
+                         1.0 * zin * np.sin(B) * np.cos(A) + 0.000135 * np.sin(A) * np.sin(B) - 4.069679 * np.sin(B) * np.cos(
+                     A) - 0.000291 * np.cos(B) + 1.0e-6),
+             world[2, :] - translation[2] - (
+                         - 1.0 * xin * np.sin(S) * np.cos(A) - 1.0 * yin * np.cos(A) * np.cos(S) - 1.0 * zin * np.sin(
+                     A) + 4.069679 * np.sin(A) + 0.000135 * np.cos(A) + 0.372)]
+        ).transpose()
+        X_ik = np.zeros_like(b_vector)
+        for index in np.arange(IK_matrix.shape[0]):
+            X_ik[index] = IK_matrix[index].T.dot(b_vector[index])
+        X_ik = X_ik.transpose()
+        return (X_ik[0], X_ik[1], X_ik[2], A, B, S)
+
+
 
 class MachineModelProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
@@ -313,5 +380,5 @@ class MachineModelProxy(NamespaceProxy):
 class MachineModelStateProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
 
-class MachineModelStaticsProxy(NamespaceProxy):
-    _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')
+# class MachineModelStaticsProxy(NamespaceProxy):
+#     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

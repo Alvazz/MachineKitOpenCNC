@@ -111,6 +111,10 @@ machine_ik = []
 #Machine Comm Parameters
 machine_ping_delay_time = 0.05
 
+#Trajectory planner constants
+TP_joint_file_indexing_order = [1, 4, 2, 5, 6, 3]
+TP_tool_file_indexing_order = [0, 1, 2, 6, 3, 4, 5]
+
 ######################## Directories ########################
 dir_parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
 dir_point_sample_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples'

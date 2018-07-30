@@ -332,7 +332,7 @@ class DatabaseServer(Process):
             self.updateMachineState()
 
         elif command.command_type == 'flush_to_websocket':
-            self.writeDatabaseToWebsocket()
+            self.writeDatabaseToWebsocket(command.data)
 
         elif command.command_type == 'flush_to_file':
             self.writeDatabaseToFile()
@@ -355,13 +355,18 @@ class DatabaseServer(Process):
     def archiveRecords(self):
         pass
 
-    def writeDatabaseToWebsocket(self):
+    def writeDatabaseToWebsocket(self, start_time):
         with self.synchronizer.db_data_store_lock:
-            self.synchronizer.q_trajectory_planner_data_return_queue.put({'executed_points': self.data_store.STEPGEN_FEEDBACK_POSITIONS,
-                                                                          'planned_points': self.data_store.COMMANDED_SERVO_POSITIONS,
-                                                                          'rt_time': self.data_store.RTAPI_CLOCK_TIMES,
-                                                                          'nonrt_time': self.data_store.RSH_CLOCK_TIMES,
-                                                                          'buffer_level': self.data_store.HIGHRES_TC_QUEUE_LENGTH})
+            start_indices = self.data_store.lookupTimeIndex(start_time, self.data_store.RTAPI_CLOCK_TIMES,
+                                                            self.data_store.RSH_CLOCK_TIMES,
+                                                            self.data_store.POLYLINE_TRANSMISSION_TIMES)
+
+            self.synchronizer.q_trajectory_planner_data_return_queue.put({'rt_time': self.data_store.RTAPI_CLOCK_TIMES[start_indices[0]:],
+                                                                          'nonrt_time': self.data_store.RSH_CLOCK_TIMES[start_indices[1]:],
+                                                                          'transmission_times': self.data_store.POLYLINE_TRANSMISSION_TIMES[start_indices[2]:],
+                                                                          'executed_points': self.data_store.STEPGEN_FEEDBACK_POSITIONS[start_indices[0]:],
+                                                                          'buffer_level': self.data_store.HIGHRES_TC_QUEUE_LENGTH[start_indices[1]:],
+                                                                          'planned_points': self.data_store.COMMANDED_SERVO_POSITIONS[start_indices[2]:]})
 
     def writeDatabaseToFile(self):
         np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
@@ -449,6 +454,17 @@ class DataStore():
         except AttributeError:
             print('DATA STORE: Data type %s does not exist' % data_type)
             return None
+
+    def lookupTimeIndex(self, start_time, *time_arrays):
+        time_indices = []
+        for time_array in time_arrays:
+            #time_index = np.where(time_array < start_time)[-1]
+            try:
+                time_index = np.where(time_array <= start_time)[0][-1].item()
+            except Exception as e:
+                print('write break')
+            time_indices.append(time_index)
+        return time_indices
 
 class DatabaseServerProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

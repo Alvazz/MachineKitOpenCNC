@@ -119,7 +119,7 @@ class MachineController(Process):
             self.synchronizer.mc_successful_start_event.set()
             #self.synchronizer.p_run_machine_controller_event.wait()
             while self.synchronizer.p_run_machine_controller_event.is_set():
-
+                #self.createRapidTrajectoryPlanRequest(*self.generateRapidPoints(end_joint=np.array([0,0,0,0,0])))
                 try:
                     #Handle any errors first
                     if self.synchronizer.mc_rsh_error_event.is_set():
@@ -247,18 +247,58 @@ class MachineController(Process):
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))
 
+    def generateRapidPoints(self, end_joint=None, start_joint=None):
+        if start_joint is None:
+            start_joint = self.machine.current_stepgen_position
+
+        start_tool = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(np.array([start_joint]))[0], -np.pi/2., *np.dot(self.machine.tool_transformation_matrix,
+                                                                            self.machine.tool_axis_transformation_vector)[:-1],
+                                                -self.machine.workpiece_translation_vector))
+        end_tool = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(np.array([end_joint]))[0], -np.pi/2., *np.dot(self.machine.tool_transformation_matrix,
+                                                                            self.machine.tool_axis_transformation_vector)[:-1],
+                                                -self.machine.workpiece_translation_vector))
+        # end_tool = pncLibrary.TP.rotaryAxesToDegrees(np.asarray(self.machine.FK(*end_joint, -90., *np.dot(
+        #     self.machine.tool_transformation_matrix, self.machine.tool_axis_transformation_vector)[:-1],
+        #                              -self.machine.workpiece_translation_vector)).T)
+
+        #tool_point_samples = np.hstack((start_tool, end_tool)).T
+        tool_point_samples = pncLibrary.TP.linearlyInterpolateTrajectory(start_tool, end_tool, 0.002)
+        #for sample in tool_point_samples:
+            # joint_sample = self.machine.IK(
+            #     np.array([np.dot(-self.machine.work_transformation_matrix, np.hstack((sample[:3], 1.)))[:3]]).T,
+            #     sample[:3], sample[4], sample[3], -np.pi / 2, self.machine.workpiece_translation_vector)
+        joint_point_samples = self.machine.IK(
+            np.dot(-self.machine.work_transformation_matrix, np.vstack((tool_point_samples.T[:3], np.ones_like(tool_point_samples.T[0]))))[:3],
+            tool_point_samples[:,:3].T, tool_point_samples[:,4].T, tool_point_samples[:,3].T, -np.pi / 2 + np.zeros_like(tool_point_samples[:,0]), self.machine.workpiece_translation_vector)
+        #joint_point_samples = np.hstack((np.array([start_joint]).T, np.array([end_joint]).T)).T
+        return tool_point_samples, joint_point_samples
+        # end_tool = self.machine.FK(*end_joint, -90., *self.machine.tool_axis_transformation_vector, *(
+        #             self.machine.tool_transformation_matrix * self.machine.tool_axis_transformation_vector))
+
+    def createRapidTrajectoryPlanRequest(self, id, tool_points, joint_points):
+        path_id = np.array([id])
+        full_tool_points = np.vstack((tool_points.T, 1 + np.zeros_like(tool_points.T[0]), np.zeros_like(tool_points.T[0])))[pncLibrary.TP_tool_file_indexing_order]
+        full_joint_points = np.vstack((pncLibrary.TP.rotaryAxesToRadians(joint_points).T, -np.pi/2. + np.zeros_like(joint_points.T[0])))  # [joint_indices]
+        self.cloud_trajectory_planner.raw_point_queue.put((path_id, full_tool_points, full_joint_points, 'rapid'))
+
     def initializeTrajectory(self):
-        hold_move = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(
-            self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
+        # hold_move = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(
+        #     self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
+        # print('generated hold')
+        self.motion_controller.motion_start_joint_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()[0]
+        self.createRapidTrajectoryPlanRequest(-1, *self.generateRapidPoints(end_joint=self.motion_controller.motion_start_joint_positions))
+        #self.cloud_trajectory_planner.raw_point_queue.put(rapid_to_start_request)
+        hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False)
         print('generated hold')
-        rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(
-            self.machine, self.motion_controller.motion_queue_feeder.shifted_motion_start_points,
-            move_type='trapezoidal'), machine=self.machine, direction=1),
-            move_type='trapezoidal', offset_axes=False)
-        print('generated rapid')
+
+        # rapid_to_start = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateMovePoints(
+        #     self.machine, self.motion_controller.motion_queue_feeder.shifted_motion_start_points,
+        #     move_type='trapezoidal'), machine=self.machine, direction=1),
+        #     move_type='trapezoidal', offset_axes=False)
+        # print('generated rapid')
 
         self.motion_controller.buffer_precharge = hold_move
-        self.motion_controller.initial_position_rapid_move = rapid_to_start
+        #self.motion_controller.initial_position_rapid_move = rapid_to_start
 
 
     def beginPlanningTrajectory(self, number_of_sequences):
@@ -266,16 +306,26 @@ class MachineController(Process):
             print("TP connection timed out")
 
         self.cloud_trajectory_planner.plan_to_index_delta = number_of_sequences
-
         self.motion_controller.motion_queue_feeder.clearReceivedTrajectories()
 
-        self.cloud_trajectory_planner.enqueueSequencesForPlanning(self.cloud_trajectory_planner.tool_points,
-                                                                  self.cloud_trajectory_planner.machine_points,
-                                                                  self.cloud_trajectory_planner.contiguous_sequences,
-                                                                  self.cloud_trajectory_planner.starting_sequence_id,
-                                                                  self.cloud_trajectory_planner.starting_sequence_id +
+        # self.cloud_trajectory_planner.enqueueSequencesForPlanning(self.cloud_trajectory_planner.tool_points,
+        #                                                           self.cloud_trajectory_planner.machine_points,
+        #                                                           self.cloud_trajectory_planner.contiguous_sequences,
+        #                                                           self.cloud_trajectory_planner.starting_sequence_id,
+        #                                                           self.cloud_trajectory_planner.starting_sequence_id +
+        #                                                           number_of_sequences - 1 if number_of_sequences >= 1
+        #                                                           else len(self.cloud_trajectory_planner.contiguous_sequences))
+
+        # self.cloud_trajectory_planner.enqueueSequencesForPlanning(end_sequence=self.cloud_trajectory_planner.starting_sequence_id +
+        #                                                           number_of_sequences - 1 if number_of_sequences >= 1
+        #                                                           else len(self.cloud_trajectory_planner.contiguous_sequences))
+
+
+        self.initializeTrajectory()
+        self.cloud_trajectory_planner.enqueueSequencesForPlanning(end_sequence=self.cloud_trajectory_planner.starting_sequence_id +
                                                                   number_of_sequences - 1 if number_of_sequences >= 1
                                                                   else len(self.cloud_trajectory_planner.contiguous_sequences))
+
         self.synchronizer.tp_plan_motion_event.set()
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_waiting_for_first_move_string,
@@ -283,15 +333,15 @@ class MachineController(Process):
 
         self.synchronizer.tp_first_trajectory_received_event.wait()
 
-        pncLibrary.TP.updateAxisOffset(self.machine, 4, pncLibrary.TP.calculateRotaryAxisOffset(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], 4))
+        #pncLibrary.TP.updateAxisOffset(self.machine, 4, pncLibrary.TP.calculateRotaryAxisOffset(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], 4))
         #shifted_first_move_start_points = pncLibrary.TP.offsetAxes(self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5], machine=self.machine)
-        self.motion_controller.motion_queue_feeder.shifted_motion_start_points = pncLibrary.TP.offsetAxes(
-            self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5],
-            machine=self.machine)
+        # self.motion_controller.motion_queue_feeder.shifted_motion_start_points = pncLibrary.TP.offsetAxes(
+        #     self.cloud_trajectory_planner.cloud_trajectory_planner_receiver.extractStartingPoints(0)[0:5],
+        #     machine=self.machine)
 
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_trajectory_initialization_string)
         #self.motion_controller.buffer_precharge, self.motion_controller.initial_position_rapid_move = self.initializeTrajectory()
-        self.initializeTrajectory()
+
         # hold_position = pncLibrary.Move(pncLibrary.TP.offsetAxes(pncLibrary.TP.generateHoldPositionPoints(
         #     self.machine, 2), machine=self.machine, direction=1), move_type='hold', offset_axes=False)
         # print('generated hold')
@@ -312,12 +362,12 @@ class MachineController(Process):
 
             if not self.cloud_trajectory_planner.tp_state.all_moves_consumed_event.is_set():
                 self.insertMove(self.motion_controller.buffer_precharge)
-                self.insertMove(self.motion_controller.initial_position_rapid_move)
+                #self.insertMove(self.motion_controller.initial_position_rapid_move)
                 self.motion_controller.motion_queue_feeder.linkToTP()
             else:
                 self.initializeTrajectory()
                 self.insertMove(self.motion_controller.buffer_precharge)
-                self.insertMove(self.motion_controller.initial_position_rapid_move)
+                #self.insertMove(self.motion_controller.initial_position_rapid_move)
                 self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
 
             self.motion_controller.motion_queue_feeder.startFeed()

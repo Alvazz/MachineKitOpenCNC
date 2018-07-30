@@ -172,8 +172,8 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.path_id = 3
         self.joint_data_file = "pass5_machine"
         self.tool_data_file = "pass5_tool"
-        self.work_transformation_file = 'machine_tableToPart.txt'
-        self.tool_transformation_file = 'machine_toolToHolder.txt'
+        # self.work_transformation_file = 'machine_tableToPart.txt'
+        # self.tool_transformation_file = 'machine_toolToHolder.txt'
 
         self.starting_sequence_id = 0
         self.ending_sequence_id = -1
@@ -181,7 +181,7 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.conversion_factor_dist = 1
         self.send_time = 0
 
-        self.loadTransformations()
+        #self.loadTransformations()
 
     def run(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
@@ -239,7 +239,7 @@ class CloudTrajectoryPlannerInterface(Thread):
                             self.tp_state.all_moves_consumed_event.set()
                             #self.synchronizer.db_write_to_websocket_event.set()
                             if not self.tp_state.data_flushed_to_websocket_event.is_set() and self.synchronizer.mc_motion_complete_event.is_set():
-                                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_websocket', None))
+                                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_websocket', self.machine.motion_start_time))
                                 self.tp_state.data_flushed_to_websocket_event.set()
 
                 finally:
@@ -284,7 +284,7 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.contiguous_sequences = pncLibrary.TP.obtain_contiguous_sequences(self.retraction_flags.astype(int))
 
     def sendPlanningRequest(self, points_to_plan):
-        data_size = self.sendMessage(sid=points_to_plan[0], tool=points_to_plan[1], joint=points_to_plan[2])
+        data_size = self.sendMessage(sid=points_to_plan[0], tool=points_to_plan[1], joint=points_to_plan[2], move_type=points_to_plan[3])
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.printout_trajectory_plan_request_sent_string,
                                                      self.name, data_size, int(points_to_plan[0]))
@@ -346,7 +346,7 @@ class CloudTrajectoryPlannerInterface(Thread):
             move_type = sequence_slices[k][0]
             #self.tp_state.enqueued_sequence_id += 1
             self.tp_state.enqueued_sequence_id = k
-            points_to_enqueue = [np.array([self.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]]]
+            points_to_enqueue = [np.array([self.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]], joint_space_data[:, sequence_slices[k][1]], 'SP_trajectory']
 
             #Hack hack the start/end points of cuts into the rapids
             if move_type == 1 and k-begin_sequence > 0:
@@ -378,6 +378,10 @@ class CloudTrajectoryPlannerInterface(Thread):
             if request[0] == requested_sequence_id:
                 return request
 
+    def extractStartingVoxelPoints(self):
+        #return self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id],:5]
+        return pncLibrary.TP.rotaryAxesToDegrees(np.array([self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id]][:self.machine.number_of_joints]]))
+
     def flushDataFeedbackToTP(self):
         while not self.synchronizer.q_trajectory_planner_data_return_queue.empty():
             data_to_return = self.synchronizer.q_trajectory_planner_data_return_queue.get()
@@ -386,7 +390,8 @@ class CloudTrajectoryPlannerInterface(Thread):
                              feedback_data_type=self.machine.servo_log_types[self.machine.servo_log_type],
                              feedback_period = np.array([int(1000*self.machine.servo_dt*self.machine.servo_log_sub_sample_rate)]),
                              starting_sequence=np.array([self.starting_sequence_id]),
-                             ending_sequence=np.array([self.starting_sequence_id+self.plan_to_index_delta]))
+                             ending_sequence=np.array([self.starting_sequence_id+self.plan_to_index_delta]),
+                             motion_start_time=np.array([self.machine.motion_start_time]))
             self.tp_state.metadata_ack_event.wait()
             data_size = self.sendMessage(planned_points=data_to_return['planned_points'],
                              executed_points=data_to_return['executed_points'],
@@ -403,9 +408,9 @@ class CloudTrajectoryPlannerInterface(Thread):
             #                  feedback_data_type=self.machine.servo_log_types[self.machine.servo_log_type],
             #                  feedback_period = np.array([self.machine.servo_dt*self.machine.servo_log_sub_sample_rate]))
 
-    def loadTransformations(self):
-        self.work_transformation_matrix = np.loadtxt(self.machine.raw_point_files_path + self.work_transformation_file, skiprows=2).T
-        self.tool_transformation_matrix = np.loadtxt(self.machine.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
+    # def loadTransformations(self):
+    #     self.work_transformation_matrix = np.loadtxt(self.machine.raw_point_files_path + self.work_transformation_file, skiprows=2).T
+    #     self.tool_transformation_matrix = np.loadtxt(self.machine.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
 
     def sendStartupMetadata(self):
         self.tp_state.metadata_ack_event.clear()
@@ -414,6 +419,6 @@ class CloudTrajectoryPlannerInterface(Thread):
                          velocity_limit=np.asarray(self.machine.tp_max_joint_velocity) * 1,
                          acceleration_limit=np.asarray(self.machine.tp_max_joint_acceleration) * 1,
                          servo_dt=np.array([self.machine.servo_dt]),
-                         tool_transformation=self.tool_transformation_matrix,
-                         part_transformation=self.work_transformation_matrix)
+                         tool_transformation=self.machine.tool_transformation_matrix,
+                         part_transformation=self.machine.work_transformation_matrix)
         self.tp_state.metadata_ack_event.wait()

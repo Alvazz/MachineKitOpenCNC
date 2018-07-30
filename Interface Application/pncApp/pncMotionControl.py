@@ -16,6 +16,7 @@ class MotionController(Thread):
         self.motion_queue = Queue()
         self.interrupt_motion_event = Event()
 
+        self.motion_start_joint_positions = np.array([0,0,0,0,0])
         self.move_in_progress = 0
         self.last_move_serial_number = 0
         self.current_move_serial_number = 0
@@ -51,10 +52,11 @@ class MotionController(Thread):
                     try:
                         motion_block_to_execute = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
                         self.synchronizer.mc_motion_complete_event.clear()
+                        self.machine.motion_start_time = time.time() - self.machine.pncApp_clock_offset
 
-                        if not self.synchronizer.mc_motion_started_event.is_set():
-                            self.machine.motion_start_time = time.time()-self.machine.pncApp_clock_offset
-                            self.synchronizer.mc_motion_started_event.set()
+                        # if not self.synchronizer.mc_motion_started_event.is_set():
+                        #     #self.machine.motion_start_time = time.time()-self.machine.pncApp_clock_offset
+                        #     self.synchronizer.mc_motion_started_event.set()
 
                         self.current_move_serial_number = motion_block_to_execute.serial_number
                         self.current_move_subserial_number = motion_block_to_execute.subserial_number

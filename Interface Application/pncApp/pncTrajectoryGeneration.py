@@ -42,6 +42,16 @@ def updateAxisOffset(machine, axis, offset):
     current_offsets[axis] = offset
     machine.axis_offsets = current_offsets
 
+def rotaryAxesToDegrees(points):
+    points[:, 3] = points[:, 3] * 180. / np.pi
+    points[:, 4] = points[:, 4] * 180. / np.pi
+    return points
+
+def rotaryAxesToRadians(points):
+    points[:, 3] = points[:, 3] * np.pi / 180.
+    points[:, 4] = points[:, 4] * np.pi / 180.
+    return points
+
 def importPoints(machine, file):
     ##FIXME check for overtravel
     points = convertMotionCS(machine, 'absolute', np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints])
@@ -145,6 +155,19 @@ def write_combined_data(joint_data, tool_data, filename):
     np.savetxt(filename, combined_analysis_data)
 
 ################### TRAJECTORY GENERATION ###################
+
+def linearlyInterpolateTrajectory(begin_sample, end_sample, space_increment):
+    delta = math.sqrt(np.sum(np.power(end_sample - begin_sample,2)))
+    #number_of_samples = max([math.ceil(delta(k)/space_increment) for k in delta[:3]])
+    number_of_samples = math.ceil(delta/space_increment)
+
+    interpolated_axes = np.empty((number_of_samples, 0))
+    for k in range(0,len(begin_sample)):
+        interpolated_axes = np.hstack((interpolated_axes, np.array([np.linspace(begin_sample[k],end_sample[k],num=number_of_samples)]).T))
+
+    return interpolated_axes
+
+
 
 def generateHoldPositionPoints(machine, hold_time=1, position = [np.nan]):
     if any(np.isnan(position)):
