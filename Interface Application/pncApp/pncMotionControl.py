@@ -54,10 +54,6 @@ class MotionController(Thread):
                         self.synchronizer.mc_motion_complete_event.clear()
                         self.machine.motion_start_time = time.time() - self.machine.pncApp_clock_offset
 
-                        # if not self.synchronizer.mc_motion_started_event.is_set():
-                        #     #self.machine.motion_start_time = time.time()-self.machine.pncApp_clock_offset
-                        #     self.synchronizer.mc_motion_started_event.set()
-
                         self.current_move_serial_number = motion_block_to_execute.serial_number
                         self.current_move_subserial_number = motion_block_to_execute.subserial_number
 
@@ -72,7 +68,6 @@ class MotionController(Thread):
                             self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
                         except pncLibrary.RSHError as error_message:
                             self.synchronizer.q_print_server_message_queue.put(str(error_message))
-                            #self.motion_queue = Queue()
                             self.emptyMotionQueue()
                             self.interrupt_motion_event.clear()
                             self.synchronizer.mc_run_motion_event.clear()

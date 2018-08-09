@@ -46,7 +46,8 @@ printout_sculptprint_interface_initialization_string = "{} {} PID: {} starting p
 printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
 printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
-printout_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
+printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
+printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
 printout_trajectory_initialization_string = "MACHINE CONTROLLER: Initializing trajectory"
 printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for sequence {}"
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
@@ -165,8 +166,10 @@ class CloudTrajectoryPlannerState():
 
         self.sequence_ack_id = 0
         self.enqueued_sequence_id = 0
-        self.current_requested_sequence_id = 0
-        self.current_received_sequence_id = -1
+        self.current_requested_SP_sequence_id = 0
+        self.current_requested_rapid_sequence_id = 0
+        self.current_received_SP_sequence_id = -1
+        self.current_received_rapid_sequence_id = -1
         self.incoming_number_of_sub_sequences = 0
 
 class PNCAppConnection():
@@ -285,6 +288,7 @@ class Synchronizer():
         #self.db_write_to_websocket_event = manager.Event()
         self.tp_plan_motion_event = manager.Event()
         self.tp_planning_finished_event = manager.Event()
+        self.tp_reposition_move_received_event = manager.Event()
         self.tp_first_trajectory_received_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
@@ -326,6 +330,7 @@ class Synchronizer():
         self.q_machine_controller_command_queue = manager.Queue()
         self.q_device_interface_command_queue = manager.Queue()
         self.q_trajectory_planner_data_return_queue = manager.Queue()
+        self.q_trajectory_planner_reposition_move_queue = manager.Queue()
         self.q_trajectory_planner_planned_move_queue = manager.Queue()
 
         # Locks

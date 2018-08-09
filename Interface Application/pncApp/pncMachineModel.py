@@ -203,12 +203,14 @@ class MachineModel():
         #self.fk = []
         #self.ik = []
         #self.kinematic_translation = np.array([0, 0, 0])
-        self.tool_axis_transformation_vector = np.array([[0, 0, 0, 1]]).T
+        self.translation_vector = np.array([[0, 0, 0, 1]]).T
+
         self.work_transformation_matrix = np.loadtxt(
             self.raw_point_files_path + self.work_transformation_file, skiprows=2).T
-        self.workpiece_translation_vector = np.dot(self.work_transformation_matrix, np.array([1,1,1,1]))[:-1]
         self.tool_transformation_matrix = np.loadtxt(
             self.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
+        self.tool_translation_vector = np.dot(self.tool_transformation_matrix, self.translation_vector)[:-1]
+        self.workpiece_translation_vector = np.dot(self.work_transformation_matrix, self.translation_vector)[:-1]
 
         #Init states
         self.local_epoch = 0
@@ -301,8 +303,6 @@ class MachineModel():
         self.current_acceleration = [0.0]*self.number_of_joints
         self.current_jerk = [0.0]*self.number_of_joints
         self.current_buffer_level = 0
-        #self.motion_states = [self.current_stepgen_position, self.current_encoder_position, self.current_buffer_level]
-        #self.motion_states = ['current_stepgen_position', 'current_encoder_position', 'current_buffer_level']
         self.motion_states = ['current_stepgen_position']#, 'current_encoder_position']
         #self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
         self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS']#, 'ENCODER_FEEDBACK_POSITIONS']
@@ -370,7 +370,7 @@ class MachineModel():
         for index in np.arange(IK_matrix.shape[0]):
             X_ik[index] = IK_matrix[index].T.dot(b_vector[index])
         X_ik = X_ik.transpose()
-        return (X_ik[0], X_ik[1], X_ik[2], A, B, S)
+        return np.array([X_ik[0], X_ik[1], X_ik[2], A, B, S]).T
 
 
 

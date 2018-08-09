@@ -2,7 +2,7 @@
 import math, csv, numpy as np
 
 def checkMoveOvertravel(point_samples, limits):
-    if not (point_samples < limits[0]).any() or (point_samples > limits[1]).any():
+    if not ((point_samples < limits[0]).any() or (point_samples > limits[1]).any()):
         return (False, None, None)
     else:
         negative_overtravel = np.where(point_samples < limits[0])
