@@ -54,10 +54,13 @@ printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: 
 printout_trajectory_planner_motion_queues_unlinked_string = "MOTION QUEUE FEEDER: Primary move queue unlinked from {} move queue"
 printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
 printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued sequence ID {}"
+printout_trajectory_planner_cutting_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued cutting sequence ID {}"
+printout_trajectory_planner_rapid_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued rapid sequence ID {}"
 printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received {} byte subsequence {} of sequence ID {} from {}"
 printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER: Enqueueing {} sequences from {}"
 printout_machine_not_ready_for_motion_string = "MACHINE CONTROLLER: No trajectories available for execution, aborting motion"
-printout_bad_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed sequence ID {}"
+printout_trajectory_planner_bad_cutting_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed cutting sequence ID {}"
+printout_trajectory_planner_bad_rapid_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed rapid sequence ID {}"
 printout_websocket_motion_data_sent_string = "TRAJECTORY PLANNER: {} flushing {} bytes of data for sequences {} thru {} to websocket"
 printout_move_queue_insertion_string = "MACHINE CONTROLLER: Placed move ID {} with type \"{}\" on motion controller queue"
 printout_motion_queue_feeder_pausing_string = "MOTION CONTROLLER: Pausing motion block feed"
@@ -164,7 +167,10 @@ class CloudTrajectoryPlannerState():
         self.data_flushed_to_websocket_event = Event()
         self.all_moves_consumed_event = Event()
 
-        self.sequence_ack_id = 0
+        self.rapid_sequence_id = 0
+        #self.sequence_ack_id = 0
+        self.SP_sequence_ack_id = 0
+        self.rapid_sequence_ack_id = 0
         self.enqueued_sequence_id = 0
         self.current_requested_SP_sequence_id = 0
         self.current_requested_rapid_sequence_id = 0

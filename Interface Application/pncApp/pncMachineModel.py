@@ -82,10 +82,13 @@ class MachineModel():
         # File Handling
         self.work_transformation_file = 'machine_tableToPart.txt'
         self.tool_transformation_file = 'machine_toolToHolder.txt'
-        self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
-        self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
-        self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
-        self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        #self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
+        #self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
+        #self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        #self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+        self.raw_point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Samples\\Diva\\Raw\\'
+        self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+        self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
         self.database_file_name = 'database_output'
 
         #Thread/Process Parameters
@@ -273,7 +276,7 @@ class MachineModel():
         #self.ip_address = '129.1.15.69'
         #self.udp_port = 515
         #self.listen_ip = '0.0.0.0'
-        self.comm_port = 'COM3'
+        self.comm_port = 'COM12'
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
         self.serial_read_timeout = 0.5

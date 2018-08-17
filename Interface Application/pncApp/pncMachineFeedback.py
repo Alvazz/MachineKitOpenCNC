@@ -463,7 +463,7 @@ class MachineFeedbackHandler(Process):
                     self.feedback_state.multiple_socket_passes_required = True
                     self.socket_passes += 1
                     self.last_byte_string = byte_string
-                    if self.socket_passes >= 6:
+                    if self.socket_passes >= 10:
                         print('socket pass break')
                     return False, False, None, None
             else:

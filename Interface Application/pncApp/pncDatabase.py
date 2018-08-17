@@ -224,8 +224,8 @@ class Pusher(Thread):
 
     def appendMachineFeedbackRecords(self, records):
         with self.data_store_lock:
-            if len(records) > 2:
-                print('appending multi record')
+            # if len(records) > 2:
+            #     print('appending multi record')
             for record in records:
                 for key, value in record.items():
                     try:

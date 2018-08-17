@@ -4,19 +4,12 @@ if dir_pncApp_project_path not in sys.path:
     sys.path.append(dir_pncApp_project_path)
 
 import pncLibrary
-from multiprocessing import Event
-from threading import Thread
-import os, time, logging, socket, pickle, numpy as np
+import os, time
 
 #pncLibrary.updatePath()
 
 #Globals
 pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
-# pncApp_connection_event = Event()
-# pncApp_feedback_synchronization_event = Event()
-# mvc_connection_type = 'socket'
-# mvc_command_format = 'text'
-# mvc_feedback_format = 'binary'
 
 
 #mvc_connection_format = 'binary'
@@ -127,12 +120,6 @@ def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
 
 def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
     return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
-    # print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    # pncApp_controller.command_queue.put('EXECUTE')
-    # return True;
-
-# def connectToMachine():
-#     pncApp_controller.command_queue.put('CONNECT')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.

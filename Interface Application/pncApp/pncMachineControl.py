@@ -278,9 +278,10 @@ class MachineController(Process):
             return (tool_point_samples, joint_point_samples)
 
     def createRapidTrajectoryPlanRequest(self, id, tool_points, joint_points):
-        path_id = np.array([id])
+        path_id = np.array([self.cloud_trajectory_planner.tp_state.rapid_sequence_id])
         full_tool_points = np.vstack((tool_points.T, 1 + np.zeros_like(tool_points.T[0]), np.zeros_like(tool_points.T[0])))[pncLibrary.TP_tool_file_indexing_order]
         full_joint_points = np.vstack((pncLibrary.TP.rotaryAxesToRadians(joint_points).T, -np.pi/2. + np.zeros_like(joint_points.T[0])))  # [joint_indices]
+        self.cloud_trajectory_planner.tp_state.rapid_sequence_id += 1
         self.cloud_trajectory_planner.raw_point_queue.put((path_id, full_tool_points, full_joint_points, 'rapid'))
 
     def initializeTrajectory(self, mode='remote'):
@@ -299,20 +300,22 @@ class MachineController(Process):
 
         elif mode == 'remote':
             #self.synchronizer.tp_first_trajectory_received_event.clear()
-            self.synchronizer.tp_reposition_move_received_event.clear()
-            self.motion_controller.motion_start_joint_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()[0]
-            self.createRapidTrajectoryPlanRequest(-10, *self.generateRapidPoints(end_joint=self.motion_controller.motion_start_joint_positions, mode='joint_space'))
+            self.motion_controller.motion_start_joint_positions = \
+            self.cloud_trajectory_planner.extractStartingVoxelPoints()[0]
             hold_move = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False)
-            print('generated hold')
-
+            #print('generated hold')
             self.motion_controller.buffer_precharge = hold_move
-            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+            if np.round(self.machine.current_stepgen_position - self.motion_controller.motion_start_joint_positions,3).any().item():
+                self.synchronizer.tp_reposition_move_received_event.clear()
+                self.createRapidTrajectoryPlanRequest(-10, *self.generateRapidPoints(end_joint=self.motion_controller.motion_start_joint_positions, mode='joint_space'))
+                pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_trajectory_planner_waiting_for_rapid_string,
                                                          self.cloud_trajectory_planner.remote_tp_name)
-            self.synchronizer.tp_reposition_move_received_event.wait()
-
-            self.insertMove(self.motion_controller.buffer_precharge)
-            self.insertMove(self.synchronizer.q_trajectory_planner_reposition_move_queue.get())
+                self.synchronizer.tp_reposition_move_received_event.wait()
+                self.insertMove(self.motion_controller.buffer_precharge)
+                self.insertMove(self.synchronizer.q_trajectory_planner_reposition_move_queue.get())
+            else:
+                self.insertMove(self.motion_controller.buffer_precharge)
 
 
     def beginPlanningTrajectory(self, number_of_sequences):
@@ -343,12 +346,8 @@ class MachineController(Process):
             self.initializeTrajectory()
 
             if not self.cloud_trajectory_planner.tp_state.all_moves_consumed_event.is_set():
-                #self.insertMove(self.motion_controller.buffer_precharge)
-                #self.insertMove(self.motion_controller.initial_position_rapid_move)
                 self.motion_controller.motion_queue_feeder.linkToTP()
             else:
-                #self.insertMove(self.motion_controller.buffer_precharge)
-                #self.insertMove(self.motion_controller.initial_position_rapid_move)
                 self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
 
             self.motion_controller.motion_queue_feeder.startFeed()

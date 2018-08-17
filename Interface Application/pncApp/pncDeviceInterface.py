@@ -188,6 +188,7 @@ class EncoderInterface(Thread):
                         self.encoder_time_buffer[read_count] = np.asarray(
                             pncLibrary.estimateMachineClock(self.machine, encoder_counts[2]))
                         encoder_buffer_data_flag = encoder_buffer_data_flag and True
+                        #print('encoder read time is ' + str(time.time()-request_time))
                     else:
                         print('had bad encoder reading')
                         encoder_buffer_data_flag = False
