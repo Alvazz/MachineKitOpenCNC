@@ -2,13 +2,16 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="8bd26cf1-5304-4d98-8138-03fba3eca374" name="Default" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
-      <change beforePath="$PROJECT_DIR$/pncDeviceInterface.py" afterPath="$PROJECT_DIR$/pncDeviceInterface.py" />
-      <change beforePath="$PROJECT_DIR$/pncSculptPrintSocket.py" afterPath="$PROJECT_DIR$/pncSculptPrintSocket.py" />
-      <change beforePath="$PROJECT_DIR$/../../Mechanical/Frame2/Assem.SLDASM" afterPath="$PROJECT_DIR$/../../Mechanical/Frame2/Assem.SLDASM" />
-      <change beforePath="$PROJECT_DIR$/../../Mechanical/Spindle/EncoderPlate.SLDDRW" afterPath="$PROJECT_DIR$/../../Mechanical/Spindle/EncoderPlate.SLDDRW" />
-      <change beforePath="$PROJECT_DIR$/../../Mechanical/Spindle/EncoderPlate.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Spindle/EncoderPlate.SLDPRT" />
-      <change beforePath="$PROJECT_DIR$/../../Mechanical/Spindle/SpindleEncoder.SLDASM" afterPath="$PROJECT_DIR$/../../Mechanical/Spindle/SpindleEncoder.SLDASM" />
+      <change beforePath="$PROJECT_DIR$/pncWebInterface.py" afterPath="$PROJECT_DIR$/pncWebInterface.py" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/5inDINRail.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/5inDINRail.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomPowerShelfAssembly.SLDASM" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomPowerShelfAssembly.SLDASM" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfSlideAssembly.SLDASM" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfSlideAssembly.SLDASM" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfSlideAxisFraming.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfSlideAxisFraming.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfYAxisFraming.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/BottomShelfYAxisFraming.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/LinearBearingSide.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/LinearBearingSide.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/SingleTerminalBlock.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/SingleTerminalBlock.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/SlideStop.SLDPRT" afterPath="$PROJECT_DIR$/../../Mechanical/Electronics/SlideStop.SLDPRT" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Frame/Assem_v4.SLDASM" afterPath="$PROJECT_DIR$/../../Mechanical/Frame/Assem_v4.SLDASM" />
       <change beforePath="$PROJECT_DIR$/../../ODrive" afterPath="$PROJECT_DIR$/../../ODrive" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -67,8 +70,8 @@
       <file leaf-file-name="pncDeviceInterface.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pncDeviceInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="276">
-              <caret line="58" column="0" lean-forward="false" selection-start-line="58" selection-start-column="0" selection-end-line="58" selection-end-column="0" />
+            <state relative-caret-position="201">
+              <caret line="28" column="0" lean-forward="false" selection-start-line="28" selection-start-column="0" selection-end-line="28" selection-end-column="0" />
               <folding>
                 <element signature="e#0#41#0" expanded="true" />
               </folding>
@@ -89,8 +92,8 @@
       <file leaf-file-name="pncWebInterface.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncWebInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="3465">
-              <caret line="255" column="29" lean-forward="true" selection-start-line="255" selection-start-column="29" selection-end-line="255" selection-end-column="29" />
+            <state relative-caret-position="498">
+              <caret line="449" column="38" lean-forward="false" selection-start-line="449" selection-start-column="38" selection-end-line="449" selection-end-column="38" />
               <folding>
                 <element signature="e#0#61#0" expanded="true" />
               </folding>
@@ -125,7 +128,7 @@
       <file leaf-file-name="pncSculptPrintSocket.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="274">
+            <state relative-caret-position="904">
               <caret line="125" column="18" lean-forward="true" selection-start-line="125" selection-start-column="18" selection-end-line="125" selection-end-column="18" />
               <folding />
             </state>
@@ -155,7 +158,6 @@
       <find>tool_points</find>
       <find>current_receive</find>
       <find>current_received_sequence_id</find>
-      <find>wpipe</find>
       <find>CloudTrajectoryPlannerState</find>
       <find>appendin</find>
       <find>planning</find>
@@ -166,6 +168,7 @@
       <find>current_requested</find>
       <find>q_trajectory_planner_data_return_queue</find>
       <find>buffer level at start of move subserial</find>
+      <find>wpipe</find>
     </findStrings>
     <replaceStrings>
       <replace>machine.current_buffer_level</replace>
@@ -217,11 +220,11 @@
         <option value="$PROJECT_DIR$/pncDataStore.py" />
         <option value="$PROJECT_DIR$/pncMachineFeedback.py" />
         <option value="$PROJECT_DIR$/pncMachineControl.py" />
-        <option value="$PROJECT_DIR$/pncWebInterface.py" />
         <option value="$PROJECT_DIR$/pncMachineModel.py" />
         <option value="$PROJECT_DIR$/pncLibrary.py" />
         <option value="$PROJECT_DIR$/pncSculptPrintSocket.py" />
         <option value="$PROJECT_DIR$/pncDeviceInterface.py" />
+        <option value="$PROJECT_DIR$/pncWebInterface.py" />
       </list>
     </option>
   </component>
@@ -446,7 +449,6 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
-    <editor active="true" />
     <layout>
       <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.18018967" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.19347826" sideWeight="0.49789253" order="6" side_tool="false" content_ui="tabs" />
@@ -458,7 +460,7 @@
       <window_info id="Structure" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
       <window_info id="Terminal" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32934782" sideWeight="0.49367756" order="7" side_tool="false" content_ui="tabs" />
       <window_info id="Favorites" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="2" side_tool="true" content_ui="tabs" />
-      <window_info id="Debug" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2923913" sideWeight="0.69283456" order="3" side_tool="false" content_ui="tabs" />
+      <window_info id="Debug" active="true" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.2923913" sideWeight="0.69283456" order="3" side_tool="false" content_ui="tabs" />
       <window_info id="Cvs" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.25" sideWeight="0.5" order="4" side_tool="false" content_ui="tabs" />
       <window_info id="Message" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.33" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
       <window_info id="Commander" active="false" anchor="right" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.4" sideWeight="0.5" order="0" side_tool="false" content_ui="tabs" />
@@ -1142,16 +1144,6 @@ z2 = self.generateRapidPoints(end_joint=self.motion_controller.motion_start_join
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="210">
-          <caret line="14" column="38" lean-forward="false" selection-start-line="14" selection-start-column="38" selection-end-line="14" selection-end-column="38" />
-          <folding>
-            <element signature="e#0#65#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pncMotionControl.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="-1215">
@@ -1206,28 +1198,38 @@ z2 = self.generateRapidPoints(end_joint=self.motion_controller.motion_start_join
         </state>
       </provider>
     </entry>
+    <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="904">
+          <caret line="125" column="18" lean-forward="true" selection-start-line="125" selection-start-column="18" selection-end-line="125" selection-end-column="18" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="210">
+          <caret line="14" column="38" lean-forward="false" selection-start-line="14" selection-start-column="38" selection-end-line="14" selection-end-column="38" />
+          <folding>
+            <element signature="e#0#65#0" expanded="true" />
+          </folding>
+        </state>
+      </provider>
+    </entry>
     <entry file="file://$PROJECT_DIR$/pncWebInterface.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="3465">
-          <caret line="255" column="29" lean-forward="true" selection-start-line="255" selection-start-column="29" selection-end-line="255" selection-end-column="29" />
+        <state relative-caret-position="498">
+          <caret line="449" column="38" lean-forward="false" selection-start-line="449" selection-start-column="38" selection-end-line="449" selection-end-column="38" />
           <folding>
             <element signature="e#0#61#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="274">
-          <caret line="125" column="18" lean-forward="true" selection-start-line="125" selection-start-column="18" selection-end-line="125" selection-end-column="18" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$PROJECT_DIR$/pncDeviceInterface.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="276">
-          <caret line="58" column="0" lean-forward="false" selection-start-line="58" selection-start-column="0" selection-end-line="58" selection-end-column="0" />
+        <state relative-caret-position="201">
+          <caret line="28" column="0" lean-forward="false" selection-start-line="28" selection-start-column="0" selection-end-line="28" selection-end-column="0" />
           <folding>
             <element signature="e#0#41#0" expanded="true" />
           </folding>

@@ -446,5 +446,6 @@ class CloudTrajectoryPlannerInterface(Thread):
                          acceleration_limit=np.asarray(self.machine.tp_max_joint_acceleration) * 1,
                          servo_dt=np.array([self.machine.servo_dt]),
                          tool_transformation=self.machine.tool_transformation_matrix,
-                         part_transformation=self.machine.work_transformation_matrix)
+                         part_transformation=self.machine.work_transformation_matrix,
+                         mrr_limit=1e9)
         self.tp_state.metadata_ack_event.wait()
