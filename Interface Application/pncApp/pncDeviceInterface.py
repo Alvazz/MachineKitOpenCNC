@@ -25,7 +25,7 @@ class SpindleInterface(Thread):
         self.startup_event.set()
         #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_spindle_drive_search_string)
         print('SPINDLE CONTROLLER: Looking for ODrive...')
-        return
+        #return
         if self.connectToODrive():
             self.configureSpindle()
 
