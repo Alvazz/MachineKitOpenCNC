@@ -19,7 +19,7 @@ pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
 
 ############################# Setup Functions #############################
 def monitoredMachineCount():
-    return 1
+    return 2
 
 def setupAuxilary():
     return setupAuxiliary()
@@ -120,8 +120,11 @@ if __name__ != 'machinemonitor':
     #print(yy[0])
     # time.sleep(0.1)
     print('encoder data is: ')
-    yy = readMachine(1)
-    #print(yy[0])
+    # yy = readMachine(1)
+    # try:
+    #     print(yy[0])
+    # except:
+    #     pass
     userPythonFunction1(2, 0, 0, 0, 0)
     #time.sleep(5)
     #userPythonFunction2(0, 0, 0, 0, 0)

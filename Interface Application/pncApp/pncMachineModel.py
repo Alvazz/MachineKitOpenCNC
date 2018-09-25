@@ -174,7 +174,7 @@ class MachineModel():
         self.encoder_offset = 5*[1e8]
         #self.encoder_scale = [1/5/8000, 1/5/8000, 1/5/8000, 1/35.5368/8000, 1/35.5555/8000]
         #self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / 172, -1.0 / 167]
-        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, 1.0 / (8000 * 2 / 90), -1.0 / (8000 * 2 / 90)]
+        self.encoder_scale = [.096 / 8000, .096 / 8000, .096 / 8000, -1.0 / (8000 * 2 / 90), 1.0 / (8000 * 2 / 90)]
         self.max_encoder_transmission_length = 1+4*6+1
         self.encoder_command_strings = ['S', 'G', 'R', 'B']
         self.encoder_ack_strings = ['INIT\r\n', 'S&\r\n', 'G&\r\n', 'R&\r\n', 'B&\r\n', '&']

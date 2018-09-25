@@ -263,25 +263,13 @@ def mergeSortByIndex(machine, feedback_state, times_LF, times_HF, data_LF, data_
 
     return output_times, output_positions, output_auxes, LF_index, HF_index
 
-# def updateInterfaceData(synchronizer, feedback_state, axis_sensor_id):
-#     clock_stream_names = list(map(lambda stream: stream[0], pncLibrary.SP_main_data_streams[axis_sensor_id] + pncLibrary.SP_auxiliary_data_streams[axis_sensor_id]))
-#     data_stream_names = list(map(lambda stream: stream[1], pncLibrary.SP_main_data_streams[axis_sensor_id] + pncLibrary.SP_auxiliary_data_streams[axis_sensor_id]))
-#     clock_stream_sizes = list(map(lambda stream: stream[2][0], pncLibrary.SP_main_data_streams[axis_sensor_id] + pncLibrary.SP_auxiliary_data_streams[axis_sensor_id]))
-#     data_stream_sizes = list(map(lambda stream: stream[2][1], pncLibrary.SP_main_data_streams[axis_sensor_id] + pncLibrary.SP_auxiliary_data_streams[axis_sensor_id]))
-#     complete_stream_names = clock_stream_names + data_stream_names
-#     complete_stream_sizes = clock_stream_sizes + data_stream_sizes
-#
-#     DB_query_data = pncLibrary.lockedPull(synchronizer, complete_stream_names, getFeedbackIndices(feedback_state, complete_stream_names), len(complete_stream_names) * [None])
-#
-#     time_slice, data_slice = DB_query_data[1][:len(clock_stream_names)], DB_query_data[1][-len(data_stream_names):]
-#     feedback_state.feedback_indices = updateFeedbackIndices(feedback_state.feedback_indices, complete_stream_names, time_slice + data_slice)
-#     feedback_state.last_values_read = updateFallbackDataPoints(feedback_state.last_values_read, complete_stream_names, complete_stream_sizes, time_slice + data_slice)
-
 def readMachine(synchronizer, feedback_state, axis_sensor_id):
     data_format = pncLibrary.SP_pncApp_time + pncLibrary.SP_pncApp_machine_axes + pncLibrary.SP_pncApp_data_auxes[axis_sensor_id]
+    if axis_sensor_id == 1:
+        print('break')
     if synchronizer.mvc_run_feedback_event.is_set():
         if axis_sensor_id == 1:
-            print('brealpull')
+            print('breakpull')
         start_time = time.clock()
         time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateInterfaceData('pull', synchronizer, feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, [axis_sensor_id])
         #print('pull took ' + str(time.clock()-start_time))
@@ -293,28 +281,6 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
 
     else:
         return []
-
-# def getFeedbackIndices(feedback_state, data_stream_names):
-#     return list(map(lambda stream: feedback_state.feedback_indices[stream] if stream in feedback_state.feedback_indices else 0, data_stream_names))
-#     #return list(map(lambda indices, stream: indices[stream] if stream in indices else 0, feedback_state.feedback_indices, data_stream_names))
-#
-# def updateFeedbackIndices(feedback_indices, stream_names, streams):
-#     return dict(map(lambda stream_name, stream: (stream_name, feedback_indices[stream_name] + len(stream) if stream_name in feedback_indices else len(stream)), stream_names, streams))
-#     # for stream_name, stream in stream_names, streams:
-#     #     feedback_state[stream_name] += len(stream)
-#
-# def getFallbackDataPoints(feedback_state, stream_names, stream_sizes):
-#     return list(map(lambda stream_name, stream_size: feedback_state.last_values_read[stream_name] if stream_name in feedback_state.last_values_read else np.zeros(stream_size), stream_names, stream_sizes))
-#
-# def updateFallbackDataPoints(fallback_values, stream_names, stream_sizes, streams):
-#     return dict(map(lambda stream_name, stream_size, stream: tuple((stream_name, stream[-1] if len(stream) > 0 else fallback_values[stream_name] if stream_name in fallback_values else np.zeros(stream_size))), stream_names, stream_sizes, streams))
-
-    # for stream_name, stream in stream_names, streams:
-    #     feedback_state.last_values_read[stream_name] = stream[-1] if len(stream) > 0 else feedback_state.last_values_read[stream_name]
-    # feedback_state.last_values_read = [streams[k][-1] if len(streams[k]) > 0 else feedback_state.last_values_read]
-    #
-    # data_slice[k][-1] if len(data_slice[k]) > 0 else feedback_state.last_values_read[k] for k in range(0, len(data_slice))
-    # feedback_state.last_values_read = dict(map(lambda stream, fallback_value: (stream, fallback_value), stream_names, fallback_values))
 
 # Returns true if monitoring is currently happening.
 def isMonitoring(synchronizer):
@@ -328,82 +294,4 @@ def isMonitoring(synchronizer):
     #return bool(machine.machine_controller_thread_handle.is_alive() & machine.servo_feedback_mode)
 
 ############################# User Functions #############################
-# def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-#     pncApp_controller.command_queue.put('CONNECT')
-#
-#
-# # def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-# #     #global machine
-# #     print('execute enqueueMoves from ' + str(arg0) +' to ' + str(arg1))#(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-# #     #machine_controller.testMachine(1,1,1,1,1)
-# #     #machine_controller.motion_controller._running_motion = True
-# #     machine.sculptprint_interface.start_file = arg0
-# #     machine.sculptprint_interface.end_file = arg1
-# #     machine.sculptprint_interface.enqueue_moves_event.set()
-# #     return True;
-#
-# def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
-#     print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     pncApp_controller.command_queue.put('ENQUEUE ' + str(arg0) + ' ' + str(arg1))
-#     return True;
-#
-# def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-#     print('execute userPythonFunction3(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     pncApp_controller.command_queue.put('EXECUTE')
-#     return True;
 
-# def connectToMachine():
-#     pncApp_controller.command_queue.put('CONNECT')
-
-# Called to stop monitoring the machine.
-# Will execute when the stop button is pressed in the Monitor Machine feature.
-# def stop(synchronizer):
-#     #print('closing')
-#     #appClose()
-#     pncApp_controller.command_queue.put('CLOSE')
-#     synchronizer.mvc_app_shutdown_event.wait()
-#     return True
-
-# def testMonitoring():
-#     while True:
-#         z = readMachine(0)
-#         if z == []:
-#             print('returning nothing')
-#         else:
-#             print('returning good data')
-#         print('read machine')
-
-# if False:
-#     read_data0 = []
-#     time_to_read0 = []
-#     read_data1 = []
-#     start()
-#     machine.sculptprint_interface.enqueue_moves_event.set()
-#     machine.sculptprint_interface.run_motion_event.set()
-#     while True:
-#         start = time.clock()
-#         data0 = readMachine(0)
-#         time_to_read0.append(time.clock()-start)
-#         data1 = readMachine(1)
-#         #print(data)
-#         if data0 != []:
-#             print('appending data0')
-#             read_data0.append(data0)
-#         if data1 != []:
-#             print('appending data1')
-#             read_data1.append(data1)
-    #else:
-        #print('not appending data')
-
-#time.sleep(1)
-#readMachine(0)
-#
-# while True:
-#     readMachine(0)
-# print('here')
-# if __name__ == '__main__':
-#     start()
-
-#multiprocessing.set_executable(os.path.join(sys.exec_prefix, 'pythonw.exe'))
-#multiprocessing.set_start_method('spawn')
-#print('main name is ' + str(__name__))

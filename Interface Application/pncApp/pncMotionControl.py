@@ -116,6 +116,7 @@ class MotionController(Thread):
 
             #FIXME check buffer was flushed
             current_BL = self.machine.current_buffer_level
+            print('current buffer level is: ' + str(current_BL))
             sleep_time = self.runNetworkPID(int(current_BL), blocklength, polylines, self.machine.buffer_level_setpoint)
             self.prebufferAndFlushMotionRecords(objects={'COMMANDED_SERVO_POLYLINE_OBJECTS': commanded_points},
                                                 arrays={'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
@@ -126,7 +127,7 @@ class MotionController(Thread):
 
             time.sleep(sleep_time)
 
-    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
+    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.03, Ki=0, Kd=0):
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer fidna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)

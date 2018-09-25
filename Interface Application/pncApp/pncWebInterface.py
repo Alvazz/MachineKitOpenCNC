@@ -201,8 +201,8 @@ class CloudTrajectoryPlannerInterface(Thread):
 
         self.sp_file_name = 'pass4complete'
         self.path_id = 3
-        self.joint_data_file = "pass5_machine"
-        self.tool_data_file = "pass5_tool"
+        self.joint_data_file = "pass5_machine_short"
+        self.tool_data_file = "pass5_tool_short"
         # self.work_transformation_file = 'machine_tableToPart.txt'
         # self.tool_transformation_file = 'machine_toolToHolder.txt'
 
@@ -314,12 +314,6 @@ class CloudTrajectoryPlannerInterface(Thread):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.printout_trajectory_plan_request_sent_string,
                                                      self.name, data_size, int(points_to_plan[0]))
-        # data_stream = BytesIO()
-        # np.savez_compressed(data_stream, sid=points_to_plan[0],
-        #                     tool=points_to_plan[1], joint=points_to_plan[2])
-        # data_stream.seek(0)
-        # encoded_string = base64.b64encode(data_stream.read())
-        # self.tp_websocket.send(encoded_string)
 
     def sendMessage(self, **kwargs):
         data_stream = BytesIO()
@@ -335,15 +329,6 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.tp_websocket.send('RESET')
         while 'RESET' not in self.tp_websocket.recv():
             pass
-
-    # def sortAndOutputPoints(self):
-    #     for p in range(0,len(self.planned_point_payload_buffer)):
-    #         planned_point_payload = self.planned_point_payload_buffer[p]
-    #         if planned_point_payload['sid'] == self.current_requested_sequence_id:
-    #             self.current_requested_sequence_id += 1
-    #             self.planned_point_output_queue.put(self.planned_point_payload_buffer.pop(p))
-    #             break
-    #     self.sortAndOutputPoints()
 
     def enqueueSequencesForPlanning(self, tool_space_data=None, joint_space_data=None, sequence_slices=None, begin_sequence=None, end_sequence=None):#, output_queue=None):
         if tool_space_data is None:
@@ -447,5 +432,5 @@ class CloudTrajectoryPlannerInterface(Thread):
                          servo_dt=np.array([self.machine.servo_dt]),
                          tool_transformation=self.machine.tool_transformation_matrix,
                          part_transformation=self.machine.work_transformation_matrix,
-                         mrr_limit=1e9)
+                         mrr_limit=0)
         self.tp_state.metadata_ack_event.wait()
