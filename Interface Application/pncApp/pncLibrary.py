@@ -325,6 +325,7 @@ class Synchronizer():
         self.mvc_connected_event = manager.Event()
         self.mvc_enqueue_moves_event = manager.Event()
         self.mvc_moves_queued_event = manager.Event()
+        self.mvc_need_points_event = manager.Event()
         self.mvc_execute_motion_event = manager.Event()
         self.mvc_run_feedback_event = manager.Event()
         self.mvc_app_shutdown_event = manager.Event()
@@ -414,8 +415,9 @@ class PNCAppCommand():
         self.connection_format = connection_format
 
 class IPCDataWrapper():
-    def __init__(self, data):
+    def __init__(self, data, payload=None):
         self.data = data
+        self.payload = payload
 
 class RSHError(Exception):
     def __init__(self, message, errors):
@@ -483,7 +485,7 @@ def initializeInterfaceIPC(app_connector):
         except:
             raise ConnectionRefusedError
 
-def sendIPCData(connection_type, data_type, connection, message):
+def sendIPCData(connection_type, data_type, connection, message, payload=None):
     if connection_type == 'pipe':
         if data_type == 'binary':
             connection.write(pickle.dumps(IPCDataWrapper(message)))
@@ -494,7 +496,11 @@ def sendIPCData(connection_type, data_type, connection, message):
     elif connection_type == 'socket':
         if data_type == 'binary':
             start_time = time.clock()
-            connection.send(pickle.dumps(IPCDataWrapper(message)))
+            connection.send(pickle.dumps(IPCDataWrapper(message, payload)))
+            # if payload == None:
+            #     connection.send(pickle.dumps(IPCDataWrapper(message)))
+            # elif payload is not None:
+            #     connection.send(pickle.dumps(IPCDataWrapper(message, payload)))
             #print('send time is ' + str(time.clock()-start_time))
         elif data_type == 'text':
             connection.send((str(message)+'\n').encode())
@@ -558,13 +564,13 @@ def MVCHandshake(app_connector, message):
     #     return received_message.data == message + '_ACK'
     # elif connection_format == 'text':
 
-def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_data):
+def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_data, payload=None):
     if not app_connector.app_connection_event.is_set():
         print('pncApp not connected')
         return fallback_data
 
     try:
-        sendIPCData(app_connector.connection_type, app_connector.command_format, app_connector.connection, message)
+        sendIPCData(app_connector.connection_type, app_connector.command_format, app_connector.connection, message, payload)
         timeout = socket_wait_timeout_initial
 
         received_packet = receiveIPCData(app_connector.connection_type, app_connector.feedback_format, app_connector.connection, timeout)

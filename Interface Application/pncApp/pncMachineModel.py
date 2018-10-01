@@ -271,6 +271,7 @@ class MachineModel():
 
         self.tcp_port = 5007
         self.ip_address = '129.1.15.5'
+        self.ip_address = '127.0.0.1'
         self.simulator_ip_address = '127.0.0.1'
         #self.ip_address = '127.0.0.1'
         #self.ip_address = '129.1.15.69'

@@ -282,6 +282,9 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
     else:
         return []
 
+def checkForPointRequest(synchronizer):
+    return synchronizer.mvc_need_points_event.is_set()
+
 # Returns true if monitoring is currently happening.
 def isMonitoring(synchronizer):
     try:

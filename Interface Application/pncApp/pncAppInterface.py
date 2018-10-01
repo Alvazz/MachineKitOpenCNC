@@ -115,6 +115,11 @@ class PNCAppController(Thread):
             pncLibrary.updateInterfaceClockOffsets(self.machine, self.feedback_state.clock_offsets)
             pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'SETUPTOOLPATH':
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('SETUPTOOLPATH', command.command_data))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'CHECKPOINTREQUESTS':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.checkForPointRequest())
         elif command.command == 'CLOSESPINTERFACE':
             pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command.command + '_ACK')
             self.CAM_socket_listener.client_connected_event.clear()
@@ -223,6 +228,7 @@ class PNCAppInterfaceSocket(Thread):
         self.client_address = address
         self.parent = parent
         self.connection = connection
+        self.connection_format = None
 
         self.client_connected_event = Event()
         self.login_event = Event()
@@ -236,7 +242,8 @@ class PNCAppInterfaceSocket(Thread):
                     self.waitForSocketLogin()
                     pncLibrary.printTerminalString(pncLibrary.printout_interface_socket_connection_string, self.client_name,
                                                    self.client_address)
-                inbound_message = pncLibrary.receiveIPCData(self.connection_type, 'text', self.connection)
+                #inbound_message = pncLibrary.receiveIPCData(self.connection_type, 'text', self.connection)
+                inbound_message = pncLibrary.receiveIPCData(self.connection_type, self.connection_format, self.connection)
                 if inbound_message.strip() == 'CLOSESOCKET':
                     pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message)
                     raise EOFError

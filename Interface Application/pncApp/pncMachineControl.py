@@ -25,7 +25,11 @@ class OperatingSystemController(Thread):
                                                      pncLibrary.printout_thread_launch_string, current_process().name,
                                                      self.name)
         self.startup_event.set()
+
+        # print("SHORTING OS CONTROLLER")
+        # self.synchronizer.os_ssh_connected_event.set()
         self.connectToOperatingSystem(pncLibrary.ssh_wait_timeout)
+
         while self.synchronizer.t_run_operating_system_controller.is_set() and self.synchronizer.os_ssh_connected_event.is_set():
             try:
                 command = self.command_queue.get(True, self.machine.process_queue_wait_timeout)
@@ -169,6 +173,8 @@ class MachineController(Process):
             pass
         elif command.command_type == 'PLAN':
             self.beginPlanningTrajectory(command.command_data[0])
+        elif command.command_type == 'SETUPTOOLPATH':
+            self.setupToolpath(command.command_data)
 
     def handleRSHError(self):
         self.synchronizer.mc_rsh_error_event.clear()
