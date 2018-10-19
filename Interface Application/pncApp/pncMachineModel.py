@@ -206,14 +206,14 @@ class MachineModel():
         #self.fk = []
         #self.ik = []
         #self.kinematic_translation = np.array([0, 0, 0])
-        self.translation_vector = np.array([[0, 0, 0, 1]]).T
+        #self.translation_vector = np.array([[0, 0, 0, 1]]).T
 
-        self.work_transformation_matrix = np.loadtxt(
-            self.raw_point_files_path + self.work_transformation_file, skiprows=2).T
-        self.tool_transformation_matrix = np.loadtxt(
-            self.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
-        self.tool_translation_vector = np.dot(self.tool_transformation_matrix, self.translation_vector)[:-1]
-        self.workpiece_translation_vector = np.dot(self.work_transformation_matrix, self.translation_vector)[:-1]
+        # self.work_transformation_matrix = np.loadtxt(
+        #     self.raw_point_files_path + self.work_transformation_file, skiprows=2).T
+        # self.tool_transformation_matrix = np.loadtxt(
+        #     self.raw_point_files_path + self.tool_transformation_file, skiprows=2).T
+        # self.tool_translation_vector = np.dot(self.tool_transformation_matrix, self.translation_vector)[:-1]
+        # self.workpiece_translation_vector = np.dot(self.work_transformation_matrix, self.translation_vector)[:-1]
 
         #Init states
         self.local_epoch = 0
@@ -271,7 +271,7 @@ class MachineModel():
 
         self.tcp_port = 5007
         self.ip_address = '129.1.15.5'
-        self.ip_address = '127.0.0.1'
+        #self.ip_address = '127.0.0.1'
         self.simulator_ip_address = '127.0.0.1'
         #self.ip_address = '127.0.0.1'
         #self.ip_address = '129.1.15.69'
@@ -284,9 +284,14 @@ class MachineModel():
         self.websocket_timeout = 5
         #self.websocket_client_GUID = '7ab22c19-3454-42ee-a68d-74c2789c4530'
         #self.websocket_server_GUID = '1ce49dd2-042c-4bec-95bd-790f0d0ece54'
+        self.websocket_type = "achex"
+        self.nodered_websocket_url = "ws://gw14.iotfm.org:1880/ws/example"
+        self.websocket_username = "remote_tp_client"
+        self.websocket_tp_name = "remote_tp_server"
         self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
         self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
         self.websocket_block_length = 20000
+        self.sculptprint_point_buffer_length = 10
         self.ssh_port = 22
         self.ssh_credentials = ('pocketnc', 'pocketnc')
         self.ssh_opts = '-X'

@@ -105,7 +105,9 @@ class MachineController(Process):
 
         self.planned_point_buffer = []
         self.enqueued_move_serial_number = 0
-        self.support_threads = [OperatingSystemController, MotionController]
+        self.support_threads = [OperatingSystemController, MotionController, CloudTrajectoryPlannerInterface]
+
+        self.toolpath_data = pncLibrary.SculptPrintToolpathData()
 
     def run(self):
         current_thread().name = self.main_thread_name
@@ -175,6 +177,9 @@ class MachineController(Process):
             self.beginPlanningTrajectory(command.command_data[0])
         elif command.command_type == 'SETUPTOOLPATH':
             self.setupToolpath(command.command_data)
+        #elif command.command_type == 'CHECKPOINTREQUEST':
+        elif command.commant_type == 'UPDATETOOLPATHPOINTS':
+            self.updateToolpathPoints(command.command_data)
 
     def handleRSHError(self):
         self.synchronizer.mc_rsh_error_event.clear()
@@ -361,6 +366,26 @@ class MachineController(Process):
         else:
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_machine_not_ready_for_motion_string)
+
+    def setupToolpath(self, toolpath_data):
+        self.toolpath_data.toolpath_name = toolpath_data['toolpathName']
+        self.toolpath_data.toolpath_id = float(toolpath_data['toolpathName'].replace('#',' ').split()[-1])
+        self.toolpath_data.number_of_points = toolpath_data['numberofPoints']
+        self.toolpath_data.number_of_sequences = toolpath_data['numberofSequences']
+        self.toolpath_data.sculptprint_file_name = toolpath_data['sculptprintFileName']
+        self.toolpath_data.tool_transformation_matrix = np.reshape(np.asarray(toolpath_data['toolToHolderMatrix']),(4,4))
+        self.toolpath_data.work_transformation_matrix = np.reshape(np.asarray(toolpath_data['tableToPartMatrix']),(4,4))
+
+        self.machine.work_transformation_matrix = self.toolpath_data.work_transformation_matrix
+        self.machine.tool_transformation_matrix = self.toolpath_data.tool_transformation_matrix
+        self.machine.workpiece_translation_vector = np.dot(self.machine.work_transformation_matrix, pncLibrary.TP.translation_vector)[:-1]
+        self.machine.tool_translation_vector = np.dot(self.machine.tool_transformation_matrix, pncLibrary.TP.translation_vector)[:-1]
+
+        self.cloud_trajectory_planner.toolpath_data = self.toolpath_data
+        self.synchronizer.tp_toolpath_setup_event.set()
+
+    def updateToolpathPoints(self, point_array):
+        pass
 
 
     ######################## Writing Functions ########################

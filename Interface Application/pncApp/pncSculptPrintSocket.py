@@ -13,7 +13,10 @@ import os, time
 #pncLibrary.updatePath()
 
 #Globals
-pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
+#pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
+pncApp_connector = pncLibrary.PNCAppConnection('socket', 'binary', 'binary')
+NUMAXES = 8
+TOOLPATHPOINTSIZE = 11
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 
@@ -48,6 +51,10 @@ def setupUserFunctionNames():
     return stringArray
 
 def start():
+    print('executing START')
+    return pncApp_connector.app_connection_event.is_set()
+
+def startCommunication():
     try:
         pncApp_connector.connection = pncLibrary.initializeInterfaceIPC(pncApp_connector)
         if pncLibrary.MVCHandshake(pncApp_connector, 'HELLO_SCULPTPRINT_BINARY'):
@@ -66,55 +73,75 @@ def start():
 #     return pncLibrary.receiveIPCData(connection_type, mvc_connection)
 
 def isMonitoring():
-    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
+    flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
+    print('ismonitoring is ' + str(flag))
+    return flag
 
 def readMachine(axis_sensor_id):
-    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
+    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
+    #print('sculptprint trying to read machine')
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ' , list, [], [pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]])
+    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
+
+def read():
+    print('sculptprint trying to read machine')
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ', list, [], [pncLibrary.SP_axis_sensor_IDs[0]])
 
 ############################# User Functions #############################
 
-def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-    if arg0 == 0:
-        arg0 = 5
-    # return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
-    #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
-    return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
-
-
-def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
-    #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-    #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
-    #return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
-    return True
-
-def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-    #return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
-    return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
+# def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
+#     if arg0 == 0:
+#         arg0 = 5
+#     # return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
+#     #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
+#     return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
+#
+#
+# def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
+#     #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
+#     #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
+#     #return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
+#     return True
+#
+# def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
+#     #return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
+#     return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
 
 # Called to stop monitoring the machine.
 # Will execute when the stop button is pressed in the Monitor Machine feature.
 
 
 def stop():
+    print('sculptprint closing connection')
+    return True
     if pncApp_connector.app_connection_event.is_set():
+        print('sculptprint closing connection')
         pncLibrary.closeMVCConnection(pncApp_connector)
     return True
 
 ############# NEW FUNCTIONS ###############
 
 def setupToolPath(valueDict):
-    print('Setting up toolpath ...')
+    # print('Setting up controller...')
+    # start()
+    # time.sleep(1)
+
     print('Setup values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
     # global feed_thread
     # feed_thread = feed_server(valueDict)
-    return 'SETUPTOOLPATH' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETUPTOOLPATH', str, '', valueDict)
+    #return 'SETUPTOOLPATH' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETUPTOOLPATH', str, '', valueDict)
+    toolpathData = valueDict
+    return 'SETUPTOOLPATH' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETUPTOOLPATH', str, '', toolpathData)
 
 # returns False if no points are requested, or a tuple of (True, nRequestedMoves)
 def checkForPointRequests():
     #global feed_thread
-    return 'CHECKPOINTREQUESTS' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUESTS', str, '')
+    #return 'CHECKPOINTREQUEST' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', str, '')
+
+    return True
+    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', bool, False)
     #return feed_thread.getHasPointRequests()
 
 
@@ -122,9 +149,10 @@ def checkForPointRequests():
 # this is a list of lists, where the outer list is the requested move, and the inner list is a list of floats representing each contact point
 # every TOOLPATHPOINTSIZE float value seperates each point. The floats for each point are the machine axis values, israpid flag as a 1 or 0, volume, move type (1 for step, 0 otherwise)
 def updateToolPathPoints(listsOfPoints):
-    print('Updating tool path points...')
-    global feed_thread
-    return feed_thread.updateToolPathPoints(listsOfPoints)
+    # print('Updating tool path points...')
+    # global feed_thread
+    # return feed_thread.updateToolPathPoints(listsOfPoints)
+    return 'UPDATETOOLPATHPOINTS' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'UPDATETOOLPATHPOINTS', str, '', listsOfPoints)
 
 
 # no functions exists to get these formats as a merged list, because SP needs to know what is a trajectory and auxilary format
@@ -133,9 +161,10 @@ def updateToolPathPoints(listsOfPoints):
 # containing read values returning back to SP
 def getAxisDataSourceFormats():
     print('execute getAxisDataSourceFormats()\n')
-    formatArray = [(r'planned trajectory', 'planned_positions', NUMAXES + 1),
-                   (r'actual trajectory', 'encoder_positions', NUMAXES + 1),
-                   (r'stepgen trajectory', 'stepgen_positions', NUMAXES + 1)]
+    formatArray = [(r'Planned Trajectory', 'planned_positions', NUMAXES + 1),
+                   (r'Actual Trajectory', 'encoder_positions', NUMAXES + 1),
+                   (r'Stepgen Trajectory', 'stepgen_positions', NUMAXES + 1)]
+    print('done')
     return formatArray
 
 
@@ -143,7 +172,7 @@ def getAxisDataSourceFormats():
 # containing read values returning back to SP
 def getAuxliaryDataSourceFormats():
     print('execute getAuxliaryDataSourceFormats()\n')
-    formatArray = [(r'aux data 1', 'aux_values1', 2), (r'aux data 2', 'aux_values2', 2)]
+    formatArray = [(r'Servo Buffer Level', 'aux_values1', 2), (r'aux data 2', 'aux_values2', 2)]
     return formatArray
 
 
@@ -165,6 +194,8 @@ def userPythonFunction1(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
+    startCommunication()
+    time.sleep(1)
     return True;
 
 
@@ -173,7 +204,7 @@ def userPythonFunction2(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    return True;
+    return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
 
 
 def userPythonFunction3(valueDict):
@@ -181,7 +212,7 @@ def userPythonFunction3(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    return True;
+    return True
 
 
 def userSlider1StateChange(valueDict):
@@ -189,7 +220,7 @@ def userSlider1StateChange(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    return True;
+    return True
 
 
 def userSlider2StateChange(valueDict):
@@ -197,7 +228,7 @@ def userSlider2StateChange(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    return True;
+    return True
 
 
 def setupUserDataNames():
@@ -206,7 +237,7 @@ def setupUserDataNames():
 
 
 def setupUserFunctionNames():
-    stringArray = [r'my function 1', r'my function 2', r'my function 3']
+    stringArray = [r'Connect to Machine', r'Begin Motion', r'my function 3']
     return stringArray
 
 
@@ -221,16 +252,17 @@ def setupUserOptionLabels():
 
 
 
+print("process name is " + __name__)
 #initializeInterfaceIPC()
 
 #print(setupMachineDescriptors(0))
 #print(setupMachineDescriptors(1))
-if __name__ != 'machinemonitor':
+if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
     start()
     #pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, 'FASTFORWARD_0_1')
     time.sleep(1)
 
-if __name__ != 'machinemonitor':
+if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
     # userPythonFunction1(0, 0, 0, 0, 0)
     # time.sleep(1)
     # userPythonFunction3(0, 0, 0, 0, 0)
@@ -246,7 +278,7 @@ if __name__ != 'machinemonitor':
     #     print(yy[0])
     # except:
     #     pass
-    userPythonFunction1(2, 0, 0, 0, 0)
+    #userPythonFunction1(2, 0, 0, 0, 0)
     #time.sleep(5)
     #userPythonFunction2(0, 0, 0, 0, 0)
     #userPythonFunction3(2,0,0,0,0)
@@ -270,6 +302,13 @@ if __name__ != 'machinemonitor':
         except:
             pass
             print("print break")
+        #setupToolPath({'tableToPartMatrix': [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.75, 1.0], 'numberofSequences' = 31, 'toolToHolderMatrix' = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0, 1.0], 'toolpathName': 'Tool Pass #1', 'numberofPoints' = 144646, 'sculptprintFileName' = 'E:\SculptPrint\PocketNC\SCPR Files\head_redo_good_pass2.scpr'})
+        setupToolPath(
+            {'tableToPartMatrix': [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.75, 1.0],
+             'numberofSequences': 31, 'toolToHolderMatrix': [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 2.0, 1.0],
+                                                              'toolpathName': 'Tool Pass #1', 'numberofPoints': 144646,
+                                                            'sculptprintFileName': 'E:\SculptPrint\PocketNC\SCPR Files\head_redo_good_pass2.scpr'})
+        checkForPointRequests()
 
         #userPythonFunction2(5, 7, 0, 0, 0)
         #userPythonFunction3(0,0,0,0,0)
@@ -283,3 +322,8 @@ if __name__ != 'machinemonitor':
 # zz = readMachine(1)
 # print(zz)
 #stop()
+
+# if __name__ == 'controlMachineMonitor':
+#     print('Setting up controller...')
+#     startCommunication()
+#     time.sleep(1)

@@ -119,7 +119,11 @@ class PNCAppController(Thread):
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('SETUPTOOLPATH', command.command_data))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'CHECKPOINTREQUESTS':
-            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.checkForPointRequest())
+            #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('CHECKPOINTREQUESTS', command.command_data))
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.checkForPointRequest(self.synchronizer))
+        elif command.command == 'UPDATETOOLPATHPOINTS':
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('UPDATETOOLPATHPOINTS', command.command_data))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'CLOSESPINTERFACE':
             pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command.command + '_ACK')
             self.CAM_socket_listener.client_connected_event.clear()
@@ -244,12 +248,31 @@ class PNCAppInterfaceSocket(Thread):
                                                    self.client_address)
                 #inbound_message = pncLibrary.receiveIPCData(self.connection_type, 'text', self.connection)
                 inbound_message = pncLibrary.receiveIPCData(self.connection_type, self.connection_format, self.connection)
-                if inbound_message.strip() == 'CLOSESOCKET':
-                    pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message)
-                    raise EOFError
-
-                command = pncLibrary.PNCAppCommand(inbound_message.strip().split('_')[0], inbound_message.strip().split('_')[1:], self.connection, self.connection_type, self.connection_format)
-                self.parent.pncApp_command_queue.put(command)
+                #Gross hack hack
+                if type(inbound_message) is str:
+                    if inbound_message.strip() == 'CLOSESOCKET':
+                        pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message)
+                        raise EOFError
+                    else:
+                        command = pncLibrary.PNCAppCommand(inbound_message.strip().split('_')[0],
+                                                           inbound_message.strip().split('_')[1:], self.connection,
+                                                           self.connection_type, self.connection_format)
+                elif type(inbound_message) is pncLibrary.IPCDataWrapper:
+                    if inbound_message.data == 'CLOSESOCKET':
+                        pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message.data)
+                        raise EOFError
+                    else:
+                        command = pncLibrary.PNCAppCommand(inbound_message.data, inbound_message.payload, self.connection,
+                                                           self.connection_type, self.connection_format)
+                # if inbound_message is str and inbound_message.strip() == 'CLOSESOCKET' or inbound_message.data == 'CLOSESOCKET':
+                #     pncLibrary.sendIPCAck(self.connection_type, self.connection_format, self.connection, inbound_message)
+                #     raise EOFError
+                #
+                # command = pncLibrary.PNCAppCommand(inbound_message.strip().split('_')[0], inbound_message.strip().split('_')[1:], self.connection, self.connection_type, self.connection_format)
+                try:
+                    self.parent.pncApp_command_queue.put(command)
+                except:
+                    print('break')
             except (ConnectionAbortedError, ConnectionResetError):
                 self.client_connected_event.clear()
                 print('INTERFACE SOCKET: Client %s forcibly disconnected' % str(self.client_address))

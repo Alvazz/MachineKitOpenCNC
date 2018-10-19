@@ -45,6 +45,7 @@ printout_connection_failed_string = "CONNECTION FAILED on {}, error: "
 printout_sculptprint_interface_initialization_string = "{} {} PID: {} starting pncApp"
 printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
 printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
+printout_websocket_connection_success_string = "WEBSOCKET CONNECTION SUCCESSFUL: {} authenticated"
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
 printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
@@ -178,6 +179,16 @@ class CloudTrajectoryPlannerState():
         self.current_received_rapid_sequence_id = -1
         self.incoming_number_of_sub_sequences = 0
 
+class SculptPrintToolpathData():
+    def __init__(self):
+        self.number_of_points = 0
+        self.number_of_sequences = 0
+        self.sculptprint_file_name = ''
+        self.part_transformation_matrix = np.empty([4,4])
+        self.tool_transformation_matrix = np.empty([4,4])
+        self.toolpath_name = ''
+        self.toolpath_id = -1
+
 class PNCAppConnection():
     def __init__(self, connection_type, command_format, feedback_format):
         self.connection = None
@@ -296,6 +307,8 @@ class Synchronizer():
         self.tp_planning_finished_event = manager.Event()
         self.tp_reposition_move_received_event = manager.Event()
         self.tp_first_trajectory_received_event = manager.Event()
+        self.tp_toolpath_setup_event = manager.Event()
+        self.tp_need_points_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
@@ -325,7 +338,6 @@ class Synchronizer():
         self.mvc_connected_event = manager.Event()
         self.mvc_enqueue_moves_event = manager.Event()
         self.mvc_moves_queued_event = manager.Event()
-        self.mvc_need_points_event = manager.Event()
         self.mvc_execute_motion_event = manager.Event()
         self.mvc_run_feedback_event = manager.Event()
         self.mvc_app_shutdown_event = manager.Event()
@@ -509,7 +521,10 @@ def sendIPCData(connection_type, data_type, connection, message, payload=None):
 
 def sendIPCAck(connection_type, connection_format, connection, message):
     if connection_format != 'internal':
-        sendIPCData(connection_type, connection_format, connection, message + '_ACK')
+        try:
+            sendIPCData(connection_type, connection_format, connection, message + '_ACK')
+        except Exception as error:
+            print('break ipc')
 
 def receiveIPCData(connection_type, connection_format, connection, timeout = socket_wait_timeout, interval = socket_wait_interval):
     received_data = waitForIPCDataTransfer(connection_type, connection, timeout, interval)
@@ -570,6 +585,7 @@ def safelyHandleSocketData(app_connector, message, expected_data_type, fallback_
         return fallback_data
 
     try:
+        print('trying to send command: ' + str(message))
         sendIPCData(app_connector.connection_type, app_connector.command_format, app_connector.connection, message, payload)
         timeout = socket_wait_timeout_initial
 

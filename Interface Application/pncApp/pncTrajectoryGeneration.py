@@ -1,6 +1,9 @@
 ######################## Trajectory Generation ########################
 import math, csv, numpy as np
 
+### CONSTANTS ###
+translation_vector = np.array([[0, 0, 0, 1]]).T
+
 def checkMoveOvertravel(point_samples, limits):
     if not ((point_samples < limits[0]).any() or (point_samples > limits[1]).any()):
         return (False, None, None)
