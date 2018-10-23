@@ -440,7 +440,7 @@ class CloudTrajectoryPlannerInterface(Thread):
             pass
 
     def requestToolpathPointsFromCAM(self):
-        if self.tp_state.sculptprint_point_buffer_length > self.raw_point_queue.qsize():
+        if self.machine.toolpath_point_buffer_length > self.raw_point_queue.qsize():
             self.synchronizer.tp_need_points_event.set()
 
     def enqueueSequencesForPlanning(self, tool_space_data=None, joint_space_data=None, sequence_slices=None, begin_sequence=None, end_sequence=None):#, output_queue=None):

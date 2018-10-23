@@ -459,11 +459,11 @@ class MachineFeedbackHandler(Process):
                         print('had error: ' + str(error))
                 else:
                     #Wait for complete transmission
-                    print('waiting for complete transmission')
+                    print('waiting for complete transmission, byte string length is ' + str(len(byte_string)))
                     self.feedback_state.multiple_socket_passes_required = True
                     self.socket_passes += 1
                     self.last_byte_string = byte_string
-                    if self.socket_passes >= 10:
+                    if self.socket_passes >= 20:
                         print('socket pass break')
                     return False, False, None, None
             else:

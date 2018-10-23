@@ -15,6 +15,9 @@ class PNCAppController(Thread):
         self.machine_type = "pocketnc"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
+        # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
+        # self.feedback_state.SP_auxiliary_data_source_format = pncLibrary.SP.buildAuxiliaryDataSourceArray()
+
 
         self.command_queue = Queue()
         self.startup_event = Event()
@@ -109,19 +112,27 @@ class PNCAppController(Thread):
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
-        elif command.command == 'READ':
+        elif command.command == 'READ1':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.readMachine(self.synchronizer, self.feedback_state, int(command.command_data[0])))
+        elif command.command == 'READ':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.read(self.synchronizer, self.feedback_state))
+        # elif command.command == 'SETUPDATA':
+        #     print('Setting up data format for SP')
+        #     self.machine.SP_axis_data_source_formats = pncLibrary.SP.buildAxisDataSourceArray()
+        #     self.machine.SP_auxiliary_data_source_formats = pncLibrary.SP.buildAuxiliaryDataSourceArray()
         elif command.command == 'FASTFORWARD':
             pncLibrary.updateInterfaceClockOffsets(self.machine, self.feedback_state.clock_offsets)
-            pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
+            #pncLibrary.updateInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams, command.command_data)
+            pncLibrary.updateFullInterfaceData('touch', self.synchronizer, self.feedback_state, pncLibrary.SP_main_data_streams, pncLibrary.SP_auxiliary_data_streams)
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'SETUPTOOLPATH':
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('SETUPTOOLPATH', command.command_data))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
-        elif command.command == 'CHECKPOINTREQUESTS':
+        elif command.command == 'CHECKPOINTREQUEST':
             #self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('CHECKPOINTREQUESTS', command.command_data))
-            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.checkForPointRequest(self.synchronizer))
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getPointRequest(self.synchronizer))
         elif command.command == 'UPDATETOOLPATHPOINTS':
+            self.synchronizer.tp_need_points_event.clear()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('UPDATETOOLPATHPOINTS', command.command_data))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
         elif command.command == 'CLOSESPINTERFACE':

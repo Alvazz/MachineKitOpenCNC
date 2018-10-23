@@ -15,30 +15,35 @@ import os, time
 #Globals
 #pncApp_connector = pncLibrary.PNCAppConnection('socket', 'text', 'binary')
 pncApp_connector = pncLibrary.PNCAppConnection('socket', 'binary', 'binary')
-NUMAXES = 8
+#NUMAXES = 8
 TOOLPATHPOINTSIZE = 11
+DATASOURCEFORMATS = [(r'Planned Trajectory', 'planned_positions', pncLibrary.SP.NUMAXES + 1),
+                   (r'Actual Trajectory', 'encoder_positions', pncLibrary.SP.NUMAXES + 1),
+                   (r'Stepgen Trajectory', 'stepgen_positions', pncLibrary.SP.NUMAXES + 1)]
+
+is_monitoring_setup_flag = False
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 
 ############################# Setup Functions #############################
-def monitoredMachineCount():
-    return 2
-
-def setupAuxilary():
-    return setupAuxiliary()
-
-def setupAuxiliary():
-    stringArray = [r'Buffer Level']
-    return stringArray
-
-def setupMachineAuxilary(nMachine):
-    return setupMachineAuxiliary(nMachine)
-
-def setupMachineAuxiliary(nMachine):
-    return pncLibrary.SP_auxiliary_data_labels[nMachine]
-
-def setupMachineDescriptors(nMachine):
-    return [0] + [1 for k in range(0,len(pncLibrary.SP_CAM_machine_axes[nMachine]))] + [2 for k in range(0,len(pncLibrary.SP_auxiliary_data_labels[nMachine])) if pncLibrary.SP_auxiliary_data_labels[nMachine][k] != '']
+# def monitoredMachineCount():
+#     return 2
+#
+# def setupAuxilary():
+#     return setupAuxiliary()
+#
+# def setupAuxiliary():
+#     stringArray = [r'Buffer Level']
+#     return stringArray
+#
+# def setupMachineAuxilary(nMachine):
+#     return setupMachineAuxiliary(nMachine)
+#
+# def setupMachineAuxiliary(nMachine):
+#     return pncLibrary.SP_auxiliary_data_labels[nMachine]
+#
+# def setupMachineDescriptors(nMachine):
+#     return [0] + [1 for k in range(0,len(pncLibrary.SP_CAM_machine_axes[nMachine]))] + [2 for k in range(0,len(pncLibrary.SP_auxiliary_data_labels[nMachine])) if pncLibrary.SP_auxiliary_data_labels[nMachine][k] != '']
 
 def setupUserDataNames():
     stringArray = [r'Start File', r'End File', r'my data 3', r'my data 4', r'my data 5']
@@ -73,19 +78,27 @@ def startCommunication():
 #     return pncLibrary.receiveIPCData(connection_type, mvc_connection)
 
 def isMonitoring():
-    flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
-    print('ismonitoring is ' + str(flag))
-    return flag
+    global is_monitoring_setup_flag
+    ### Gross hack hack
+    if is_monitoring_setup_flag is False:
+        is_monitoring_setup_flag = True
+        return False
+    else:
+        flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'ISMONITORING', bool, False)
+        #print('ismonitoring is ' + str(flag))
+        #print('ismonitoring is type ' + str(type(flag)))
+        return flag
+    #return False
 
 def readMachine(axis_sensor_id):
-    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ1_' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
     #print('sculptprint trying to read machine')
-    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ' , list, [], [pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]])
+    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ' , list, [], [pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]])
     #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ' + str(pncLibrary.SP_axis_sensor_IDs[axis_sensor_id]), list, [])
 
 def read():
     print('sculptprint trying to read machine')
-    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ', list, [], [pncLibrary.SP_axis_sensor_IDs[0]])
+    return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ', pncLibrary.SculptPrintFeedbackData, pncLibrary.SculptPrintFeedbackData())
 
 ############################# User Functions #############################
 
@@ -112,8 +125,8 @@ def read():
 
 
 def stop():
-    print('sculptprint closing connection')
-    return True
+    #print('sculptprint closing connection')
+    #return True
     if pncApp_connector.app_connection_event.is_set():
         print('sculptprint closing connection')
         pncLibrary.closeMVCConnection(pncApp_connector)
@@ -138,16 +151,18 @@ def setupToolPath(valueDict):
 # returns False if no points are requested, or a tuple of (True, nRequestedMoves)
 def checkForPointRequests():
     #global feed_thread
-    #return 'CHECKPOINTREQUEST' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', str, '')
-
-    return True
+    print('calling checkpointrequests')
+    flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', tuple, False)
+    print('points required flag is ' + str(flag))
+    return flag
+    #return True
     #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', bool, False)
     #return feed_thread.getHasPointRequests()
 
 
 # updates the toolpath for planning
 # this is a list of lists, where the outer list is the requested move, and the inner list is a list of floats representing each contact point
-# every TOOLPATHPOINTSIZE float value seperates each point. The floats for each point are the machine axis values, israpid flag as a 1 or 0, volume, move type (1 for step, 0 otherwise)
+# every pncLibrary.SP.TOOLPATHPOINTSIZE float value seperates each point. The floats for each point are the machine axis values, israpid flag as a 1 or 0, volume, move type (1 for step, 0 otherwise)
 def updateToolPathPoints(listsOfPoints):
     # print('Updating tool path points...')
     # global feed_thread
@@ -161,19 +176,23 @@ def updateToolPathPoints(listsOfPoints):
 # containing read values returning back to SP
 def getAxisDataSourceFormats():
     print('execute getAxisDataSourceFormats()\n')
-    formatArray = [(r'Planned Trajectory', 'planned_positions', NUMAXES + 1),
-                   (r'Actual Trajectory', 'encoder_positions', NUMAXES + 1),
-                   (r'Stepgen Trajectory', 'stepgen_positions', NUMAXES + 1)]
-    print('done')
-    return formatArray
+    # formatArray = [(r'Planned Trajectory', 'planned_positions', pncLibrary.SP.NUMAXES + 1),
+    #                (r'Actual Trajectory', 'encoder_positions', pncLibrary.SP.NUMAXES + 1),
+    #                (r'Stepgen Trajectory', 'stepgen_positions', pncLibrary.SP.NUMAXES + 1)]
+    # print('done')
+    return pncLibrary.SP.buildAxisDataSourceArray()
 
 
 # the auxilary data source formats returned as a list of tuples. Each tuple contains (name, property, length). The property must also be the attribute of the python object
 # containing read values returning back to SP
+def getAuxiliaryDataSourceFormats():
+    return getAuxiliaryDataSourceFormats()
+
 def getAuxliaryDataSourceFormats():
     print('execute getAuxliaryDataSourceFormats()\n')
-    formatArray = [(r'Servo Buffer Level', 'aux_values1', 2), (r'aux data 2', 'aux_values2', 2)]
-    return formatArray
+    #formatArray = [(r'Servo Buffer Level', 'aux_values1', 2), (r'aux data 2', 'aux_values2', 2)]
+    return pncLibrary.SP.buildAuxiliaryDataSourceArray()
+    #return formatArray
 
 
 # user defined functions
@@ -237,7 +256,7 @@ def setupUserDataNames():
 
 
 def setupUserFunctionNames():
-    stringArray = [r'Connect to Machine', r'Begin Motion', r'my function 3']
+    stringArray = [r'Connect to pncAppController', r'Begin Motion', r'my function 3']
     return stringArray
 
 
@@ -258,6 +277,7 @@ print("process name is " + __name__)
 #print(setupMachineDescriptors(0))
 #print(setupMachineDescriptors(1))
 if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
+    startCommunication()
     start()
     #pncLibrary.sendIPCData(mvc_connection_type, mvc_command_format, mvc_connection, 'FASTFORWARD_0_1')
     time.sleep(1)
@@ -267,9 +287,12 @@ if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
     # time.sleep(1)
     # userPythonFunction3(0, 0, 0, 0, 0)
 
+    checkForPointRequests()
+
     z = isMonitoring()
     print(z)
-    yy = readMachine(0)
+    yy = read()
+    print('read data is: ' + str(yy))
     #print(yy[0])
     # time.sleep(0.1)
     print('encoder data is: ')

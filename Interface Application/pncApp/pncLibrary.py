@@ -93,18 +93,30 @@ SP_axis_sensor_IDs = [0, 1]
 SP_pncApp_time = ['T']
 SP_pncApp_machine_axes = ['X','Y','Z','A','B']
 SP_CAM_machine_axes = [['X','Z','S','Y','A','B','V','W'], ['X','Z','S','Y','A','B','V','W']]
-SP_pncApp_data_auxes = [['BL', 'BPID'], ['']]
+#SP_pncApp_data_auxes = [['BL', 'BPID'], ['']]
+SP_pncApp_data_auxes = ['BL', 'BPID']
 SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL','BPID'], ['T','X','Z','S','Y','A','B','V','W']]
+SP_axis_data_sample_format = ['T','X','Z','S','Y','A','B','V','W']
+SP_auxiliary_data_sample_format = ['D', 'T']
+SP_toolpath_sample_data_format = ['X','Z','S','Y','A','B','is_rapid','volume','move_type']
 
 #SP_clock_data_names = [['RTAPI_CLOCK_TIMES', 'RSH_CLOCK_TIMES'], ['ENCODER_RECEIVED_TIMES']]
-SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+#SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+#SP_main_data_streams = [[('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5))], [('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
+SP_main_data_streams = [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5), ('Planned Trajectory', SP.NUMAXES + 1)),
+                        ('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5), ('Estimated Trajectory', SP.NUMAXES + 1)),
+                        ('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5), ('Actual Trajectory', SP.NUMAXES + 1))]
 #SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5))]]
-SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1)), ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))], [('', '', (0, 0))]]
-SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
+#SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1)), ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))], [('', '', (0, 0))]]
+#SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1))], [('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))]]
+SP_auxiliary_data_streams = [('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1), ('Servo Buffer Level', 2)),
+                             ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1),
+                              ('Network PID Delays', 2))]
+#SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
 
 #Machine kinematics
 machine_number_of_joints = 5
-machine_servo_dt = 0.001
+#machine_servo_dt = 0.001
 #machine_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
 machine_table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
 machine_max_joint_velocity = [0.6666, 0.6666, 0.6666, 20, 20]
@@ -152,6 +164,9 @@ class SculptPrintFeedbackState():
         self.feedback_indices = dict()
         self.clock_offsets = dict()
 
+        self.SP_axis_data_source_format = SP.buildAxisDataSourceArray()
+        self.SP_auxiliary_data_source_format = SP.buildAuxiliaryDataSourceArray()
+
     def buildFeedbackIndexDictionary(self):
         pass
 
@@ -188,6 +203,16 @@ class SculptPrintToolpathData():
         self.tool_transformation_matrix = np.empty([4,4])
         self.toolpath_name = ''
         self.toolpath_id = -1
+
+class SculptPrintFeedbackData():
+    def __init__(self):
+        for stream in SP_main_data_streams + SP_auxiliary_data_streams:
+            setattr(self, stream[1], [])
+
+    #     #self.planned_points = None
+    #
+    # def emptyFeedbackObject(self):
+
 
 class PNCAppConnection():
     def __init__(self, connection_type, command_format, feedback_format):
@@ -651,6 +676,36 @@ def updateInterfaceData(update_mode, synchronizer, feedback_state, main_data_str
 
         time_slices.append([time_slice[k] - clock_offsets[k] for k in range(0,len(clock_stream_names))])
         data_slices.append(data_slice)
+
+    if update_mode == 'pull':
+        return time_slices, data_slices, data_stream_names, data_stream_sizes
+    elif update_mode == 'touch':
+        return
+
+def updateFullInterfaceData(update_mode, synchronizer, feedback_state, main_data_streams, auxiliary_data_streams):
+    time_slices = []
+    data_slices = []
+    streams = main_data_streams + auxiliary_data_streams
+    clock_stream_names = [name for name in list(map(lambda stream: stream[0], streams)) if name != '']
+    data_stream_names = [name for name in list(map(lambda stream: stream[1], streams)) if name != '']
+    clock_stream_sizes = [size for size in list(map(lambda stream: stream[2][0], streams)) if size != 0]
+    data_stream_sizes = [size for size in list(map(lambda stream: stream[2][1], streams)) if size != 0]
+    complete_stream_names = clock_stream_names + data_stream_names
+    complete_stream_sizes = clock_stream_sizes + data_stream_sizes
+
+    DB_query_data = synchronousPull(synchronizer, complete_stream_names,
+                                    getFeedbackIndices(feedback_state.feedback_indices, complete_stream_names),
+                                    len(complete_stream_names) * [None])
+    time_slice, data_slice = DB_query_data[1][:len(clock_stream_names)], DB_query_data[1][-len(data_stream_names):]
+
+    clock_offsets = getInterfaceClockOffsets(feedback_state.clock_offsets, clock_stream_names)
+    # print('interface clock offsets are: ' + str(clock_offsets))
+    updateFeedbackIndices(feedback_state.feedback_indices, complete_stream_names, time_slice + data_slice)
+    updateFallbackDataPoints(feedback_state.last_values_read, complete_stream_names, complete_stream_sizes,
+                             time_slice + data_slice)
+
+    time_slices.append([time_slice[k] - clock_offsets[k] for k in range(0, len(clock_stream_names))])
+    data_slices.append(data_slice)
 
     if update_mode == 'pull':
         return time_slices, data_slices, data_stream_names, data_stream_sizes

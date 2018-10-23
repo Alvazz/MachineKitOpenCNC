@@ -64,6 +64,31 @@ import multiprocessing, os, sys, time, logging, numpy as np
 #     time_index = future_delta_T.argmin() + len(delta_T[delta_T < 0])
 #     return time_index
 
+############################# Data Handling #############################
+NUMAXES = 8
+TOOLPATHPOINTSIZE = 11
+# DATASOURCEFORMATS = [(r'Planned Trajectory', 'COMMANDED_SERVO_POSITIONS', NUMAXES + 1),
+#                    (r'Actual Trajectory', 'ENCODER_FEEDBACK_POSITIONS', NUMAXES + 1),
+#                    (r'Estimated Trajectory', 'STEPGEN_FEEDBACK_POSITIONS', NUMAXES + 1)]
+AUXILIARYDATASOURCEFORMATS = [(r'Servo Buffer Level', 'HIGHRES_TC_QUEUE_LENGTH', 2), (r'Network PID Delays', 'NETWORK_PID_DELAYS', 2)]
+
+def buildAxisDataSourceArray():
+    DATASOURCEFORMATS = []
+    for axis_data_source in pncLibrary.SP_main_data_streams:
+        data_name = axis_data_source[-1][0]
+        axis_data = axis_data_source[1]
+        data_size = axis_data_source[-1][1]
+        DATASOURCEFORMATS.append((data_name, axis_data, data_size))
+    return DATASOURCEFORMATS
+
+def buildAuxiliaryDataSourceArray():
+    AUXILIARYDATASOURCEFORMATS = []
+    for axis_data_source in pncLibrary.SP_auxiliary_data_streams:
+        data_name = axis_data_source[-1][0]
+        axis_data = axis_data_source[1]
+        data_size = axis_data_source[-1][1]
+        AUXILIARYDATASOURCEFORMATS.append((data_name, axis_data, data_size))
+    return AUXILIARYDATASOURCEFORMATS
 
 def formatFeedbackData(sensor_type, data_format, data):
     SP_formatted_data = []
@@ -85,6 +110,70 @@ def formatFeedbackData(sensor_type, data_format, data):
                 output_data_point[label] = raw_data_point[data_format.index(label_text)]
         SP_formatted_data.append(output_data_point)
     return SP_formatted_data
+
+def formatFullFeedbackData(axis_data_source_format, auxiliary_data_source_format, axis_data_sample_format, auxiliary_data_sample_format, database_format, time_slice, data_slice, data_stream_names):
+    output_data_object = pncLibrary.SculptPrintFeedbackData()
+
+    for k in range(0, len(axis_data_source_format)):
+        axis_data_stream = data_slice[0][k]
+        axis_data_stream_label = axis_data_source_format[k][1]
+        if axis_data_stream.size != 0:
+            data_stream_length = np.shape(axis_data_stream)[0]
+            output_data_array = np.empty((data_stream_length, axis_data_source_format[k][-1]))
+            for label in range(0, len(axis_data_sample_format)):
+                label_text = axis_data_sample_format[label]
+                if label_text == 'S':
+                    output_data_array[:, label] = -90 + np.zeros((data_stream_length,))
+                elif label_text == 'T':
+                    output_data_array[:, label] = time_slice[0][k][:,0]
+                elif label_text not in database_format:
+                    output_data_array[:, label] = np.zeros((data_stream_length))
+                else:
+                    output_data_array[:, label] = axis_data_stream[:,database_format.index(label_text)]
+        else:
+            output_data_array = np.empty((0,0))
+
+        setattr(output_data_object, axis_data_stream_label, output_data_array.tolist())
+
+    for k in range(0, len(auxiliary_data_source_format)):
+        auxiliary_data_stream = data_slice[0][k+len(axis_data_source_format)]
+        auxiliary_data_stream_label = auxiliary_data_source_format[k][1]
+        if auxiliary_data_stream.size != 0:
+            data_stream_length = np.shape(auxiliary_data_stream)[0]
+            output_data_array = np.empty((data_stream_length, len(auxiliary_data_source_format)))
+            for label in range(0, len(auxiliary_data_sample_format)):
+                label_text = auxiliary_data_sample_format[label]
+                if label_text == 'T':
+                    output_data_array[:, label] = time_slice[0][k+len(axis_data_source_format)][:,0]
+                else:
+                    output_data_array[:, label] = auxiliary_data_stream[:,0]
+        else:
+            output_data_array = np.empty((0, 0))
+
+        setattr(output_data_object, auxiliary_data_stream_label, output_data_array.tolist())
+
+    return output_data_object
+
+
+
+
+    # for data_point_index in range(0, len(data)):
+    #     try:
+    #         raw_data_point = np.hstack(
+    #             (data[data_point_index][k].flatten() for k in range(0, len(data[data_point_index]))))
+    #     except Exception as error:
+    #         print('break')
+    #     output_data_point = [0.0] * len(pncLibrary.SP_data_formats[sensor_type])
+    #     for label in range(0, len(pncLibrary.SP_data_formats[sensor_type])):
+    #         label_text = pncLibrary.SP_data_formats[sensor_type][label]
+    #         if label_text == 'S':
+    #             output_data_point[label] = -90.0
+    #         elif label_text not in data_format:
+    #             output_data_point[label] = 0.0
+    #         else:
+    #             output_data_point[label] = raw_data_point[data_format.index(label_text)]
+    #     SP_formatted_data.append(output_data_point)
+    # return SP_formatted_data
 
 def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
     SP_formatted_data = []
@@ -279,11 +368,30 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
         #FIXME this iteration here is probably not good
         return formatFeedbackData(axis_sensor_id, data_format, [[merged_data[0][k]] + merged_data[1][k] for k in range(0,len(merged_data[0]))])
 
+def read(synchronizer, feedback_state):
+    #axis_data_sample_format = pncLibrary.SP_pncApp_time + pncLibrary.SP_pncApp_machine_axes# + pncLibrary.SP_pncApp_data_auxes
+    # if axis_sensor_id == 1:
+    #     print('break')
+    if synchronizer.mvc_run_feedback_event.is_set():
+        # if axis_sensor_id == 1:
+        #     print('breakpull')
+        #start_time = time.clock()
+        time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateFullInterfaceData('pull',
+                                                                                                      synchronizer,
+                                                                                                      feedback_state,
+                                                                                                      pncLibrary.SP_main_data_streams,
+                                                                                                      pncLibrary.SP_auxiliary_data_streams)
+        return formatFullFeedbackData(feedback_state.SP_axis_data_source_format, feedback_state.SP_auxiliary_data_source_format,
+                                       pncLibrary.SP_axis_data_sample_format, pncLibrary.SP_auxiliary_data_sample_format,
+                                       pncLibrary.SP_pncApp_machine_axes, time_slice, data_slice, data_stream_names)
     else:
-        return []
+        return pncLibrary.SculptPrintFeedbackData()
 
-def checkForPointRequest(synchronizer):
-    return synchronizer.tp_need_points_event.is_set()
+def getPointRequest(synchronizer):
+    if synchronizer.tp_need_points_event.is_set():
+        return (True, 1)
+    else:
+        return (False, 0)
 
 # Returns true if monitoring is currently happening.
 def isMonitoring(synchronizer):
