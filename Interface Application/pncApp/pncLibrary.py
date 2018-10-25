@@ -1,5 +1,6 @@
 import pncTrajectoryGeneration as TP, pncSculptPrintIntegration as SP
-import sys, pickle, time, select, socket, wpipe
+import sys, pickle, time, select, socket, wpipe, base64, numpy as np
+from io import BytesIO
 from threading import Thread
 from multiprocessing import Event, current_process
 
@@ -203,6 +204,113 @@ class SculptPrintToolpathData():
         self.tool_transformation_matrix = np.empty([4,4])
         self.toolpath_name = ''
         self.toolpath_id = -1
+
+class TPData():
+    def __init__(self, message_type=None, joint_space_data=None, tool_space_data=None, volumes_removed=None, move_flags=None, sequence_id=None, num_sub_seqs=None, move_type=None, error=None,
+                 file_name=None, path_id = None, block_length=None, velocity_limit=None, acceleration_limit=None, servo_dt=None, tool_transformation=None, part_transformation=None, mrr_limit=None,
+                 conservative_bounding=None, starting_sequence=None, ending_sequence=None, feedback_data_type=None):
+        self.message_data = dict()
+
+        #Control tags
+        self.message_data['message_type'] = message_type
+        self.message_data['error'] = error
+
+        #PLANNED_POINTS and REQUESTED_POINTS tags
+        self.message_data['joint_space_data'] = joint_space_data
+        self.message_data['tool_space_data'] = tool_space_data
+        self.message_data['volumes_removed'] = volumes_removed
+        self.message_data['move_flags'] = move_flags
+        self.message_data['sid'] = sequence_id
+        self.message_data['move_type'] = move_type
+        self.message_data['num_sub_seqs'] = num_sub_seqs
+
+        # #PLANNED_POINTS tags
+        # self.message_data['joint_space_data'] = joint_space_data
+        # self.message_data['sid'] = sequence_id
+        # self.message_data['num_sub_seqs'] = num_sub_seqs
+
+        #METADATA tags
+        self.message_data['file_name'] = file_name
+        self.message_data['path_id'] = path_id
+        self.message_data['block_length'] = block_length
+        self.message_data['velocity_limit'] = velocity_limit
+        self.message_data['acceleration_limit'] = acceleration_limit
+        self.message_data['servo_dt'] = servo_dt
+        self.message_data['tool_transformation'] = tool_transformation
+        self.message_data['part_transformation'] = part_transformation
+        self.message_data['mrr_limit'] = mrr_limit
+        self.message_data['conservative_bounding'] = conservative_bounding
+
+        #EXECUTED_DATA tags
+        self.message_data['starting_sequence'] = starting_sequence
+        self.message_data['ending_sequence'] = ending_sequence
+        self.message_data['feedback_data_type'] = feedback_data_type
+
+
+    def encodeNumpy(self):
+        data_stream = BytesIO()
+        numpy_dict = {key: np.asarray([self.message_data[key]]) if (
+                    type(self.message_data[key]) is not np.ndarray and self.message_data[key] is not None) else None for
+                      key in self.message_data.keys()}
+        np.savez_compressed(data_stream, **numpy_dict)
+        data_stream.seek(0)
+        return base64.b64encode(data_stream.read()).decode()
+
+    def decodeNumpy(self, payload):
+        #def decodePayload(self, payload):
+        payload_size = len(payload)
+        byte_stream = BytesIO(base64.b64decode(payload.encode('utf-8')))
+        byte_stream.seek(0)
+        try:
+            decoded_payload = np.load(byte_stream)
+            decoded_payload.payload_size = payload_size
+        except np.BadZipFile:
+            print('break load')
+            self.parent.websocket_communicator.sendMessage(reset_connection='')
+        except Exception as error:
+            print('error: ' + str(error))
+            # self.websocket_communicator.sendMessage(reset_connection='')
+        #return decoded_payload, decoded_payload.keys()
+
+        if decoded_payload['message_type'] == 'DATA':
+            self.message_data['message_type'] = decoded_payload['message_type'] == 'trajectory'
+            self.message_data['sid'] = decoded_payload['sid'].item()
+            self.message_data['sub_sid'] = decoded_payload['sub_sid'].item()
+            self.message_data['joint_space_data'] = decoded_payload['planned_points']
+            #self.message_data['tool_space_data'] = decoded_payload['tool_space_data']
+            #self.message_data['volumes_removed'] = decoded_payload['volumes_removed']
+            #self.message_data['move_flags'] = decoded_payload['move_flags']
+            self.message_data['num_sub_seqs'] = decoded_payload['num_sub_seqs'].item()
+        elif decoded_payload['message_type'] == 'SID_ACK':
+            self.message_data['sid'] = decoded_payload['sid'].item()
+        elif decoded_payload['message_type'] == 'METADATA':
+            self.message_data['file_name'] = decoded_payload['file_name']
+            self.message_data['block_length'] = decoded_payload['block_length']
+            self.message_data['velocity_limit'] = decoded_payload['velocity_limit']
+            self.message_data['acceleration_limit'] = decoded_payload['acceleration_limit']
+            self.message_data['servo_dt'] = decoded_payload['servo_dt']
+            self.message_data['tool_transformation'] = decoded_payload['tool_transformation']
+            self.message_data['part_transformation'] = decoded_payload['part_transformation']
+            self.message_data['mrr_limit'] = decoded_payload['mrr_limit']
+            self.message_data['conservative_bounding'] = decoded_payload['conservative_bounding']
+        elif decoded_payload['message_type'] == 'METADATA_ACK':
+            pass
+        elif decoded_payload['message_type'] == 'HELLO_ACK':
+            pass
+        elif decoded_payload['message_type'] == 'RESET_CONNECTION_ACK':
+            pass
+        else:
+            print('Websocket message had unrecognized message_type')
+
+        return self
+
+    # def encode(self):
+    #     def sendMessage(self, **kwargs):
+    #         data_stream = BytesIO()
+    #         # data_stream.seek(0)
+    #         np.savez_compressed(data_stream, **kwargs)
+    #         data_stream.seek(0)
+    #         encoded_string = base64.b64encode(data_stream.read())
 
 class SculptPrintFeedbackData():
     def __init__(self):

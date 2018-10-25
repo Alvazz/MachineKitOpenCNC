@@ -385,12 +385,31 @@ class MachineController(Process):
         self.synchronizer.tp_toolpath_setup_event.set()
 
     def updateToolpathPoints(self, point_array):
-        joint_point_samples = np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, slice(*[SP_toolpath_sample_data_format.index(axis) for axis in SP_pncApp_machine_axes] + SP_toolpath_sample_data_format.index('S'))].T
-        tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples).T, *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+        #joint_point_samples = np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, slice(*[pncLibrary.SP_toolpath_sample_data_format.index(axis) for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')])].T
+        #FixME I think this only handles one sequence at a time?
+        joint_point_samples = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,ndx]
+                                        for ndx in [pncLibrary.SP_toolpath_sample_data_format.index(axis)
+                                                    for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')]])
+        tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T, *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+        volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
+        move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('is_rapid')]])
 
-        points_to_enqueue = [np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id]), tool_space_data[:, sequence_slices[k][1]],
-         joint_space_data[:, sequence_slices[k][1]], 'SP_trajectory']
-        self.cloud_trajectory_planner.raw_point_queue.put(point_array)
+        #HACK HACK
+        self.cloud_trajectory_planner.starting_sequence_id += 1
+        self.cloud_trajectory_planner.plan_to_index_delta += 1
+
+        self.synchronizer.tp_plan_motion_event.set()
+        # self.cloud_trajectory_planner.raw_point_queue.put([np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id]),
+        #                                                    tool_point_samples, joint_point_samples, 'SP_trajectory'])
+        # self.cloud_trajectory_planner.raw_point_queue.put(
+        #     [np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id]),
+        #      tool_point_samples, joint_point_samples, 'SP_trajectory'])
+        self.cloud_trajectory_planner.raw_point_queue.put(pncLibrary.TPData(message_type='REQUESTED_POINTS', joint_space_data=joint_point_samples, tool_space_data=tool_point_samples,
+                                                                                    volumes_removed=volumes, move_flags=move_flags, sequence_id=self.cloud_trajectory_planner.tp_state.enqueued_sequence_id,
+                                                                                    move_type='SP_trajectory'))
+
+        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                         pncLibrary.printout_trajectory_planner_enqueueing_voxel_points_string, len(point_array), 'CAM System')
 
 
     ######################## Writing Functions ########################

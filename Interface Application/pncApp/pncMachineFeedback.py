@@ -343,9 +343,15 @@ class MachineFeedbackHandler(Process):
             if self.header_processed and not self.header_processing_error:
                 #Drop header data, it's already good
                 old_byte_string_before_header = self.byte_string
-                if not self.feedback_data_processing_error:
+                if not self.feedback_data_processing_error:# and self.socket_passes == 0:
                     #If this is the first pass on the data, FIXME can move this into assenbleAndProcess, but is it worth it?
-                    self.byte_string = self.byte_string[self.header_delimiter_index:]
+                    if self.socket_passes > 0:
+                        print('socket passes = ' + str(self.socket_passes) + ' and still chopping transmission')
+                    # elif self.socket_passes == 0:
+                    #     print('socket passes = ' + str(self.socket_passes) + ' and first chopping transmission')
+
+                    if self.socket_passes <= 1:
+                        self.byte_string = self.byte_string[self.header_delimiter_index:]
                 else:
                     print('passing again on socket')
                 self.feedback_data_processed, self.feedback_data_processing_error, self.feedback_data, self.complete_transmission_delimiter_index = \
@@ -355,10 +361,11 @@ class MachineFeedbackHandler(Process):
                     self.byte_string = self.byte_string[self.complete_transmission_delimiter_index:]
                     #FIXME use feedbackstate object instead of individual flags
                     self.resetFeedbackState()
-                    self.header_processed = False
-                    self.header_processing_error = False
-                    self.feedback_data_processed = False
-                    self.feedback_data_processing_error = False
+                    self.socket_passes = 0
+                    #self.header_processed = False
+                    #self.header_processing_error = False
+                    #self.feedback_data_processed = False
+                    #self.feedback_data_processing_error = False
 
         #Flag set, shutdown. Handle socket closure in machine_controller
         pncLibrary.waitForThreadStop(self, self.feedback_processor)
