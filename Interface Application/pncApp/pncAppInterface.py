@@ -60,7 +60,7 @@ class PNCAppController(Thread):
     #         pncLibrary.sendIPCData(connection_type, 'text', connection, 'ACK')
 
     def handleCommand(self, command):
-        print('PNCAPP CONTROLLER: Received ' + command.command)
+        #print('PNCAPP CONTROLLER: Received ' + command.command)
         #command_data = command.command.split('_')
         #command_type = command.command
         if command.command == 'INIT':

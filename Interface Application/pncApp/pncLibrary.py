@@ -52,6 +52,8 @@ printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER:
 printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
 printout_trajectory_initialization_string = "MACHINE CONTROLLER: Initializing trajectory"
 printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for sequence {}"
+printout_trajectory_planner_error_string = "TRAJECTORY PLANNER: Received error string: {}"
+printout_trajectory_planner_unrecognized_message_string = "TRAJECTORY PLANNER: Received unrecognized message type {}"
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
 printout_trajectory_planner_motion_queues_unlinked_string = "MOTION QUEUE FEEDER: Primary move queue unlinked from {} move queue"
 printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
@@ -59,7 +61,7 @@ printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} e
 printout_trajectory_planner_cutting_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued cutting sequence ID {}"
 printout_trajectory_planner_rapid_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued rapid sequence ID {}"
 printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received {} byte subsequence {} of sequence ID {} from {}"
-printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER: Enqueueing {} sequences from {}"
+printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER: Enqueueing {} sequences from {} to TP queue"
 printout_machine_not_ready_for_motion_string = "MACHINE CONTROLLER: No trajectories available for execution, aborting motion"
 printout_trajectory_planner_bad_cutting_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed cutting sequence ID {}"
 printout_trajectory_planner_bad_rapid_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed rapid sequence ID {}"
@@ -188,7 +190,7 @@ class CloudTrajectoryPlannerState():
         #self.sequence_ack_id = 0
         self.SP_sequence_ack_id = 0
         self.rapid_sequence_ack_id = 0
-        self.enqueued_sequence_id = 0
+        self.enqueued_sequence_id = -1
         self.current_requested_SP_sequence_id = 0
         self.current_requested_rapid_sequence_id = 0
         self.current_received_SP_sequence_id = -1
@@ -206,9 +208,12 @@ class SculptPrintToolpathData():
         self.toolpath_id = -1
 
 class TPData():
-    def __init__(self, message_type=None, joint_space_data=None, tool_space_data=None, volumes_removed=None, move_flags=None, sequence_id=None, num_sub_seqs=None, move_type=None, error=None,
-                 file_name=None, path_id = None, block_length=None, velocity_limit=None, acceleration_limit=None, servo_dt=None, tool_transformation=None, part_transformation=None, mrr_limit=None,
-                 conservative_bounding=None, starting_sequence=None, ending_sequence=None, feedback_data_type=None):
+    def __init__(self, message_type=None, joint_space_data=None, tool_space_data=None, volumes_removed=None, move_flags=None,
+                 sequence_id=None, num_sub_seqs=None, move_type=None, error=None, file_name=None, path_id = None,
+                 block_length=None, velocity_limit=None, acceleration_limit=None, servo_dt=None, tool_transformation=None,
+                 part_transformation=None, mrr_limit=None, conservative_bounding=None, compute_grid_scale_factor=None,
+                 starting_sequence=None, ending_sequence=None, feedback_data_type=None, feedback_period=None, motion_start_time=None,
+                 rt_time=None, nonrt_time=None, stepgen_executed_points=None, encoder_executed_points=None, buffer_level=None):
         self.message_data = dict()
 
         #Control tags
@@ -240,30 +245,46 @@ class TPData():
         self.message_data['part_transformation'] = part_transformation
         self.message_data['mrr_limit'] = mrr_limit
         self.message_data['conservative_bounding'] = conservative_bounding
+        self.message_data['compute_grid_scale_factor'] = compute_grid_scale_factor
 
         #EXECUTED_DATA tags
         self.message_data['starting_sequence'] = starting_sequence
         self.message_data['ending_sequence'] = ending_sequence
         self.message_data['feedback_data_type'] = feedback_data_type
+        self.message_data['feedback_period'] = feedback_period
 
+        #self.message_data['planned_points'] = planned_points
+        self.message_data['motion_start_time'] = motion_start_time
+        self.message_data['rt_time'] = rt_time
+        self.message_data['nonrt_time'] = nonrt_time
+        self.message_data['stepgen_executed_points'] = stepgen_executed_points
+        self.message_data['encoder_executed_points'] = encoder_executed_points
+        self.message_data['buffer_level'] = buffer_level
+
+        self.dropEmptyKeys()
+
+    def dropEmptyKeys(self):
+        self.message_data = {key:self.message_data[key] for key in self.message_data.keys() if self.message_data[key] is not None}
 
     def encodeNumpy(self):
         data_stream = BytesIO()
-        numpy_dict = {key: np.asarray([self.message_data[key]]) if (
-                    type(self.message_data[key]) is not np.ndarray and self.message_data[key] is not None) else None for
-                      key in self.message_data.keys()}
+        # numpy_dict = {key: np.asarray([self.message_data[key]]) if (
+        #             type(self.message_data[key]) is not np.ndarray and self.message_data[key] is not None) else None for
+        #               key in self.message_data.keys()}
+        numpy_dict = {key: np.asarray([self.message_data[key]]) if (type(self.message_data[key]) is not np.ndarray) else
+        self.message_data[key] for key in self.message_data.keys()}
         np.savez_compressed(data_stream, **numpy_dict)
         data_stream.seek(0)
         return base64.b64encode(data_stream.read()).decode()
 
     def decodeNumpy(self, payload):
         #def decodePayload(self, payload):
-        payload_size = len(payload)
+        #self.message_data.payload_size = len(payload)
         byte_stream = BytesIO(base64.b64decode(payload.encode('utf-8')))
         byte_stream.seek(0)
         try:
             decoded_payload = np.load(byte_stream)
-            decoded_payload.payload_size = payload_size
+            self.payload_size = len(payload)
         except np.BadZipFile:
             print('break load')
             self.parent.websocket_communicator.sendMessage(reset_connection='')
@@ -272,8 +293,9 @@ class TPData():
             # self.websocket_communicator.sendMessage(reset_connection='')
         #return decoded_payload, decoded_payload.keys()
 
-        if decoded_payload['message_type'] == 'DATA':
-            self.message_data['message_type'] = decoded_payload['message_type'] == 'trajectory'
+        self.message_data['message_type'] = decoded_payload['message_type'].item()
+        if decoded_payload['message_type'] == 'PLANNED_DATA':
+            #self.message_data['message_type'] = decoded_payload['message_type'] == 'trajectory'
             self.message_data['sid'] = decoded_payload['sid'].item()
             self.message_data['sub_sid'] = decoded_payload['sub_sid'].item()
             self.message_data['joint_space_data'] = decoded_payload['planned_points']
@@ -281,8 +303,10 @@ class TPData():
             #self.message_data['volumes_removed'] = decoded_payload['volumes_removed']
             #self.message_data['move_flags'] = decoded_payload['move_flags']
             self.message_data['num_sub_seqs'] = decoded_payload['num_sub_seqs'].item()
-        elif decoded_payload['message_type'] == 'SID_ACK':
+            self.message_data['move_type'] = decoded_payload['move_type'].item()
+        elif decoded_payload['message_type'] == 'REQUESTED_DATA_ACK':
             self.message_data['sid'] = decoded_payload['sid'].item()
+            self.message_data['move_type'] = decoded_payload['move_type'].item()
         elif decoded_payload['message_type'] == 'METADATA':
             self.message_data['file_name'] = decoded_payload['file_name']
             self.message_data['block_length'] = decoded_payload['block_length']
@@ -299,6 +323,8 @@ class TPData():
             pass
         elif decoded_payload['message_type'] == 'RESET_CONNECTION_ACK':
             pass
+        elif decoded_payload['message_type'] == 'ERROR':
+            self.message_data['error_string'] = decoded_payload['error_string'].item()
         else:
             print('Websocket message had unrecognized message_type')
 
@@ -311,6 +337,112 @@ class TPData():
     #         np.savez_compressed(data_stream, **kwargs)
     #         data_stream.seek(0)
     #         encoded_string = base64.b64encode(data_stream.read())
+
+class InvalidTPCommMessage(Exception):
+    """Exception for invalid TPCommMessage"""
+
+    def __init__(self, expression, message):
+        super().__init__()
+        self.expression = expression
+        self.message = message
+
+class TPCommMessages():
+    """A TpCommMessage is essentially a set of key-value pairs. This class
+    provides for constructing default comm messages for different comm message
+    types.  Also, this class serves to document and verify the communication
+    protocol"""
+
+    base_defaults = {
+        'message_type': None,
+    }
+
+    @staticmethod
+    def get_message_defaults(message_type):
+        """Provides default values for CommMessages"""
+        # Every message will have the above two keys
+        message_defaults = dict()
+        message_defaults.update(TPCommMessages.base_defaults)
+        if message_type == 'ERROR':
+            message_defaults.update({
+                'error_string': None
+            })
+        if message_type == 'HELLO':
+            pass
+        if message_type == 'HELLO_ACK':
+            pass
+        if message_type == 'METADATA':
+            message_defaults.update({
+                'file_name': np.array(["tempfile"]),
+                'path_id': np.array([0]),
+                'block_length': np.array([10000]),
+                'velocity_limit': None,
+                'acceleration_limit': None,
+                'mrr_limit': None,
+                'servo_dt': None,
+                'tool_transformation': None,
+                'part_transformation': None,
+                'conservative_bounding': np.array([False]),
+            })
+        if message_type == 'METADATA_ACK':
+            pass
+
+        if message_type == 'REQUESTED_DATA':
+            message_defaults.update({
+                'sid': np.array([0]),
+                'move_type': None,
+                'joint_space_data': None,
+                'tool_space_data': None,
+                'volumes_removed': None,
+                'move_flags': None})
+
+        if message_type == 'REQUESTED_DATA_ACK':
+            message_defaults.update({
+                'sid': 0,
+                'move_type': None})
+
+        if message_type == 'PLANNED_DATA':
+            message_defaults.update({
+                'sid': 0,
+                'move_type': None,
+                'num_sub_seqs': None,
+                'sub_sid': None,
+                'planned_points': None,
+            })
+
+        if message_type == 'EXECUTED_DATA':
+            message_defaults.update({
+                'executed_points': None,
+                'file_name': np.array(["tempfile"]),
+                'path_id': np.array([0]),
+                'starting_sid': None,
+                'ending_sid': None,
+                'feedback_data_type': None,
+                'feedback_period': None,
+            })
+
+        message_defaults['message_type'] = message_type
+        return message_defaults
+
+    @staticmethod
+    def verify_message(np_data=None, **message):
+        """Check if a passed in message is a valid COMM protocol message
+        If np_data is set, the message is drawn from np_data, else from the
+        passed in message dict"""
+        if np_data is not None:
+            message = np_data
+        if 'message_type' not in message.keys():
+            raise InvalidTPCommMessage(
+                'message_type', "no message_type found")
+        prototype = TPCommMessages.get_message_defaults(
+            message['message_type'])
+        for key, _ in message.items():
+            if key not in prototype:
+                raise InvalidTPCommMessage(
+                    key, "contains extraneous keys" + str(key))
+        for key, value in prototype.items():
+            if key not in message.keys() and value is None:
+                raise InvalidTPCommMessage(key, "not provided key " + str(key)
+                                           + " and we have no reasonable default value")
 
 class SculptPrintFeedbackData():
     def __init__(self):
