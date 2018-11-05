@@ -69,6 +69,10 @@ class OperatingSystemController(Thread):
         try:
             self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port, username=self.machine.ssh_credentials[0],
                                     password=self.machine.ssh_credentials[1], allow_agent=False, look_for_keys=False, timeout=timeout)
+            # self.ssh_client.connect(self.machine.ip_address, self.machine.ssh_port,
+            #                         username='machinekit',
+            #                         password='password', allow_agent=False, look_for_keys=False,
+            #                         timeout=timeout)
             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_ssh_connection_success_string,
                                                          self.machine.ssh_credentials[0], self.machine.ip_address)
@@ -300,7 +304,7 @@ class MachineController(Process):
                               tool_space_data=tool_points.T,
                               volumes_removed=np.zeros((1,joint_points.shape[0])),
                               move_flags=1+np.zeros((1,joint_points.shape[0])),
-                              sequence_id=self.cloud_trajectory_planner.tp_state.rapid_sequence_id,
+                              sequence_id=np.array([-1, self.cloud_trajectory_planner.tp_state.rapid_sequence_id]),
                               move_type='rapid'))
         self.cloud_trajectory_planner.tp_state.rapid_sequence_id += 1
 
@@ -423,7 +427,7 @@ class MachineController(Process):
         requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA', joint_space_data=joint_point_samples,
                           tool_space_data=tool_point_samples,
                           volumes_removed=volumes, move_flags=move_flags,
-                          sequence_id=self.cloud_trajectory_planner.tp_state.enqueued_sequence_id,
+                          sequence_id=np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
                           move_type='SP_trajectory')
         self.cloud_trajectory_planner.raw_point_queue.put(requested_points)
         #self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
@@ -491,7 +495,7 @@ class MachineController(Process):
     def readyMachine(self):
         self.waitForSet(self.setEstop, 0, self.getEstop)
         self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
-        #self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
+        self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
 
         if not pncLibrary.isHomed(self.machine, self.synchronizer):
             self.waitForSet(self.setHomeAll,None,self.getAllHomed, 10)

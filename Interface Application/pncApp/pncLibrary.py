@@ -117,6 +117,9 @@ SP_auxiliary_data_streams = [('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 
                               ('Network PID Delays', 2))]
 #SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
 
+#TP Comm Constants
+tp_move_types = ['SP_trajectory', 'rapid']
+
 #Machine kinematics
 machine_number_of_joints = 5
 #machine_servo_dt = 0.001
@@ -179,6 +182,7 @@ class CloudTrajectoryPlannerState():
         self.tp_connected_event = Event()
         self.send_next_block_event = Event()
         self.sequence_id_ack_event = Event()
+        self.subsequence_id_ack_event = Event()
         self.matching_sequence_received_event = Event()
         #self.tp_first_trajectory_received_event = Event()
         #self.tp_planning_finished_event = Event()
@@ -188,14 +192,37 @@ class CloudTrajectoryPlannerState():
 
         self.rapid_sequence_id = 0
         #self.sequence_ack_id = 0
-        self.SP_sequence_ack_id = 0
-        self.rapid_sequence_ack_id = 0
+        # self.CAM_subsequence_ack_id = -1
+        # self.rapid_subsequence_ack_id = -1
+        # self.SP_sequence_ack_id = 0
+        # self.rapid_sequence_ack_id = 0
         self.enqueued_sequence_id = -1
-        self.current_requested_SP_sequence_id = 0
-        self.current_requested_rapid_sequence_id = 0
-        self.current_received_SP_sequence_id = -1
-        self.current_received_rapid_sequence_id = -1
+
+        # self.current_requested_CAM_sequence_id = 0
+        # self.current_requested_CAM_subsequence_id = -1
+        # self.current_requested_rapid_sequence_id = 0
+        # self.current_requested_rapid_subsequence_id = -1
+
+        #First element is number of subsequences in outbound transmission, second is number in inbound transmission
+        self.number_of_subsequences = [-1, -1]
+        # First element is SP_trajectory requested ID, second is rapid requested ID
+        self.sequence_ack_id = [-1, -1]
+        self.subsequence_ack_id = [-1, -1]
+        self.current_received_sequence_id = [-1, -1]
+        self.current_received_subsequence_id = [-1, -1]
+        self.current_requested_sequence_id = [-1, -1]
+        self.current_requested_subsequence_id = [-1, -1]
+
+        # self.current_received_CAM_sequence_id = -1
+        # self.current_received_CAM_subsequence_id = -1
+        # self.current_received_rapid_sequence_id = -1
+        # self.current_received_rapid_subsequence_id = -1
         self.incoming_number_of_sub_sequences = 0
+
+class TPStateError(Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        #self.errors = errors
 
 class SculptPrintToolpathData():
     def __init__(self):
@@ -209,7 +236,7 @@ class SculptPrintToolpathData():
 
 class TPData():
     def __init__(self, message_type=None, joint_space_data=None, tool_space_data=None, volumes_removed=None, move_flags=None,
-                 sequence_id=None, num_sub_seqs=None, move_type=None, error=None, file_name=None, path_id = None,
+                 sequence_id=None, number_of_subsequences=None, move_type=None, error=None, file_name=None, path_id = None,
                  block_length=None, velocity_limit=None, acceleration_limit=None, servo_dt=None, tool_transformation=None,
                  part_transformation=None, mrr_limit=None, conservative_bounding=None, compute_grid_scale_factor=None,
                  starting_sequence=None, ending_sequence=None, feedback_data_type=None, feedback_period=None, motion_start_time=None,
@@ -225,14 +252,14 @@ class TPData():
         self.message_data['tool_space_data'] = tool_space_data
         self.message_data['volumes_removed'] = volumes_removed
         self.message_data['move_flags'] = move_flags
+        #Format is a 4 element array, where 1 is the CAM SID, 2 is the rapid SID, 3 is the requested sub_SID, and 4 is the planned sub_SID
+        #self.message_data['sid'] = sequence_id
+        #Format is a 2 element array, where 1 is the sequence id and 2 is the subsequence id
         self.message_data['sid'] = sequence_id
         self.message_data['move_type'] = move_type
-        self.message_data['num_sub_seqs'] = num_sub_seqs
 
-        # #PLANNED_POINTS tags
-        # self.message_data['joint_space_data'] = joint_space_data
-        # self.message_data['sid'] = sequence_id
-        # self.message_data['num_sub_seqs'] = num_sub_seqs
+        # First element is number of subsequences in outbound transmission, second is number in inbound transmission
+        self.message_data['number_of_subsequences'] = number_of_subsequences
 
         #METADATA tags
         self.message_data['file_name'] = file_name
@@ -252,8 +279,6 @@ class TPData():
         self.message_data['ending_sequence'] = ending_sequence
         self.message_data['feedback_data_type'] = feedback_data_type
         self.message_data['feedback_period'] = feedback_period
-
-        #self.message_data['planned_points'] = planned_points
         self.message_data['motion_start_time'] = motion_start_time
         self.message_data['rt_time'] = rt_time
         self.message_data['nonrt_time'] = nonrt_time
@@ -268,9 +293,6 @@ class TPData():
 
     def encodeNumpy(self):
         data_stream = BytesIO()
-        # numpy_dict = {key: np.asarray([self.message_data[key]]) if (
-        #             type(self.message_data[key]) is not np.ndarray and self.message_data[key] is not None) else None for
-        #               key in self.message_data.keys()}
         numpy_dict = {key: np.asarray([self.message_data[key]]) if (type(self.message_data[key]) is not np.ndarray) else
         self.message_data[key] for key in self.message_data.keys()}
         np.savez_compressed(data_stream, **numpy_dict)
@@ -296,7 +318,7 @@ class TPData():
         self.message_data['message_type'] = decoded_payload['message_type'].item()
         if decoded_payload['message_type'] == 'PLANNED_DATA':
             #self.message_data['message_type'] = decoded_payload['message_type'] == 'trajectory'
-            self.message_data['sid'] = decoded_payload['sid'].item()
+            self.message_data['sid'] = decoded_payload['sid']
             self.message_data['sub_sid'] = decoded_payload['sub_sid'].item()
             self.message_data['joint_space_data'] = decoded_payload['planned_points']
             #self.message_data['tool_space_data'] = decoded_payload['tool_space_data']
@@ -635,7 +657,7 @@ class Synchronizer():
 
 ######################## Commands ########################
 class Move():
-    def __init__(self, point_samples, move_type = None, sequence_id = None, machine = None, offset_axes = False):
+    def __init__(self, point_samples, move_type = None, sequence_id=None, machine = None, offset_axes = False):
         #super(Move, self).__init__()
         self.serial_number = -1
         #self.point_samples = TP.wrapRotaryAxis(point_samples, slice(None,4))
@@ -645,7 +667,10 @@ class Move():
             self.point_samples = point_samples
 
         self.move_type = move_type
-        self.sequence_id = sequence_id
+        move_type_index = tp_move_types.index(move_type)
+        self.sequence_id = [[None if move_type_index != 0 else sequence_id], [None if move_type_index != 1 else sequence_id]]
+        #self.sequence_id = CAM_sequence_id
+        #self.rapid_sequence_id = rapid_sequence_id
 
         ## To be populated when move is inserted into MotionController queue
         self.servo_tx_array = -1

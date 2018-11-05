@@ -13,6 +13,7 @@ class PNCAppController(Thread):
         super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
+        self.machine_type = "simulator"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
         # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
@@ -144,6 +145,19 @@ class PNCAppController(Thread):
     def init_pncApp(self):
         self.pnc_app_manager, self.machine, self.synchronizer = appInit()
         self.terminal_printer = pncLibrary.startPrintServer(self.machine, self.synchronizer)
+
+        if self.machine_type == 'simulator':
+            self.machine.ip_address = self.machine.simulator_ip_address
+            self.machine.ssh_credentials = self.machine.simulator_ssh_credentials
+            self.machine.name = self.machine.simulator_name
+        elif self.machine_type == 'pocketnc':
+            self.machine.ip_address = self.machine.machine_ip_address
+            self.machine.ssh_credentials = self.machine.machine_ssh_credentials
+            self.machine.name = self.machine.machine_name
+        else:
+            print('Unrecognized type ' + self.machine.machine_type + ' for machine initialization, aborting')
+            return
+
 
         pncLibrary.waitForThreadStart(self, OperatingSystemController)
         linuxcnc_RSH_status = self.getRSHStatus(pncLibrary.ssh_wait_timeout)

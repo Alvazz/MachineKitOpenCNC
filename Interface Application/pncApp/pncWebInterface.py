@@ -46,6 +46,34 @@ class WebsocketCommunicatorAchex:
         self.tp_websocket.send(json.dumps({"to": self.machine.websocket_tp_name, "payload": bytes_to_send}))
         return len(bytes_to_send)
 
+    def sendDataObjectBySubSID(self, data_object):
+        payload_size = data_object.message_data['joint_space_data'].shape[1]
+        bytes_sent = 0
+        number_of_sub_seqs = int(np.floor(payload_size / self.machine.websocket_block_length))+1
+        self.tp_state.number_of_subsequences[0] = number_of_sub_seqs
+
+        for sub_sid in range(0, number_of_sub_seqs):
+            begin_index = sub_sid*self.machine.websocket_block_length
+            end_index = [(sub_sid + 1) * self.machine.websocket_block_length if (sub_sid + 1) * self.machine.websocket_block_length < payload_size else payload_size][0]
+
+            sub_sequence = data_object
+            sub_sequence.message_data['sid'][1] = sub_sid
+            sub_sequence.message_data['number_of_subsequences'] = np.array([number_of_sub_seqs, 0])
+
+            sub_sequence.message_data['joint_space_data'] = data_object.message_data['joint_space_data'][:,begin_index:end_index]
+            bytes_to_send = sub_sequence.encodeNumpy()
+
+            self.tp_state.subsequence_id_ack_event.clear()
+            self.tp_state.current_requested_subsequence_id[pncLibrary.tp_move_types.index(sub_sequence.message_data['move_type'])] = sub_sid
+
+            self.tp_websocket.send(json.dumps({"to": self.machine.websocket_tp_name, "payload": bytes_to_send}))
+            self.tp_state.subsequence_id_ack_event.wait()
+
+            bytes_sent += len(bytes_to_send)
+            sub_sid += 1
+        self.tp_state.sequence_id_ack_event.wait()
+        return bytes_sent
+
     def receiveMessage(self):
         received_paylod = json.loads(self.tp_websocket.recv())['payload']
         #received_data = pncLibrary.TPData()
@@ -97,11 +125,6 @@ class WebsocketReceiver(Thread):
         self.tp_websocket = parent.tp_websocket
         self.websocket_communicator = self.parent.websocket_communicator
         self.tp_state = parent.tp_state
-        #self.websocket_connected_event = parent.websocket_connected_event
-
-        #self.enqueued_sequence_id = 0
-        #self.current_requested_sequence_id = 0
-        #self.current_received_sequence_id = 0
 
         self.assembled_payload_points = np.empty((0,6))
         self.planned_point_output_queue = Queue()
@@ -119,87 +142,88 @@ class WebsocketReceiver(Thread):
         while self.synchronizer.t_run_cloud_trajectory_planner_receiver_event.is_set():
             if self.tp_state.websocket_connected_event.is_set():
                 try:
-                    #b64payload = self.websocket_communicator.receiveMessage()
                     tp_message = self.websocket_communicator.receiveMessage()
                     if not tp_message:
                         raise websocket.WebSocketPayloadException
 
-                    #payload, keys = self.decodePayload(b64payload)
-                    #payload, keys = self.decodePayload(b64payload)
                     if tp_message.message_data['message_type'] == 'REQUESTED_DATA_ACK':
-                    #if 'sid_ack' in keys:
-                    #if type[0] == 'POINTSACK':
-                        #self.tp_state.sequence_ack_id = payload['sid_ack'].item()
-                        if tp_message.message_data['move_type'] == 'SP_trajectory':
-                            self.tp_state.cutting_sequence_ack_id = tp_message.message_data['sid']
-                            if self.tp_state.SP_sequence_ack_id == self.tp_state.current_requested_SP_sequence_id:
-                                self.tp_state.sequence_id_ack_event.set()
-                        elif tp_message.message_data['move_type'] == 'rapid':
-                            self.tp_state.rapid_sequence_ack_id = tp_message.message_data['sid']
-                            if self.tp_state.rapid_sequence_ack_id == self.tp_state.current_requested_rapid_sequence_id:
-                                self.tp_state.sequence_id_ack_event.set()
-                        # if self.tp_state.sequence_ack_id == self.tp_state.current_requested_sequence_id:
-                        #     self.tp_state.sequence_id_ack_event.set()
+                        move_type_index = pncLibrary.tp_move_types.index(tp_message.message_data['move_type'])
+                        self.doStateSanityChecks()
+
+                        self.tp_state.subsequence_ack_id[move_type_index] = tp_message.message_data['sid'][1]
+                        self.tp_state.subsequence_id_ack_event.set()
+
+                        if tp_message.message_data[2] == tp_message.message_data['number_of_subsequences'][0]-1:
+                            self.tp_state.sequence_ack_id[move_type_index] = tp_message.message_data['sid'][0]
+                            self.tp_state.sequence_id_ack_event.set()
+
+                        # if self.tp_state.sequence_ack_id == self.tp_state.current_requested_CAM_sequence_id:
+                        #
+                        # if tp_message.message_data['move_type'] == 'SP_trajectory':
+                        #     #self.tp_state.cutting_sequence_ack_id = tp_message.message_data['sid']
+                        #     self.tp_state.CAM_subsequence_ack_id = tp_message.message_data['sid'][2]
+                        #     if self.tp_state.SP_sequence_ack_id == self.tp_state.current_requested_CAM_sequence_id:
+                        #         self.tp_state.sequence_id_ack_event.set()
+                        # elif tp_message.message_data['move_type'] == 'rapid':
+                        #     #self.tp_state.rapid_sequence_ack_id = tp_message.message_data['sid']
+                        #     self.tp_state.rapid_subsequence_ack_id = tp_message.message_data['sid'][3]
+                        #     if tp_message.message_data[3] == tp_message.message_data['num_requested_sub_seqs']:
+                        #         self.tp_state.subsequence_id_ack_event.set()
+                        #     if self.tp_state.rapid_sequence_ack_id == self.tp_state.current_requested_rapid_sequence_id:
+                        #         self.tp_state.sequence_id_ack_event.set()
+
                     elif tp_message.message_data['message_type'] == 'HELLO_ACK':
                         self.tp_state.tp_connected_event.set()
+
                     elif tp_message.message_data['message_type'] == 'METADATA_ACK':
-                        #print('TP got metadata')
                         self.tp_state.metadata_ack_event.set()
-                        #pass
-                    #elif 'error' in keys and payload['error']:
-                    #elif 'reset_connection_ack' in keys:
+
                     elif tp_message.message_data['message_type'] == 'RESET_CONNECTION_ACK':
                         pass
+
                     elif tp_message.message_data['message_type'] == 'PLANNED_DATA':
-                    #elif 'planned_points' in keys:
                         tp_message.message_data['planning_time'] = time.time()-self.parent.send_time
-                        #payload.planning_time = time.time()-self.parent.send_time
                         self.planned_point_payload_buffer.append(tp_message.message_data)
                         if not (tp_message.message_data['joint_space_data'] == -1).all() and not tp_message.message_data['joint_space_data'].size == 1:
-                        #if not (payload['planned_points'] == -1).all() and not payload['planned_points'].size == 1:
-                            # if payload['move_type'] == 'SP_trajectory':
-                            #     self.synchronizer.tp_first_trajectory_received_event.set()
-                            #if tp_message.message_data['num_sub_seqs'] > 1:
-                            #if 'num_sub_seqs' in keys:
-                                #self.tp_state.send_next_block_event.set()
-                            self.tp_state.incoming_number_of_sub_sequences = tp_message.message_data['num_sub_seqs']
-                            self.tp_state.current_sub_sid = tp_message.message_data['sub_sid']
+                            move_type_index = pncLibrary.tp_move_types.index(tp_message.message_data['move_type'])
 
-                            #self.tp_state.incoming_number_of_sub_sequences = payload['num_sub_seqs'].item()
-                            #self.tp_state.current_sub_sid = payload['sub_sid'].item()
-                            #Only plan one move ahead of current position
-                            if self.tp_state.current_sub_sid == 0:
+                            self.tp_state.number_of_subsequences[1] = tp_message.message_data['number_of_subsequences'][1]
+                            #self.tp_state.incoming_number_of_sub_sequences = tp_message.message_data['num_sub_seqs']
+                            self.tp_state.current_received_subsequence_id[move_type_index] = tp_message.message_data['sid'][1]
+                            #self.tp_state.current_sub_sid = tp_message.message_data['sub_sid']
+                            if self.tp_state.current_received_subsequence_id[move_type_index] == 0:
                                 self.tp_state.send_next_block_event.set()
+                            # if self.tp_state.current_sub_sid == 0:
+                            #     self.tp_state.send_next_block_event.set()
+
                             self.assembled_payload_points = np.vstack((self.assembled_payload_points, tp_message.message_data['joint_space_data'].T))
                             pncLibrary.printStringToTerminalMessageQueue(
                                 self.synchronizer.q_print_server_message_queue,
                                 pncLibrary.printout_trajectory_planner_subsequence_received_string, self.name, tp_message.payload_size,
                                 self.tp_state.current_sub_sid, tp_message.message_data['sid'], self.parent.remote_tp_name)
 
-                            if tp_message.message_data['sub_sid'] == tp_message.message_data['num_sub_seqs']-1:
-                                #self.tp_state.current_received_sequence_id = payload['sid'].item()
-                                #self.tp_state.all_moves_consumed_event.clear()
+                            if self.tp_state.current_received_subsequence_id[move_type_index] == tp_message.message_data['number_of_subsequences'][1]-1:
+                            #if tp_message.message_data['sub_sid'] == tp_message.message_data['num_sub_seqs']-1:
+                                self.tp_state.current_received_sequence_id[move_type_index] = tp_message.message_data['sid'][0]
+                                move_to_enqueue = pncLibrary.Move(pncLibrary.TP.rotaryAxesToDegrees(self.assembled_payload_points[:, 0:self.machine.number_of_joints]),
+                                        move_type=tp_message.message_data['move_type'], sequence_id=tp_message.message_data['sid'][move_type_index])
                                 if tp_message.message_data['move_type'] == 'rapid':
-                                    self.tp_state.current_received_rapid_sequence_id = tp_message.message_data['sid']
-                                    self.synchronizer.q_trajectory_planner_reposition_move_queue.put(pncLibrary.Move(
-                                        pncLibrary.TP.rotaryAxesToDegrees(self.assembled_payload_points[:, 0:self.machine.number_of_joints]),
-                                        move_type='remotely_planned', sequence_id=tp_message.message_data['sid']))
+                                    #self.tp_state.current_received_rapid_sequence_id = tp_message.message_data['sid']
+                                    self.synchronizer.q_trajectory_planner_reposition_move_queue.put(move_to_enqueue)
                                     self.synchronizer.tp_reposition_move_received_event.set()
                                     pncLibrary.printStringToTerminalMessageQueue(
                                         self.synchronizer.q_print_server_message_queue,
                                         pncLibrary.printout_trajectory_planner_rapid_sequence_enqueued_string, self.name,
-                                        self.tp_state.current_received_rapid_sequence_id)
+                                        self.tp_state.current_received_sequence_id[1])
                                 elif tp_message.message_data['move_type'] == 'SP_trajectory':
-                                    self.tp_state.current_received_SP_sequence_id = tp_message.message_data['sid']
+                                    #self.tp_state.current_received_CAM_sequence_id = tp_message.message_data['sid']
                                     self.tp_state.all_moves_consumed_event.clear()
                                     self.synchronizer.tp_first_trajectory_received_event.set()
-                                    self.synchronizer.q_trajectory_planner_planned_move_queue.put(pncLibrary.Move(
-                                        pncLibrary.TP.rotaryAxesToDegrees(self.assembled_payload_points[:, 0:self.machine.number_of_joints]),
-                                        move_type='remotely_planned', sequence_id=tp_message.message_data['sid']))
+                                    self.synchronizer.q_trajectory_planner_planned_move_queue.put(move_to_enqueue)
                                     pncLibrary.printStringToTerminalMessageQueue(
                                         self.synchronizer.q_print_server_message_queue,
                                         pncLibrary.printout_trajectory_planner_cutting_sequence_enqueued_string, self.name,
-                                        self.tp_state.current_received_SP_sequence_id)
+                                        self.tp_state.current_received_sequence_id[0])
 
                                 self.assembled_payload_points = np.empty((0, 6))
 
@@ -218,17 +242,10 @@ class WebsocketReceiver(Thread):
                                     pncLibrary.printout_trajectory_planner_bad_cutting_sequence_received_string,
                                     self.parent.remote_tp_name,
                                     self.tp_state.current_received_sequence_id)
-                            # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                            #                                              pncLibrary.printout_bad_sequence_received_string,
-                            #                                              self.parent.remote_tp_name,
-                            #                                              self.tp_state.current_received_sequence_id)
 
-                        # if self.tp_state.current_requested_SP_sequence_id == self.tp_state.current_received_SP_sequence_id or
-                        #     self.tp_state.current_requested_rapid_sequence_id == self.tp_state.current_received_rapid_sequence_id:
-                        #     self.tp_state.matching_sequence_received_event.set()
-                        #     self.tp_state.send_next_block_event.set()
                     elif tp_message.message_data['message_type'] == 'ERROR':
                         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_trajectory_planner_error_string, tp_message.message_data['error_string'])
+
                     else:
                         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                                      pncLibrary.printout_trajectory_planner_unrecognized_message_string,
@@ -238,10 +255,15 @@ class WebsocketReceiver(Thread):
                 except websocket.WebSocketTimeoutException:
                     #print('WEBSOCKET TIMEOUT')
                     pass
+
                 except websocket.WebSocketPayloadException:
                     #Bad transmission
                     print("WEBSOCKET RECEIVER: Received empty transmission")
                     pass
+
+                except pncLibrary.TPStateError as error:
+                    print('WEBSOCKET RECEIVER: State machine mismatch, ' + error.message)
+
                 except Exception as error:
                     print("WEBSOCKET RECEIVER: Had error: ", str(error))
 
@@ -249,20 +271,26 @@ class WebsocketReceiver(Thread):
                                                      pncLibrary.printout_subthread_terminate_string, self.parent.name,
                                                      self.name)
 
-    def decodePayload(self, payload):
-        payload_size = len(payload)
-        byte_stream = BytesIO(base64.b64decode(payload.encode('utf-8')))
-        byte_stream.seek(0)
-        try:
-            decoded_payload = np.load(byte_stream)
-            decoded_payload.payload_size = payload_size
-        except np.BadZipFile:
-            print('break load')
-            self.parent.websocket_communicator.sendMessage(reset_connection='')
-        except Exception as error:
-            print('error: ' + str(error))
-            #self.websocket_communicator.sendMessage(reset_connection='')
-        return decoded_payload, decoded_payload.keys()
+    # def decodePayload(self, payload):
+    #     payload_size = len(payload)
+    #     byte_stream = BytesIO(base64.b64decode(payload.encode('utf-8')))
+    #     byte_stream.seek(0)
+    #     try:
+    #         decoded_payload = np.load(byte_stream)
+    #         decoded_payload.payload_size = payload_size
+    #     except np.BadZipFile:
+    #         print('break load')
+    #         self.parent.websocket_communicator.sendMessage(reset_connection='')
+    #     except Exception as error:
+    #         print('error: ' + str(error))
+    #         #self.websocket_communicator.sendMessage(reset_connection='')
+    #     return decoded_payload, decoded_payload.keys()
+
+    def doStateSanityChecks(self, tp_message, move_type_index):
+        if not tp_message.message_data['sid'][move_type_index] == self.tp_state.current_requested_sequence_id[move_type_index]:
+            raise pncLibrary.TPStateError('TP sequence mismatch')
+        if not self.tp_state.subsequence_ack_id[move_type_index] == self.tp_state.current_requested_subsequence_id[move_type_index]:
+            raise pncLibrary.TPStateError('TP subsequence mismatch')
 
     def plotPlanningTime(self):
         import matplotlib.pyplot as plt
@@ -297,20 +325,11 @@ class CloudTrajectoryPlannerInterface(Thread):
         self.raw_point_queue = Queue()
         self.planned_point_output_queue = Queue()
         self.startup_event = Event()
-        #self.tp_first_trajectory_received_event = Event()
-        #self.tp_planning_finished_event = Event()
 
         self.planned_point_payload_buffer = []
         self.CAM_point_buffer = []
         self.requested_point_payload_buffer = []
         self.planning_time_log = []
-
-        #self.sp_file_name = 'pass4complete'
-        #self.path_id = 3
-        #self.joint_data_file = "pass5_machine_short"
-        #self.tool_data_file = "pass5_tool_short"
-        # self.work_transformation_file = 'machine_tableToPart.txt'
-        # self.tool_transformation_file = 'machine_toolToHolder.txt'
 
         self.starting_sequence_id = 0
         self.ending_sequence_id = -1
@@ -331,9 +350,6 @@ class CloudTrajectoryPlannerInterface(Thread):
             pass
 
         if self.connectToTP():
-            #self.initializeToolpathData()
-            #self.synchronizer.tp_need_points_event.set()
-            #self.enqueueSequencesForPlanning()
 
             self.synchronizer.tp_toolpath_setup_event.wait()
             self.sendStartupMetadata()
@@ -342,39 +358,38 @@ class CloudTrajectoryPlannerInterface(Thread):
                 try:
                     self.requestToolpathPointsFromCAM()
                     if self.tp_state.send_next_block_event.wait(self.machine.event_wait_timeout) and self.synchronizer.tp_plan_motion_event.wait(self.machine.event_wait_timeout):
-                        if (self.tp_state.current_requested_SP_sequence_id-self.starting_sequence_id) < self.plan_to_index_delta:
-                            self.tp_state.sequence_id_ack_event.clear()
-                            self.tp_state.matching_sequence_received_event.clear()
+                        #if (self.tp_state.current_requested_CAM_sequence_id-self.starting_sequence_id) < self.plan_to_index_delta:
+                        trajectory_to_plan = self.raw_point_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
+                        move_type_index = pncLibrary.tp_move_types.index(trajectory_to_plan.message_data['move_type'])
+                        self.tp_state.sequence_id_ack_event.clear()
+                        self.tp_state.matching_sequence_received_event.clear()
 
-                            #self.synchronizer.tp_need_points_event.set()
+                        self.synchronizer.tp_planning_finished_event.clear()
+                        self.tp_state.data_flushed_to_websocket_event.clear()
 
-                            trajectory_to_plan = self.raw_point_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
-                            self.synchronizer.tp_planning_finished_event.clear()
-                            self.tp_state.data_flushed_to_websocket_event.clear()
+                        self.tp_state.current_requested_sequence_id[move_type_index] = \
+                        trajectory_to_plan.message_data['sid'][move_type_index]
 
-                            #self.tp_state.current_requested_sequence_id = points_to_plan[0]
-                            #try:
-                            if trajectory_to_plan.message_data['move_type'] == 'SP_trajectory':
-                                self.tp_state.current_requested_SP_sequence_id = trajectory_to_plan.message_data['sid']
-                            elif trajectory_to_plan.message_data['move_type'] == 'rapid':
-                                self.tp_state.current_requested_rapid_sequence_id = trajectory_to_plan.message_data['sid']
-                            print('in websocket interface the move type is ' + trajectory_to_plan.message_data['move_type'])
-                            # except Exception as error:
-                            #     print('had error break')
+                        # if trajectory_to_plan.message_data['move_type'] == 'SP_trajectory':
+                        #     self.tp_state.current_requested_CAM_sequence_id = trajectory_to_plan.message_data['sid'][0]
+                        # elif trajectory_to_plan.message_data['move_type'] == 'rapid':
+                        #     self.tp_state.current_requested_rapid_sequence_id = trajectory_to_plan.message_data['sid'][1]
+                        # #print('in websocket interface the move type is ' + trajectory_to_plan.message_data['move_type'])
 
-                            self.send_time = time.time()
-                            self.tp_state.send_next_block_event.clear()
-                            self.sendPlanningRequest(trajectory_to_plan)
-                            self.requested_point_payload_buffer.append(trajectory_to_plan)
-                        else:
-                            raise Empty
+                        self.send_time = time.time()
+                        self.tp_state.send_next_block_event.clear()
+                        self.sendPlanningRequest(trajectory_to_plan)
+                        self.requested_point_payload_buffer.append(trajectory_to_plan)
+                        # else:
+                        #     raise Empty
 
                 except Empty:
-                    if self.tp_state.current_received_SP_sequence_id == self.tp_state.current_requested_SP_sequence_id:
+                    if self.tp_state.current_received_sequence_id[0] == self.tp_state.current_requested_sequence_id[0]:
+                    #if self.tp_state.current_received_CAM_sequence_id == self.tp_state.current_requested_CAM_sequence_id:
                         if not self.synchronizer.tp_planning_finished_event.is_set():
                             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                                          pncLibrary.printout_trajectory_planning_finished_string,
-                                                                         self.tp_state.current_received_SP_sequence_id)
+                                                                         self.tp_state.current_received_sequence_id[0])
                             self.synchronizer.tp_planning_finished_event.set()
 
                         if self.synchronizer.q_trajectory_planner_planned_move_queue.empty():
@@ -415,7 +430,8 @@ class CloudTrajectoryPlannerInterface(Thread):
 
     def sendPlanningRequest(self, trajectory):
         #data_size = self.websocket_communicator.sendMessage(sid=points_to_plan[0], tool=points_to_plan[1], joint=points_to_plan[2], move_type=points_to_plan[3])
-        data_size = self.websocket_communicator.sendDataObject(trajectory)
+        #data_size = self.websocket_communicator.sendDataObject(trajectory)
+        data_size = self.websocket_communicator.sendDataObjectBySubSID(trajectory)
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.printout_trajectory_plan_request_sent_string,
                                                      self.name, data_size, trajectory.message_data['sid'])
@@ -426,7 +442,7 @@ class CloudTrajectoryPlannerInterface(Thread):
             pass
 
     def requestToolpathPointsFromCAM(self):
-        if (self.tp_state.enqueued_sequence_id - self.tp_state.current_received_SP_sequence_id) <= self.machine.toolpath_point_buffer_length:
+        if (self.tp_state.enqueued_sequence_id - self.machine.currently_executing_sequence_id[0]) <= self.machine.toolpath_point_buffer_length:
         #if self.machine.toolpath_point_buffer_length > self.synchronizer.q_trajectory_planner_planned_move_queue.qsize():
             self.synchronizer.tp_need_points_event.set()
 

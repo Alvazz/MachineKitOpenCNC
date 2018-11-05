@@ -195,6 +195,9 @@ class MotionQueueFeeder(Thread):
 
                 try:
                     move_to_execute = self.move_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
+                    move_type_index = pncLibrary.tp_move_types.index(move_to_execute.move_type)
+                    self.machine.currently_executing_sequence_id[move_type_index] = move_to_execute.sequence_id
+                    #[move_to_execute.CAM_sequence_id if move_to_execute.move_type == 'SP_trajectory' else self.machine.current_executing_rapid_sequence_id = move_to_execute.rapid_sequence_id]
                     self.processed_move_serial_number += 1
                     move_to_execute.serial_number = self.processed_move_serial_number
                     samples_in_block = self.max_motion_block_size/move_to_execute.blocklength
@@ -231,6 +234,8 @@ class MotionQueueFeeder(Thread):
         motion_block.blocklength = original_move.blocklength
         motion_block.serial_number = original_move.serial_number
         motion_block.subserial_number = motion_block_id
+        #motion_block.CAM_sequence_id = original_move.CAM_sequence_id
+        #motion_block.rapid_sequence_id = original_move.rapid_sequence_id
         motion_block.sequence_id = original_move.sequence_id
 
         self.motion_queue.put(motion_block)

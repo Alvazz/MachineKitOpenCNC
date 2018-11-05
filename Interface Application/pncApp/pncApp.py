@@ -71,15 +71,19 @@ def appStart(type, pnc_app_manager, machine, synchronizer):
     #global pnc_app_manager, machine, synchronizer
     # #FIXME ignore SIGINT?
 
-    if type == 'simulator':
-        control_client_ip = machine.simulator_ip_address
-        machine.name = machine.simulator_name
-    elif type == 'pocketnc':
-        control_client_ip = machine.ip_address
-        machine.name = machine.machine_name
-    else:
-        print('Unrecognized type ' + type + ' for machine initialization, aborting')
-        return
+    # if type == 'simulator':
+    #     #control_client_ip = machine.simulator_ip_address
+    #     machine.ip_address = machine.simulator_ip_address
+    #     machine.ssh_credentials = machine.simulator_ssh_credentials
+    #     machine.name = machine.simulator_name
+    # elif type == 'pocketnc':
+    #     machine.ip_address = machine.machine_ip_address
+    #     machine.ssh_credentials = machine.machine_ssh_credentials
+    #     machine.name = machine.machine_name
+    # else:
+    #     print('Unrecognized type ' + type + ' for machine initialization, aborting')
+    #     return
+    control_client_ip = machine.ip_address
     control_client_port = machine.tcp_port
 
     #main_process_name = str(multiprocessing.current_process().name)

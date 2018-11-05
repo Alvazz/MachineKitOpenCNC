@@ -270,8 +270,8 @@ class MachineModel():
         self.binary_transmission_length = (self.servo_log_num_axes * self.servo_log_buffer_size + self.servo_log_buffer_size) * self.size_of_feedback_double + 1
 
         self.tcp_port = 5007
-        self.ip_address = '129.1.15.5'
-        #self.ip_address = '127.0.0.1'
+        self.ip_address = None
+        self.machine_ip_address = '129.1.15.5'
         self.simulator_ip_address = '127.0.0.1'
         #self.ip_address = '127.0.0.1'
         #self.ip_address = '129.1.15.69'
@@ -293,7 +293,9 @@ class MachineModel():
         self.websocket_block_length = 1000
         self.toolpath_point_buffer_length = 2
         self.ssh_port = 22
-        self.ssh_credentials = ('pocketnc', 'pocketnc')
+        self.ssh_credentials = None
+        self.machine_ssh_credentials = ('pocketnc', 'pocketnc')
+        self.simulator_ssh_credentials = ('machinekit', 'password')
         self.ssh_opts = '-X'
         self.ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
@@ -312,6 +314,9 @@ class MachineModel():
         self.current_acceleration = [0.0]*self.number_of_joints
         self.current_jerk = [0.0]*self.number_of_joints
         self.current_buffer_level = 0
+        self.currently_executing_sequence_id = [-1, -1]
+        #self.current_executing_CAM_sequence_id = -1
+        #self.current_executing_rapid_sequence_id = -1
         self.motion_states = ['current_stepgen_position']#, 'current_encoder_position']
         #self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
         self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS']#, 'ENCODER_FEEDBACK_POSITIONS']
