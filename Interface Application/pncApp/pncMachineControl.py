@@ -504,6 +504,7 @@ class MachineController(Process):
         self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
         self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
         self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
+        time.sleep(0.5)
         self.waitForSet(self.setBufferLevelFeedbackMode, 1, self.getBufferLevelFeedbackMode)
 
     ############################# GETs #############################

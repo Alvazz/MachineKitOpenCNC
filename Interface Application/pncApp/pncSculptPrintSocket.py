@@ -155,9 +155,6 @@ def checkForPointRequests():
     flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', tuple, False)
     print('points required flag is ' + str(flag))
     return flag
-    #return True
-    #return pncLibrary.safelyHandleSocketData(pncApp_connector, 'CHECKPOINTREQUEST', bool, False)
-    #return feed_thread.getHasPointRequests()
 
 
 # updates the toolpath for planning

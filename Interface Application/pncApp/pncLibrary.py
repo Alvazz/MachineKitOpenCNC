@@ -300,8 +300,6 @@ class TPData():
         return base64.b64encode(data_stream.read()).decode()
 
     def decodeNumpy(self, payload):
-        #def decodePayload(self, payload):
-        #self.message_data.payload_size = len(payload)
         byte_stream = BytesIO(base64.b64decode(payload.encode('utf-8')))
         byte_stream.seek(0)
         try:
@@ -313,21 +311,21 @@ class TPData():
         except Exception as error:
             print('error: ' + str(error))
             # self.websocket_communicator.sendMessage(reset_connection='')
-        #return decoded_payload, decoded_payload.keys()
 
         self.message_data['message_type'] = decoded_payload['message_type'].item()
         if decoded_payload['message_type'] == 'PLANNED_DATA':
             #self.message_data['message_type'] = decoded_payload['message_type'] == 'trajectory'
             self.message_data['sid'] = decoded_payload['sid']
-            self.message_data['sub_sid'] = decoded_payload['sub_sid'].item()
+            #self.message_data['sub_sid'] = decoded_payload['sub_sid'].item()
             self.message_data['joint_space_data'] = decoded_payload['planned_points']
             #self.message_data['tool_space_data'] = decoded_payload['tool_space_data']
             #self.message_data['volumes_removed'] = decoded_payload['volumes_removed']
             #self.message_data['move_flags'] = decoded_payload['move_flags']
-            self.message_data['num_sub_seqs'] = decoded_payload['num_sub_seqs'].item()
+            self.message_data['number_of_subsequences'] = decoded_payload['number_of_sub_sequences'].item()
             self.message_data['move_type'] = decoded_payload['move_type'].item()
         elif decoded_payload['message_type'] == 'REQUESTED_DATA_ACK':
-            self.message_data['sid'] = decoded_payload['sid'].item()
+            self.message_data['sid'] = decoded_payload['sid']
+            self.message_data['number_of_subsequences'] = decoded_payload['number_of_sub_sequences'].item()
             self.message_data['move_type'] = decoded_payload['move_type'].item()
         elif decoded_payload['message_type'] == 'METADATA':
             self.message_data['file_name'] = decoded_payload['file_name']
