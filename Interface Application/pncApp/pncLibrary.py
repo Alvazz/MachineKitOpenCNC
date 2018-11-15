@@ -51,7 +51,8 @@ printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FA
 printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
 printout_trajectory_initialization_string = "MACHINE CONTROLLER: Initializing trajectory"
-printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for sequence {}"
+printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sent {} byte plan request for sequence {}"
+printout_trajectory_plan_subsequenced_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for subsequence {} of sequence {}"
 printout_trajectory_planner_error_string = "TRAJECTORY PLANNER: Received error string: {}"
 printout_trajectory_planner_unrecognized_message_string = "TRAJECTORY PLANNER: Received unrecognized message type {}"
 printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: Primary move queue linked to {} move queue"
@@ -118,7 +119,7 @@ SP_auxiliary_data_streams = [('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 
 #SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
 
 #TP Comm Constants
-tp_move_types = ['SP_trajectory', 'rapid']
+tp_move_types = ['SP_trajectory', 'rapid', 'block', 'hold']
 
 #Machine kinematics
 machine_number_of_joints = 5
@@ -217,12 +218,13 @@ class CloudTrajectoryPlannerState():
         # self.current_received_CAM_subsequence_id = -1
         # self.current_received_rapid_sequence_id = -1
         # self.current_received_rapid_subsequence_id = -1
-        self.incoming_number_of_sub_sequences = 0
+        # self.incoming_number_of_sub_sequences = 0
 
 class TPStateError(Exception):
     def __init__(self, message):
         super().__init__(message)
         #self.errors = errors
+        self.message = message
 
 class SculptPrintToolpathData():
     def __init__(self):
@@ -321,11 +323,11 @@ class TPData():
             #self.message_data['tool_space_data'] = decoded_payload['tool_space_data']
             #self.message_data['volumes_removed'] = decoded_payload['volumes_removed']
             #self.message_data['move_flags'] = decoded_payload['move_flags']
-            self.message_data['number_of_subsequences'] = decoded_payload['number_of_sub_sequences'].item()
+            self.message_data['number_of_subsequences'] = decoded_payload['number_of_subsequences']
             self.message_data['move_type'] = decoded_payload['move_type'].item()
         elif decoded_payload['message_type'] == 'REQUESTED_DATA_ACK':
             self.message_data['sid'] = decoded_payload['sid']
-            self.message_data['number_of_subsequences'] = decoded_payload['number_of_sub_sequences'].item()
+            self.message_data['number_of_subsequences'] = decoded_payload['number_of_subsequences']
             self.message_data['move_type'] = decoded_payload['move_type'].item()
         elif decoded_payload['message_type'] == 'METADATA':
             self.message_data['file_name'] = decoded_payload['file_name']
@@ -666,7 +668,10 @@ class Move():
 
         self.move_type = move_type
         move_type_index = tp_move_types.index(move_type)
-        self.sequence_id = [[None if move_type_index != 0 else sequence_id], [None if move_type_index != 1 else sequence_id]]
+
+
+        #self.sequence_id = [[None if move_type_index != 0 else sequence_id], [None if move_type_index != 1 else sequence_id]]
+        self.sequence_id = [-1 if move_type_index != k else sequence_id for k in range(0,4)]
         #self.sequence_id = CAM_sequence_id
         #self.rapid_sequence_id = rapid_sequence_id
 
@@ -765,6 +770,12 @@ def waitForThreadStop(caller, *args):
 ######################## IPC ########################
 # def getEventStatus(event, database_command_queue_proxy, database_output_queue_proxy):
 #     database_command_queue_proxy.put('get_event_status')
+def updateMachineModelList(machine, list_attribute, value, index):
+    updated_list = getattr(machine, list_attribute)
+    updated_list[index] = value
+    setattr(machine, list_attribute, updated_list)
+    #original_list = updated_list
+
 def initializeInterfaceIPC(app_connector):
     if app_connector.connection_type == 'pipe':
         try:

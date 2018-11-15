@@ -136,8 +136,11 @@ class MachineController(Process):
                         self.handleRSHError()
 
                     #FIXME don't catch errors from handleCommand
+                    #print('in machine controller, currently_executing_sequence_id is ' + str(
+                        #self.machine.currently_executing_sequence_id[0]))
                     command = self.synchronizer.q_machine_controller_command_queue.get(True, self.machine.process_queue_wait_timeout)
                     self.handleCommand(command)
+
                 except Empty:
                     pass
                 except Exception as error:
@@ -189,9 +192,9 @@ class MachineController(Process):
         self.synchronizer.mc_rsh_error_event.clear()
         self.motion_controller.interrupt_motion_event.set()
         self.synchronizer.mc_motion_complete_event.clear()
-        self.waitForSet(self.setEstop, 0, self.getEstop)
-        self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
-        self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
+        self.waitForSet(self.setEstop, 0, self.getEstop, desired_set_parameters=0)
+        self.waitForSet(self.setDrivePower, 1, self.getDrivePower, desired_set_parameters=1)
+        self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode, desired_set_parameters='AUTO')
 
     ######################## OS Interface ########################
     def runCNC(self):
@@ -304,7 +307,7 @@ class MachineController(Process):
                               tool_space_data=tool_points.T,
                               volumes_removed=np.zeros((1,joint_points.shape[0])),
                               move_flags=1+np.zeros((1,joint_points.shape[0])),
-                              sequence_id=np.array([-1, self.cloud_trajectory_planner.tp_state.rapid_sequence_id]),
+                              sequence_id=np.array([self.cloud_trajectory_planner.tp_state.rapid_sequence_id+1, -1]),
                               move_type='rapid'))
         self.cloud_trajectory_planner.tp_state.rapid_sequence_id += 1
 
@@ -327,7 +330,7 @@ class MachineController(Process):
             start_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()
             self.motion_controller.motion_start_joint_positions = copy.deepcopy(start_positions)
             #self.motion_controller.motion_start_joint_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()
-            self.motion_controller.buffer_precharge = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False)
+            self.motion_controller.buffer_precharge = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False, sequence_id=0)
             #print('generated hold')
             #self.motion_controller.buffer_precharge = hold_move
             if np.round(self.machine.current_stepgen_position - self.motion_controller.motion_start_joint_positions,3).any().item():
@@ -408,21 +411,16 @@ class MachineController(Process):
                                                     for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')]])
         #joint_point_samples = SP_joint_point_samples
         tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T, *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
-        #pncLibrary.TP.rotaryAxesToDegrees(joint_point_samples.T).T
-        #pncLibrary.TP.rotaryAxesToDegrees(tool_point_samples.T).T
+
         volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
         move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('is_rapid')]])
 
         #HACK HACK
-        self.cloud_trajectory_planner.starting_sequence_id += 1
-        self.cloud_trajectory_planner.plan_to_index_delta += 1
+        #self.cloud_trajectory_planner.starting_sequence_id += 1
+        #self.cloud_trajectory_planner.plan_to_index_delta += 1
 
         self.synchronizer.tp_plan_motion_event.set()
-        # self.cloud_trajectory_planner.raw_point_queue.put([np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id]),
-        #                                                    tool_point_samples, joint_point_samples, 'SP_trajectory'])
-        # self.cloud_trajectory_planner.raw_point_queue.put(
-        #     [np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id]),
-        #      tool_point_samples, joint_point_samples, 'SP_trajectory'])
+
         self.cloud_trajectory_planner.tp_state.enqueued_sequence_id += 1
         requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA', joint_space_data=joint_point_samples,
                           tool_space_data=tool_point_samples,
@@ -494,18 +492,22 @@ class MachineController(Process):
 
     def readyMachine(self):
         self.waitForSet(self.setEstop, 0, self.getEstop)
-        self.waitForSet(self.setDrivePower, 1, self.getDrivePower)
-        self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode)
+        self.waitForSet(self.setDrivePower, 1, self.getDrivePower, desired_set_parameters=1)
+        self.waitForSet(self.setMachineMode, 'manual', self.getMachineMode, desired_set_parameters='MANUAL')
 
         if not pncLibrary.isHomed(self.machine, self.synchronizer):
-            self.waitForSet(self.setHomeAll,None,self.getAllHomed, 10)
+            self.waitForSet(self.setHomeAll,None,self.getAllHomed, timeout=10)
             self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
 
         self.synchronizer.q_print_server_message_queue.put("MACHINE CONTROLLER: All axes homed")
-        self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
-        self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
-        time.sleep(0.5)
-        self.waitForSet(self.setBufferLevelFeedbackMode, 1, self.getBufferLevelFeedbackMode)
+        self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode, desired_set_parameters='AUTO')
+        self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode, desired_set_parameters=1)
+        #time.sleep(1)
+        # while not self.synchronizer.fb_feedback_data_initialized_event.wait(0.5):
+        #     print('MACHINE CONTROLLER: Feedback did not initialize, trying again')
+        #     self.waitForSet(self.setServoFeedbackMode, 1, self.getServoFeedbackMode)
+
+        self.waitForSet(self.setBufferLevelFeedbackMode, 1, self.getBufferLevelFeedbackMode, desired_set_parameters=1)
 
     ############################# GETs #############################
     def getLinuxCNCStatus(self, timeout = 0.5):
@@ -787,31 +789,45 @@ class MachineController(Process):
         else:
             return False
 
-    def waitForSet(self, set_function, set_params, get_function, timeout = None):
+    def waitForSet(self, set_function, set_params, get_function, timeout = None, desired_set_parameters = None):
         ## FIXME really need to implement this timeout
         if timeout is None:
             timeout = np.inf
 
         start_time = time.clock()
+        iterations = 0
 
-        if set_params is not None:
-            set_function(set_params)
+        if desired_set_parameters is None:
+            if set_params is not None:
+                set_function(set_params)
+            else:
+                set_function()
+
+            while not get_function()[0] and (start_time - time.clock() <= timeout):
+                print('waiting for ' + str(get_function))
+
+            if (start_time - time.clock()) > timeout:
+                raise pncLibrary.MachineControllerError('Timeout with ' + str(get_function))
+            else:
+                print('success: ' + str(get_function) + ' returned True')
+
         else:
-            set_function()
+            iterations += 1
+            while get_function()[1] != desired_set_parameters and (start_time-time.clock() <= timeout):
+                iterations += 1
+                if set_params is not None:
+                    set_function(set_params)
+                else:
+                    set_function()
 
-        while not get_function()[0] and (start_time-time.clock() <= timeout):
-            #FIXME check that returned value matches set_params
-            #FIXME add some delay?
-            print('waiting for ' + str(get_function))
+                time.sleep(0.05)
+                while not get_function()[0] and (start_time-time.clock() <= timeout):
+                    print('waiting for ' + str(get_function))
 
-        if (start_time-time.clock()) > timeout:
-            raise pncLibrary.MachineControllerError('Timeout with ' + str(get_function))
-        else:
-            print('success: ' + str(get_function) + ' returned True')
-
-        ## FIXME call set again after some time?
-        ## FIXME set up timeout here
-        #print('logging mode is ' + str(self.machine.servo_feedback_mode))
+            if (start_time-time.clock()) > timeout:
+                raise pncLibrary.MachineControllerError('Timeout with ' + str(get_function))
+            else:
+                print('success: ' + str(get_function) + ' returned True after ' + str(iterations) + ' iterations')
 
     def waitForSetConfirmation(self, set_function, set_params, get_function, timeout = None):
         if timeout is None:

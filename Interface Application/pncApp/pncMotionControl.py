@@ -51,6 +51,15 @@ class MotionController(Thread):
                 while not self.synchronizer.mc_rsh_error_event.is_set():
                     try:
                         motion_block_to_execute = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
+
+                        # move_type_index = pncLibrary.tp_move_types.index(motion_block_to_execute.move_type)
+                        # print('setting currently executing sequence ID[0] to ' + str(move_to_execute.sequence_id[0]))
+                        # self.parent.machine.currently_executing_sequence_id[move_type_index] = \
+                        # move_to_execute.sequence_id[move_type_index]
+                        ## HACK HACK
+                        if motion_block_to_execute.sequence_id is not None:
+                            pncLibrary.updateMachineModelList(self.machine, 'currently_executing_sequence_id', motion_block_to_execute.sequence_id[0], 0)
+
                         self.synchronizer.mc_motion_complete_event.clear()
                         self.machine.motion_start_time = time.time() - self.machine.pncApp_clock_offset
 
@@ -168,6 +177,7 @@ class MotionQueueFeeder(Thread):
         self.parent = parent
         self.name = "motion_queue_feeder"
         self.synchronizer = parent.synchronizer
+        self.machine = parent.machine
 
         self.max_motion_block_size = self.parent.machine.max_motion_block_size
 
@@ -196,7 +206,10 @@ class MotionQueueFeeder(Thread):
                 try:
                     move_to_execute = self.move_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
                     move_type_index = pncLibrary.tp_move_types.index(move_to_execute.move_type)
-                    self.machine.currently_executing_sequence_id[move_type_index] = move_to_execute.sequence_id
+                    print('currently_executing sequenceID was ' + str(self.machine.currently_executing_sequence_id[move_type_index]) + ', setting currently executing sequence ID[0] to ' + str(move_to_execute.sequence_id[0]))
+                    #self.machine.currently_executing_sequence_id[move_type_index] = move_to_execute.sequence_id[move_type_index]
+                    #pncLibrary.updateMachineModelList(self.machine, 'currently_executing_sequence_id', move_to_execute.sequence_id[move_type_index], move_type_index)
+
                     #[move_to_execute.CAM_sequence_id if move_to_execute.move_type == 'SP_trajectory' else self.machine.current_executing_rapid_sequence_id = move_to_execute.rapid_sequence_id]
                     self.processed_move_serial_number += 1
                     move_to_execute.serial_number = self.processed_move_serial_number
