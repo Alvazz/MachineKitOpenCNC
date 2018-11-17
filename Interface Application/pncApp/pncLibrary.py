@@ -59,7 +59,7 @@ printout_trajectory_planner_motion_queues_linked_string = "MOTION QUEUE FEEDER: 
 printout_trajectory_planner_motion_queues_unlinked_string = "MOTION QUEUE FEEDER: Primary move queue unlinked from {} move queue"
 printout_trajectory_planning_finished_string = "TRAJECTORY PLANNER: Planning finished to sequence {}"
 printout_trajectory_planner_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued sequence ID {}"
-printout_trajectory_planner_cutting_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued cutting sequence ID {}"
+printout_trajectory_planner_cutting_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued complete trajectory for cutting sequence ID {}"
 printout_trajectory_planner_rapid_sequence_enqueued_string = "TRAJECTORY PLANNER: {} enqueued rapid sequence ID {}"
 printout_trajectory_planner_subsequence_received_string = "TRAJECTORY PLANNER: {} received {} byte subsequence {} of sequence ID {} from {}"
 printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER: Enqueueing {} sequences from {} to TP queue"
@@ -214,6 +214,21 @@ class CloudTrajectoryPlannerState():
         self.current_requested_sequence_id = [-1, -1]
         self.current_requested_subsequence_id = [-1, -1]
 
+        #self.rapid_sequence_under_construction = False
+        #self.last_CAM_sequence_start_points = np.empty((6, 0))
+        self.last_CAM_sequence_end_points = np.empty((6, 0))
+        #self.initializeRapidSequenceUnderConstruction()
+        #self.rapid_sequence_under_construction_joint_points = np.empty((0,5))
+        #self.rapid_sequence_under_construction_tool_points = np.empty((0, 5))
+        #self.rapid_sequence_under_construction_move_flags = np.empty((0, 5))
+        #self.rapid_sequence_under_construction_volumes = np.empty((0, 5))
+
+    def initializeSequenceUnderConstruction(self):
+        self.sequence_under_construction = False
+        self.sequence_under_construction_joint_points = np.empty((6, 0))
+        self.sequence_under_construction_tool_points = np.empty((machine_number_of_joints, 0))
+        self.sequence_under_construction_move_flags = np.empty((1, 0))
+        self.sequence_under_construction_volumes = np.empty((1, 0))
         # self.current_received_CAM_sequence_id = -1
         # self.current_received_CAM_subsequence_id = -1
         # self.current_received_rapid_sequence_id = -1

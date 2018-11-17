@@ -4,7 +4,7 @@ from multiprocessing import Process, Event, Lock, Queue, current_process#Value#,
 from multiprocessing.managers import NamespaceProxy
 from threading import Thread, current_thread#, Event as threadEvent
 from queue import Empty
-import time, datetime, collections, pickle, numpy as np
+import time, datetime, collections, pickle, numpy as np, matplotlib.pyplot as plt
 import cProfile, pstats
 
 # Store feedback data from other modules
@@ -384,6 +384,14 @@ class DatabaseServer(Process):
         plt.plot(self.data_store.RTAPI_CLOCK_TIMES)
         plt.show()
         pass
+
+    def plotTransmittedPolylines(self, axis):
+        servo_point_array = np.empty((0,5))
+        for polyline in self.data_store.COMMANDED_SERVO_POSITIONS:
+            servo_point_array = np.vstack((servo_point_array, np.reshape(polyline, (-1,5))))
+        plt.plot(servo_point_array[:,axis])
+        plt.show()
+        #return servo_point_array[:,axis]
 
 class DataStore():
     def __init__(self, machine_statics):

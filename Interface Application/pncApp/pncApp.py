@@ -29,8 +29,6 @@ def openNetworkConnection(machine, synchronizer, control_client_ip, control_clie
         #FIXME put in a timeout here
         #machine.rsh_socket.settimeout(machine.socket_timeout)
         rsh_socket.connect((control_client_ip, control_client_port))
-        #machine.rsh_socket.connect((control_client_ip, control_client_port))
-        #machine.rsh_socket.settimeout(None)
         rsh_socket.settimeout(None)
         machine.rsh_socket = rsh_socket
         pncLibrary.printStringToTerminalMessageQueue(synchronizer.q_print_server_message_queue, machine.connection_string, machine.name, control_client_ip, control_client_port)

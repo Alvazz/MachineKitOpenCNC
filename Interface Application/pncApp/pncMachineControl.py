@@ -406,33 +406,172 @@ class MachineController(Process):
     def updateToolpathPoints(self, point_array):
         #joint_point_samples = np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, slice(*[pncLibrary.SP_toolpath_sample_data_format.index(axis) for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')])].T
         #FixME I think this only handles one sequence at a time?
-        joint_point_samples = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,ndx]
+
+        # move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+        #                        pncLibrary.SP_toolpath_sample_data_format.index('move_type')]])
+
+        joint_point_samples = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, ndx]
                                         for ndx in [pncLibrary.SP_toolpath_sample_data_format.index(axis)
-                                                    for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')]])
-        #joint_point_samples = SP_joint_point_samples
-        tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T, *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+                                                    for axis in pncLibrary.SP_pncApp_machine_axes] + [
+                                            pncLibrary.SP_toolpath_sample_data_format.index('S')]])
 
-        volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
-        move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('is_rapid')]])
+        move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+                               pncLibrary.SP_toolpath_sample_data_format.index('move_type')]])
+        volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+                            pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
 
-        #HACK HACK
-        #self.cloud_trajectory_planner.starting_sequence_id += 1
-        #self.cloud_trajectory_planner.plan_to_index_delta += 1
+        # Splice in endpoints of last move iff they are different from the current move's start points
+        if self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points != joint_point_samples[:,0]:
+            joint_point_samples = np.hstack((
+                self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points,
+                joint_point_samples))
+            move_flags = np.hstack((move_flags, np.array([move_flags[0]])))
+            if move_flags[:, 0] == 0:
+                volumes = np.hstack((
+                    self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes, volumes))
+            else:
+                # This is a rapid move, so no volume is removed
+                volumes = np.hstack((np.array([[0]]), volumes))
+
+        #Store starting points of the move that was just received
+        # self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points = np.array(
+        #     [joint_point_samples[:, 1]]).T
+        self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points = np.array(
+            [joint_point_samples[:, -1]]).T
+        self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
+
+        tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T,
+                                                        *self.machine.tool_translation_vector,
+                                                        self.machine.workpiece_translation_vector))
+
+
+
+        # move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+        #                        pncLibrary.SP_toolpath_sample_data_format.index('move_type')]])
+        #move_flags = np.hstack((move_flags, np.array([move_flags[0]])))
+
+        # volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+        #                     pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
+
+        # if move_flags[0] == 0:
+        #     self.cloud_trajectory_planner.tp_state.volumes = np.hstack((
+        #                                                            self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes,
+        #                                                            self.cloud_trajectory_planner.tp_state.volumes))
+        # else:
+        #     #This is a rapid move, so no volume is removed
+        #     self.cloud_trajectory_planner.tp_state.volumes = np.hstack((
+        #         np.array([0]),
+        #         self.cloud_trajectory_planner.tp_state.volumes))
+
+        # self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
 
         self.synchronizer.tp_plan_motion_event.set()
-
         self.cloud_trajectory_planner.tp_state.enqueued_sequence_id += 1
-        requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA', joint_space_data=joint_point_samples,
-                          tool_space_data=tool_point_samples,
-                          volumes_removed=volumes, move_flags=move_flags,
-                          sequence_id=np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
-                          move_type='SP_trajectory')
-        self.cloud_trajectory_planner.raw_point_queue.put(requested_points)
-        #self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
-        self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
-
+        requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA',
+                                             joint_space_data=joint_point_samples,
+                                             tool_space_data=tool_point_samples,
+                                             volumes_removed=volumes,
+                                             move_flags=move_flags,
+                                             sequence_id=np.array(
+                                                 [self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
+                                             move_type='SP_trajectory')
+        self.synchronizer.q_database_command_queue_proxy.put(
+            pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                         pncLibrary.printout_trajectory_planner_enqueueing_voxel_points_string, len(point_array), 'CAM System')
+                                                     pncLibrary.printout_trajectory_planner_enqueueing_voxel_points_string,
+                                                     len(point_array), 'CAM System')
+
+
+        # if self.cloud_trajectory_planner.tp_state.sequence_under_construction_state:
+        #     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points = np.array(
+        #         [joint_point_samples[:, 0]]).T
+        #     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points = np.array(
+        #         [joint_point_samples[:, -1]]).T
+        #
+        #     self.cloud_trajectory_planner.tp_state.sequence_under_construction_joint_points = np.hstack((
+        #                                                                                                 self.cloud_trajectory_planner.tp_state.sequence_under_construction_joint_points,
+        #                                                                                                 self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points))
+        #     self.cloud_trajectory_planner.tp_state.sequence_under_construction_tool_points = np.asarray(
+        #         self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(
+        #             self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points.T).T,
+        #                         *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+        #
+        # if (move_flags == 0).all():
+        #     #This is a cutting sequence
+        #     joint_point_samples = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,ndx]
+        #                                     for ndx in [pncLibrary.SP_toolpath_sample_data_format.index(axis)
+        #                                                 for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')]])
+        #     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points = np.array([joint_point_samples[:,0]]).T
+        #     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points = np.array([joint_point_samples[:,-1]]).T
+        #     #joint_point_samples = SP_joint_point_samples
+        #     tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T, *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+        #     volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
+        #
+        #     if self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction:
+        #         self.cloud_trajectory_planner.tp_state.enqueued_sequence_id += 1
+        #         self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points = np.hstack((
+        #                                                                                                           self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points,
+        #                                                                                                           self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points))
+        #         self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_tool_points = np.asarray(
+        #             self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(
+        #                 self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points.T).T,
+        #                             *self.machine.tool_translation_vector, self.machine.workpiece_translation_vector))
+        #         #self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags = np.hstack((np.array([[1]]), self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags, np.array([[1]])))
+        #         self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags = np.ones((1,self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points.shape[1]))
+        #         self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes = np.zeros((1, self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points.shape[1]))
+        #         # self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes = np.hstack(
+        #         #     (0, self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes, 0))
+        #
+        #         requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA',
+        #                                              joint_space_data=self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points,
+        #                                              tool_space_data=self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_tool_points,
+        #                                              volumes_removed=self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes,
+        #                                              move_flags=self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags,
+        #                                              sequence_id=np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
+        #                                              move_type='SP_trajectory')
+        #         self.synchronizer.q_database_command_queue_proxy.put(
+        #             pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
+        #         self.cloud_trajectory_planner.tp_state.initializeRapidSequenceUnderConstruction()
+        #
+        # #move_flags = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,pncLibrary.SP_toolpath_sample_data_format.index('is_rapid')]])
+        #
+        # # If this is a rapid sequence, we need the next cutting sequence to splice end points together
+        # elif (move_flags == 1).all():
+        #     #This move is rapid
+        #     joint_point_samples = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, ndx]
+        #                                     for ndx in [pncLibrary.SP_toolpath_sample_data_format.index(axis)
+        #                                                 for axis in pncLibrary.SP_pncApp_machine_axes] + [
+        #                                         pncLibrary.SP_toolpath_sample_data_format.index('S')]])
+        #     joint_point_samples = np.hstack((self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points, joint_point_samples))
+        #     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points = np.empty((6,0))
+        #
+        #     volumes = np.array([np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:,
+        #                         pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
+        #
+        #     self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction = True
+        #     self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points = np.hstack(
+        #         (self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_joint_points, joint_point_samples))
+        #     # self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_tool_points = np.vstack(
+        #     #     (self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_tool_points, tool_point_samples))
+        #     self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags = np.hstack(
+        #         (self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_move_flags, move_flags))
+        #     self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes = np.hstack(
+        #         (self.cloud_trajectory_planner.tp_state.rapid_sequence_under_construction_volumes, volumes))
+        #     return
+
+        # self.synchronizer.tp_plan_motion_event.set()
+        # self.cloud_trajectory_planner.tp_state.enqueued_sequence_id += 1
+        # requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA', joint_space_data=joint_point_samples,
+        #                   tool_space_data=tool_point_samples,
+        #                   volumes_removed=volumes, move_flags=move_flags,
+        #                   sequence_id=np.array([self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
+        #                   move_type='SP_trajectory')
+        # self.cloud_trajectory_planner.raw_point_queue.put(requested_points)
+        # #self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
+        # self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
+
+        # pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+        #                                                  pncLibrary.printout_trajectory_planner_enqueueing_voxel_points_string, len(point_array), 'CAM System')
 
 
     ######################## Writing Functions ########################
