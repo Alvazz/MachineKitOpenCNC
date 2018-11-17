@@ -385,13 +385,38 @@ class DatabaseServer(Process):
         plt.show()
         pass
 
+    def visualizePolylines(self, axis):
+        self.plotRequestedPolylines(axis)
+        self.plotPlannedPolylines(axis)
+        plt.show()
+
     def plotTransmittedPolylines(self, axis):
         servo_point_array = np.empty((0,5))
         for polyline in self.data_store.COMMANDED_SERVO_POSITIONS:
             servo_point_array = np.vstack((servo_point_array, np.reshape(polyline, (-1,5))))
+        plt.figure()
         plt.plot(servo_point_array[:,axis])
-        plt.show()
+        plt.title('Transmitted')
+        #plt.show()
         #return servo_point_array[:,axis]
+
+    def plotRequestedPolylines(self, axis):
+        servo_point_array = np.empty((0, 5))
+        for message in self.data_store.CAM_TOOLPATH_REQUESTS:
+            servo_point_array = np.vstack((servo_point_array, message.message_data['joint_space_data'][:5,:].T))
+        plt.figure()
+        plt.plot(servo_point_array[:, axis])
+        plt.title('Requested')
+        #plt.show()
+
+    def plotPlannedPolylines(self, axis):
+        servo_point_array = np.empty((0, 5))
+        for move in self.data_store.PLANNED_CAM_TOOLPATH_REQUESTS:
+            servo_point_array = np.vstack((servo_point_array, move.point_samples))
+        plt.figure()
+        plt.plot(servo_point_array[:, axis])
+        plt.title('Planned')
+        #plt.show()
 
 class DataStore():
     def __init__(self, machine_statics):

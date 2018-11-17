@@ -193,23 +193,24 @@ class CloudTrajectoryPlannerInterface(Thread):
                         self.requested_point_payload_buffer.append(trajectory_to_plan)
 
                 except Empty:
-                    if self.tp_state.current_received_sequence_id[0] == self.tp_state.current_requested_sequence_id[0]:
-                    #if self.tp_state.current_received_CAM_sequence_id == self.tp_state.current_requested_CAM_sequence_id:
-                        if not self.synchronizer.tp_planning_finished_event.is_set():
-                            pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
-                                                                         pncLibrary.printout_trajectory_planning_finished_string,
-                                                                         self.tp_state.current_received_sequence_id[0])
-                            self.synchronizer.tp_planning_finished_event.set()
-
-                        if self.synchronizer.q_trajectory_planner_planned_move_queue.empty():
-                            self.tp_state.all_moves_consumed_event.set()
-                            #self.synchronizer.db_write_to_websocket_event.set()
-                            if not self.tp_state.data_flushed_to_websocket_event.is_set() and self.synchronizer.mc_motion_complete_event.is_set():
-                                self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_websocket', self.machine.motion_start_time))
-                                self.tp_state.data_flushed_to_websocket_event.set()
-
-                finally:
-                    self.flushDataFeedbackToTP()
+                    print('TP waiting on another request')
+                #     if self.tp_state.current_received_sequence_id[0] == self.tp_state.current_requested_sequence_id[0]:
+                #     #if self.tp_state.current_received_CAM_sequence_id == self.tp_state.current_requested_CAM_sequence_id:
+                #         if not self.synchronizer.tp_planning_finished_event.is_set():
+                #             pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                #                                                          pncLibrary.printout_trajectory_planning_finished_string,
+                #                                                          self.tp_state.current_received_sequence_id[0])
+                #             self.synchronizer.tp_planning_finished_event.set()
+                #
+                #         if self.synchronizer.q_trajectory_planner_planned_move_queue.empty():
+                #             self.tp_state.all_moves_consumed_event.set()
+                #             #self.synchronizer.db_write_to_websocket_event.set()
+                #             if not self.tp_state.data_flushed_to_websocket_event.is_set() and self.synchronizer.mc_motion_complete_event.is_set():
+                #                 self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_websocket', self.machine.motion_start_time))
+                #                 self.tp_state.data_flushed_to_websocket_event.set()
+                #
+                # finally:
+                #     self.flushDataFeedbackToTP()
 
         pncLibrary.waitForThreadStop(self, self.cloud_trajectory_planner_receiver)
         self.tp_websocket.close()
@@ -255,6 +256,10 @@ class CloudTrajectoryPlannerInterface(Thread):
         if (self.tp_state.enqueued_sequence_id - self.machine.currently_executing_sequence_id[0]) <= self.machine.toolpath_point_buffer_length:
         #if self.machine.toolpath_point_buffer_length > self.synchronizer.q_trajectory_planner_planned_move_queue.qsize():
             self.synchronizer.tp_need_points_event.set()
+            self.tp_state.flag_set_count+=1
+            print('setting need_points flag for the ' + str(self.tp_state.flag_set_count) + ' time with delta = ' + str((self.tp_state.enqueued_sequence_id - self.machine.currently_executing_sequence_id[0])))
+        else:
+            self.synchronizer.tp_need_points_event.clear()
 
     def enqueueSequencesForPlanning(self, tool_space_data=None, joint_space_data=None, sequence_slices=None, begin_sequence=None, end_sequence=None):#, output_queue=None):
         if tool_space_data is None:
@@ -449,6 +454,9 @@ class WebsocketReceiver(Thread):
                                         pncLibrary.printout_trajectory_planner_cutting_sequence_enqueued_string, self.name,
                                         self.tp_state.current_received_sequence_id[0])
 
+                                self.synchronizer.q_database_command_queue_proxy.put(
+                                    pncLibrary.DatabaseCommand('push_object',
+                                                               [{"PLANNED_CAM_TOOLPATH_REQUESTS": move_to_enqueue}]))
                                 self.assembled_payload_points = np.empty((0, 6))
 
                         else:

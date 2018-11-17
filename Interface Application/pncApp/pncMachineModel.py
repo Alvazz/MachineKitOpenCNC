@@ -291,7 +291,7 @@ class MachineModel():
         self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
         self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
         self.websocket_block_length = 2000
-        self.toolpath_point_buffer_length = 2
+        self.toolpath_point_buffer_length = 4
         self.ssh_port = 22
         self.ssh_credentials = None
         self.machine_ssh_credentials = ('pocketnc', 'pocketnc')

@@ -101,7 +101,7 @@ SP_CAM_machine_axes = [['X','Z','S','Y','A','B','V','W'], ['X','Z','S','Y','A','
 SP_pncApp_data_auxes = ['BL', 'BPID']
 SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL','BPID'], ['T','X','Z','S','Y','A','B','V','W']]
 SP_axis_data_sample_format = ['T','X','Z','S','Y','A','B','V','W']
-SP_auxiliary_data_sample_format = ['D', 'T']
+SP_auxiliary_data_sample_format = ['T', 'D']
 SP_toolpath_sample_data_format = ['X','Z','S','Y','A','B','is_rapid','volume','move_type']
 
 #SP_clock_data_names = [['RTAPI_CLOCK_TIMES', 'RSH_CLOCK_TIMES'], ['ENCODER_RECEIVED_TIMES']]
@@ -217,6 +217,7 @@ class CloudTrajectoryPlannerState():
         #self.rapid_sequence_under_construction = False
         #self.last_CAM_sequence_start_points = np.empty((6, 0))
         self.last_CAM_sequence_end_points = np.empty((6, 0))
+        self.flag_set_count = 0
         #self.initializeRapidSequenceUnderConstruction()
         #self.rapid_sequence_under_construction_joint_points = np.empty((0,5))
         #self.rapid_sequence_under_construction_tool_points = np.empty((0, 5))

@@ -421,17 +421,20 @@ class MachineController(Process):
                             pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
 
         # Splice in endpoints of last move iff they are different from the current move's start points
-        if self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points != joint_point_samples[:,0]:
+        if np.array((self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points != joint_point_samples[:,0])).any():
             joint_point_samples = np.hstack((
                 self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points,
                 joint_point_samples))
-            move_flags = np.hstack((move_flags, np.array([move_flags[0]])))
+            #move_flags = np.hstack((move_flags, np.array([move_flags[:][0]])))
+            move_flags = move_flags[:,0]+np.zeros((1,joint_point_samples.shape[1]))
             if move_flags[:, 0] == 0:
                 volumes = np.hstack((
                     self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes, volumes))
             else:
                 # This is a rapid move, so no volume is removed
-                volumes = np.hstack((np.array([[0]]), volumes))
+                if self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points.shape[1] > 0:
+                    #If there is a point stored in last_CAM_sequence_end_points then append, otherwise volumes will be 1+size(joint_point_samples)
+                    volumes = np.hstack((np.array([[0]]), volumes))
 
         #Store starting points of the move that was just received
         # self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points = np.array(
@@ -475,6 +478,8 @@ class MachineController(Process):
                                              sequence_id=np.array(
                                                  [self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
                                              move_type='SP_trajectory')
+        self.cloud_trajectory_planner.raw_point_queue.put(requested_points)
+        self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
         self.synchronizer.q_database_command_queue_proxy.put(
             pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
