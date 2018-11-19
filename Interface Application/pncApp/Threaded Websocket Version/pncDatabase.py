@@ -151,12 +151,9 @@ class Puller(Thread):
                     return_data.append(np.empty((0, data_array.shape[1])))
                     success_flag = success_flag and False
                 else:
-                    if type(data_array) == np.ndarray:
-                        return_data.append(data_array[start_index:end_index, :])
-                        if len(data_array[start_index:end_index, :]) == 0:
-                            print('break 123')
-                    else:
-                        return_data.append(data_array[start_index:end_index])
+                    return_data.append(data_array[start_index:end_index,:])
+                    if len(data_array[start_index:end_index,:]) == 0:
+                        print('break 123')
                     success_flag = success_flag and True
 
         #if None in return_data:
@@ -305,7 +302,6 @@ class DatabaseServer(Process):
                     pass
 
                 self.updateMachineState()
-                self.archiveRecords()
                 if self.synchronizer.q_database_command_queue_proxy.qsize() > 10:
                     print('db cmd q size is ' + str(self.synchronizer.q_database_command_queue_proxy.qsize()))
 
@@ -351,8 +347,12 @@ class DatabaseServer(Process):
                 setattr(self.machine, self.machine.motion_states[k], state_update[1][0][0])
                 getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
 
-    def archiveRecords(self):
+    # def updateRemoteData(self):
+    #     with self.synchronizer.db_data_store_lock:
+    #         self.writeDatabaseToFile()
+    #         self.writeDatabaseToWebsocket()
 
+    def archiveRecords(self):
         pass
 
     def writeDatabaseToWebsocket(self, start_time):
@@ -388,7 +388,6 @@ class DatabaseServer(Process):
     def visualizePolylines(self, axis):
         self.plotRequestedPolylines(axis)
         self.plotPlannedPolylines(axis)
-        self.plotTransmittedPolylines(axis)
         plt.show()
 
     def plotTransmittedPolylines(self, axis):

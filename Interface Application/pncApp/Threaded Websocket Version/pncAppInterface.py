@@ -13,7 +13,7 @@ class PNCAppController(Thread):
         super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
-        #self.machine_type = "simulator"
+        self.machine_type = "simulator"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
         # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
@@ -79,15 +79,11 @@ class PNCAppController(Thread):
                 self.start_pncApp()
             except Exception as error:
                 print("PNCAPP INTERFACE: Could not launch pncApp, error " + str(error))
-                import traceback
-                traceback.print_exc()
                 self.command_queue = Queue()
         elif command.command == 'CONNECT':
             try:
                 self.synchronizer.mvc_pncApp_started_event.wait(self.machine.event_wait_timeout)
                 self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('CONNECT', None))
-                self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(pncLibrary.TrajectoryPlannerInterfaceCommand('OPEN_CONNECTION'))
-                self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(pncLibrary.TrajectoryPlannerInterfaceCommand('CONNECT_TO_TP'))
                 pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection,command.command)
             except Exception as error:
                 print("SCULPTPRINT MVC: Connection problem, error " + str(error))
@@ -179,7 +175,7 @@ class PNCAppController(Thread):
         pass
 
     def start_pncApp(self):
-        self.database, self.encoder_interface, self.feedback_handler, self.machine_controller, self.cloud_trajectory_planner_interface = appStart(self.machine_type, self.pnc_app_manager,
+        self.database, self.encoder_interface, self.feedback_handler, self.machine_controller = appStart(self.machine_type, self.pnc_app_manager,
                                                                                      self.machine, self.synchronizer)
 
     def stop_pncApp(self):

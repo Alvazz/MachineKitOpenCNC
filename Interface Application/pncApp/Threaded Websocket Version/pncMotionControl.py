@@ -254,8 +254,8 @@ class MotionQueueFeeder(Thread):
         self.motion_queue.put(motion_block)
 
     def updateTrajectoryFromTP(self):
-        while not self.synchronizer.q_cloud_trajectory_planner_interface_planned_move_queue.empty() and self.tp_link_event.is_set():
-            remotely_planned_move = self.synchronizer.q_cloud_trajectory_planner_interface_planned_move_queue.get_nowait()
+        while not self.synchronizer.q_trajectory_planner_planned_move_queue.empty() and self.tp_link_event.is_set():
+            remotely_planned_move = self.synchronizer.q_trajectory_planner_planned_move_queue.get_nowait()
             #print('TP putting move on motion queue')
             self.parent.parent.insertMove(remotely_planned_move)
             self.received_moves.append(remotely_planned_move)
@@ -263,7 +263,7 @@ class MotionQueueFeeder(Thread):
     def linkToTP(self):
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                      pncLibrary.printout_trajectory_planner_motion_queues_linked_string,
-                                                     "cloud trajectory planner interface")
+                                                     self.parent.parent.cloud_trajectory_planner.name)
         self.tp_link_event.set()
 
     def unlinkFromTP(self):

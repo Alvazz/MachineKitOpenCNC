@@ -1,5 +1,4 @@
 import numpy as np
-from pncLibrary import CloudTrajectoryPlannerState
 from multiprocessing.managers import NamespaceProxy
 
 # class MachineModelStatics():
@@ -322,25 +321,6 @@ class MachineModel():
         #self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS', 'ENCODER_FEEDBACK_POSITIONS', 'HIGHRES_TC_QUEUE_LENGTH']
         self.state_streams = ['STEPGEN_FEEDBACK_POSITIONS']#, 'ENCODER_FEEDBACK_POSITIONS']
         self.state_initialization_events = ['mc_initial_stepgen_position_set_event', 'ei_initial_encoder_position_set_event', 'mc_initial_buffer_level_set_event']
-
-        self.tp_state = CloudTrajectoryPlannerState()
-        self.toolpath_data = None
-
-        self.tp_state_rapid_sequence_id = 0
-        self.tp_state_enqueued_sequence_id = -1
-
-        # First element is number of subsequences in outbound transmission, second is number in inbound transmission
-        self.tp_state_number_of_subsequences = [-1, -1]
-        # First element is SP_trajectory requested ID, second is rapid requested ID
-        self.tp_state_sequence_ack_id = [-1, -1]
-        self.tp_state_subsequence_ack_id = [-1, -1]
-        self.tp_state_current_received_sequence_id = [-1, -1]
-        self.tp_state_current_received_subsequence_id = [-1, -1]
-        self.tp_state_current_requested_sequence_id = [-1, -1]
-        self.tp_state_current_requested_subsequence_id = [-1, -1]
-
-        self.tp_state_last_CAM_sequence_end_points = np.empty((6, 0))
-        self.tp_state_flag_set_count = 0
 
     # def loadTransformations(self):
     #     self.work_transformation_matrix = np.loadtxt(

@@ -47,7 +47,6 @@ printout_sculptprint_interface_initialization_string = "{} {} PID: {} starting p
 printout_trajectory_planner_connection_string = "WEBSOCKET CONNECTED: {} connected to {}"
 printout_websocket_connection_failure_string = "WEBSOCKET CONNECTION FAILED: {} had error {}"
 printout_websocket_connection_success_string = "WEBSOCKET CONNECTION SUCCESSFUL: {} authenticated"
-printout_trajectory_planner_retrying_open_connection_string = "TRAJECTORY PLANNER: {} trying to open websocket connection again"
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
 printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
@@ -67,7 +66,6 @@ printout_trajectory_planner_enqueueing_voxel_points_string = "TRAJECTORY PLANNER
 printout_machine_not_ready_for_motion_string = "MACHINE CONTROLLER: No trajectories available for execution, aborting motion"
 printout_trajectory_planner_bad_cutting_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed cutting sequence ID {}"
 printout_trajectory_planner_bad_rapid_sequence_received_string = "TRAJECTORY PLANNER: {} sent failed rapid sequence ID {}"
-printout_trajectory_planner_interface_error_string = "TRAJECTORY PLANNER: Had error: {}"
 printout_websocket_motion_data_sent_string = "TRAJECTORY PLANNER: {} flushing {} bytes of data for sequences {} thru {} to websocket"
 printout_move_queue_insertion_string = "MACHINE CONTROLLER: Placed move ID {} with type \"{}\" on motion controller queue"
 printout_motion_queue_feeder_pausing_string = "MOTION CONTROLLER: Pausing motion block feed"
@@ -181,17 +179,17 @@ class SculptPrintFeedbackState():
 
 class CloudTrajectoryPlannerState():
     def __init__(self):
-        # self.websocket_connected_event = Event()
-        # self.tp_connected_event = Event()
-        # self.send_next_block_event = Event()
-        # self.sequence_id_ack_event = Event()
-        # self.subsequence_id_ack_event = Event()
-        # self.matching_sequence_received_event = Event()
-        # #self.tp_first_trajectory_received_event = Event()
-        # #self.tp_planning_finished_event = Event()
-        # self.metadata_ack_event = Event()
-        # self.data_flushed_to_websocket_event = Event()
-        # self.all_moves_consumed_event = Event()
+        self.websocket_connected_event = Event()
+        self.tp_connected_event = Event()
+        self.send_next_block_event = Event()
+        self.sequence_id_ack_event = Event()
+        self.subsequence_id_ack_event = Event()
+        self.matching_sequence_received_event = Event()
+        #self.tp_first_trajectory_received_event = Event()
+        #self.tp_planning_finished_event = Event()
+        self.metadata_ack_event = Event()
+        self.data_flushed_to_websocket_event = Event()
+        self.all_moves_consumed_event = Event()
 
         self.rapid_sequence_id = 0
         #self.sequence_ack_id = 0
@@ -272,6 +270,8 @@ class TPData():
         self.message_data['tool_space_data'] = tool_space_data
         self.message_data['volumes_removed'] = volumes_removed
         self.message_data['move_flags'] = move_flags
+        #Format is a 4 element array, where 1 is the CAM SID, 2 is the rapid SID, 3 is the requested sub_SID, and 4 is the planned sub_SID
+        #self.message_data['sid'] = sequence_id
         #Format is a 2 element array, where 1 is the sequence id and 2 is the subsequence id
         self.message_data['sid'] = sequence_id
         self.message_data['move_type'] = move_type
@@ -546,14 +546,11 @@ class Synchronizer():
         self.p_enable_device_interface_event = manager.Event()
         self.p_enable_feedback_handler_event = manager.Event()
         self.p_enable_machine_controller_event = manager.Event()
-        self.p_enable_cloud_trajectory_planner_interface_event = manager.Event()
         self.p_run_database_event = manager.Event()
         #self.p_run_encoder_interface_event = manager.Event()
         self.p_run_device_interface_event = manager.Event()
         self.p_run_machine_controller_event = manager.Event()
         self.p_run_feedback_handler_event = manager.Event()
-        self.p_run_cloud_trajectory_planner_interface_event = manager.Event()
-
         self.t_run_motion_controller_event = manager.Event()
         self.t_run_motion_queue_feeder_event = manager.Event()
         self.t_run_feedback_processor_event = manager.Event()
@@ -609,25 +606,12 @@ class Synchronizer():
         self.di_spindle_drive_connected_event = manager.Event()
         self.di_encoder_comm_init_failed_event = manager.Event()
         #self.db_write_to_websocket_event = manager.Event()
-
-        #TP State Events
-        self.tp_websocket_server_connected_event = manager.Event()
-        self.tp_websocket_auth_received_event = manager.Event()
-        self.tp_connected_event = manager.Event()
         self.tp_plan_motion_event = manager.Event()
         self.tp_planning_finished_event = manager.Event()
         self.tp_reposition_move_received_event = manager.Event()
         self.tp_first_trajectory_received_event = manager.Event()
         self.tp_toolpath_setup_event = manager.Event()
         self.tp_need_points_event = manager.Event()
-
-        self.tp_send_next_block_event = manager.Event()
-        self.tp_sequence_id_ack_event = manager.Event()
-        self.tp_subsequence_id_ack_event = manager.Event()
-        self.tp_matching_sequence_received_event = manager.Event()
-        self.tp_metadata_ack_event = manager.Event()
-        self.tp_data_flushed_to_websocket_event = manager.Event()
-        self.tp_all_moves_consumed_event = manager.Event()
 
         self.mc_startup_event = manager.Event()
         self.fb_startup_event = manager.Event()
@@ -670,12 +654,12 @@ class Synchronizer():
         self.q_print_server_message_queue = manager.Queue()
         self.q_machine_controller_command_queue = manager.Queue()
         self.q_device_interface_command_queue = manager.Queue()
-        self.q_cloud_trajectory_planner_interface_command_queue = manager.Queue()
-        self.q_cloud_trajectory_planner_interface_data_return_queue = manager.Queue()
-        self.q_cloud_trajectory_planner_interface_reposition_move_queue = manager.Queue()
-        self.q_cloud_trajectory_planner_interface_planned_move_queue = manager.Queue()
-        self.q_cloud_trajectory_planner_interface_position_point_queue = manager.Queue()
-        #self.q_cloud_trajectory_planner_interface_planned_point_output_queue = manager.Queue()
+        self.q_trajectory_planner_data_return_queue = manager.Queue()
+        self.q_trajectory_planner_reposition_move_queue = manager.Queue()
+        self.q_trajectory_planner_planned_move_queue = manager.Queue()
+
+        self.q_trajectory_planner_raw_point_queue = manager.Queue()
+        self.q_trajectory_planner_planned_point_output_queue = manager.Queue()
 
 
         # Locks
@@ -724,10 +708,6 @@ class Move():
         #self.end_points = np.array([],dtype=float)
         self.end_points = point_samples[-1, :]
 
-class ProcessCommand():
-    def __init__(self, command_type):
-        self.command_type = command_type
-
 class MachineCommand():
     #Class for RSH commands, mode switches, etc
     def __init__(self, command_type, command_data, target_device=None):
@@ -742,11 +722,6 @@ class DatabaseCommand():
         self.data = records
         self.command_parameters = parameters
         self.time = time
-
-class TrajectoryPlannerInterfaceCommand(ProcessCommand):
-    def __init__(self, command_type, command_data = None):
-        super().__init__(command_type)
-        self.command_data = command_data
 
 class OSCommand():
     def __init__(self, command_type, command_string = None, time = None):

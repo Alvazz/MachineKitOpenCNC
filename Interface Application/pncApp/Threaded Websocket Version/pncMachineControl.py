@@ -4,7 +4,7 @@ from threading import Thread, current_thread
 from queue import Empty
 from socket import timeout as SocketTimeout
 from pncMotionControl import MotionController
-#from pncWebInterface import CloudTrajectoryPlannerInterface
+from pncWebInterface import CloudTrajectoryPlannerInterface
 
 class OperatingSystemController(Thread):
     def __init__(self, parent):
@@ -109,7 +109,7 @@ class MachineController(Process):
 
         self.planned_point_buffer = []
         self.enqueued_move_serial_number = 0
-        self.support_threads = [OperatingSystemController, MotionController]
+        self.support_threads = [OperatingSystemController, MotionController, CloudTrajectoryPlannerInterface]
 
         self.toolpath_data = pncLibrary.SculptPrintToolpathData()
 
@@ -117,7 +117,7 @@ class MachineController(Process):
         current_thread().name = self.main_thread_name
         pncLibrary.getSynchronizer(self, self.feed_pipe)
         #FIXME detect thread launch failure
-        pncLibrary.waitForThreadStart(self, MotionController)
+        pncLibrary.waitForThreadStart(self, MotionController, CloudTrajectoryPlannerInterface)
 
         self.synchronizer.mc_startup_event.set()
         self.synchronizer.process_start_signal.wait()
@@ -301,25 +301,15 @@ class MachineController(Process):
         #full_tool_points = np.vstack((tool_points.T, 1 + np.zeros_like(tool_points.T[0]), np.zeros_like(tool_points.T[0])))[pncLibrary.TP_tool_file_indexing_order]
         #full_joint_points = np.vstack((pncLibrary.TP.rotaryAxesToRadians(joint_points).T, -np.pi/2. + np.zeros_like(joint_points.T[0])))  # [joint_indices]
         #self.cloud_trajectory_planner.raw_point_queue.put((path_id, full_tool_points, full_joint_points, 'rapid'))
-        self.synchronizer.q_cloud_trajectory_planner_interface_position_point_queue.put(
+        self.cloud_trajectory_planner.raw_point_queue.put(
             pncLibrary.TPData(message_type='REQUESTED_DATA',
                               joint_space_data=joint_points.T,
                               tool_space_data=tool_points.T,
                               volumes_removed=np.zeros((1,joint_points.shape[0])),
                               move_flags=1+np.zeros((1,joint_points.shape[0])),
-                              sequence_id=np.array([self.machine.tp_state_rapid_sequence_id+1, -1]),
+                              sequence_id=np.array([self.cloud_trajectory_planner.tp_state.rapid_sequence_id+1, -1]),
                               move_type='rapid'))
-        self.machine.tp_state_rapid_sequence_id += 1
-
-    def extractStartingVoxelPoints(self):
-        #return self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id],:5]
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id]][:self.machine.number_of_joints]]))
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([self.cloud_trajectory_planner_receiver.planned_point_payload_buffer[0]['joint_space_data'].T[0,:self.machine.number_of_joints]]))[0]
-
-        return pncLibrary.synchronousPull(self.synchronizer, "PLANNED_CAM_TOOLPATH_REQUESTS", 0, 1)[1][0][0].point_samples[0,:]
-        #return
-        #starting_points = copy.deepcopy(first_planned_sequence.point_samples[0,:self.machine.number_of_joints])
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([starting_points]))[0]
+        self.cloud_trajectory_planner.tp_state.rapid_sequence_id += 1
 
     def initializeTrajectory(self, mode='remote'):
         if mode == 'local':
@@ -337,7 +327,7 @@ class MachineController(Process):
 
         elif mode == 'remote':
             #self.synchronizer.tp_first_trajectory_received_event.clear()
-            start_positions = self.extractStartingVoxelPoints()
+            start_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()
             self.motion_controller.motion_start_joint_positions = copy.deepcopy(start_positions)
             #self.motion_controller.motion_start_joint_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()
             self.motion_controller.buffer_precharge = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False, sequence_id=0)
@@ -350,10 +340,10 @@ class MachineController(Process):
                 #self.createRapidTrajectoryPlanRequest(*self.generateRapidPoints(end_joint=start_positions, mode='joint_space'))
                 pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
                                                          pncLibrary.printout_trajectory_planner_waiting_for_rapid_string,
-                                                         "trajectory planning server")
+                                                         self.cloud_trajectory_planner.remote_tp_name)
                 self.synchronizer.tp_reposition_move_received_event.wait()
                 self.insertMove(self.motion_controller.buffer_precharge)
-                self.insertMove(self.synchronizer.q_cloud_trajectory_planner_interface_reposition_move_queue.get())
+                self.insertMove(self.synchronizer.q_trajectory_planner_reposition_move_queue.get())
             else:
                 self.insertMove(self.motion_controller.buffer_precharge)
 
@@ -381,11 +371,11 @@ class MachineController(Process):
         if self.synchronizer.tp_first_trajectory_received_event.is_set():
             self.waitForSet(self.setMachineMode, 'auto', self.getMachineMode)
             self.synchronizer.mc_motion_complete_event.clear()
-            self.synchronizer.tp_data_flushed_to_websocket_event.clear()
+            self.cloud_trajectory_planner.tp_state.data_flushed_to_websocket_event.clear()
 
             self.initializeTrajectory()
 
-            if not self.synchronizer.tp_all_moves_consumed_event.is_set():
+            if not self.cloud_trajectory_planner.tp_state.all_moves_consumed_event.is_set():
                 self.motion_controller.motion_queue_feeder.linkToTP()
             else:
                 self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
@@ -410,12 +400,8 @@ class MachineController(Process):
         self.machine.workpiece_translation_vector = np.dot(self.machine.work_transformation_matrix, pncLibrary.TP.translation_vector)[:-1]
         self.machine.tool_translation_vector = np.dot(self.machine.tool_transformation_matrix, pncLibrary.TP.translation_vector)[:-1]
 
-        self.machine.toolpath_data = self.toolpath_data
+        self.cloud_trajectory_planner.toolpath_data = self.toolpath_data
         self.synchronizer.tp_toolpath_setup_event.set()
-
-        # self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(
-        #     pncLibrary.TrajectoryPlannerInterfaceCommand('UPDATE_TOOLPATH_DATA', self.toolpath_data))
-        self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(pncLibrary.TrajectoryPlannerInterfaceCommand('SEND_METADATA'))
 
     def updateToolpathPoints(self, point_array):
         #joint_point_samples = np.reshape(point_array, (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, slice(*[pncLibrary.SP_toolpath_sample_data_format.index(axis) for axis in pncLibrary.SP_pncApp_machine_axes] + [pncLibrary.SP_toolpath_sample_data_format.index('S')])].T
@@ -435,27 +421,27 @@ class MachineController(Process):
                             pncLibrary.SP_toolpath_sample_data_format.index('volume')]])
 
         # Splice in endpoints of last move iff they are different from the current move's start points
-        if np.array((self.machine.tp_state_last_CAM_sequence_end_points != joint_point_samples[:,0])).any():
+        if np.array((self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points != joint_point_samples[:,0])).any():
             joint_point_samples = np.hstack((
-                self.machine.tp_state_last_CAM_sequence_end_points,
+                self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points,
                 joint_point_samples))
             #move_flags = np.hstack((move_flags, np.array([move_flags[:][0]])))
             move_flags = move_flags[:,0]+np.zeros((1,joint_point_samples.shape[1]))
             if move_flags[:, 0] == 0:
                 volumes = np.hstack((
-                    self.machine.tp_state_last_CAM_sequence_end_volumes, volumes))
+                    self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes, volumes))
             else:
                 # This is a rapid move, so no volume is removed
-                if self.machine.tp_state_last_CAM_sequence_end_points.shape[1] > 0:
+                if self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points.shape[1] > 0:
                     #If there is a point stored in last_CAM_sequence_end_points then append, otherwise volumes will be 1+size(joint_point_samples)
                     volumes = np.hstack((np.array([[0]]), volumes))
 
         #Store starting points of the move that was just received
         # self.cloud_trajectory_planner.tp_state.last_CAM_sequence_start_points = np.array(
         #     [joint_point_samples[:, 1]]).T
-        self.machine.tp_state_last_CAM_sequence_end_points = np.array(
+        self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_points = np.array(
             [joint_point_samples[:, -1]]).T
-        self.machine.tp_state_last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
+        self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
 
         tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T,
                                                         *self.machine.tool_translation_vector,
@@ -483,17 +469,17 @@ class MachineController(Process):
         # self.cloud_trajectory_planner.tp_state.last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
 
         self.synchronizer.tp_plan_motion_event.set()
-        self.machine.tp_state_enqueued_sequence_id += 1
+        self.cloud_trajectory_planner.tp_state.enqueued_sequence_id += 1
         requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA',
                                              joint_space_data=joint_point_samples,
                                              tool_space_data=tool_point_samples,
                                              volumes_removed=volumes,
                                              move_flags=move_flags,
                                              sequence_id=np.array(
-                                                 [self.machine.tp_state_enqueued_sequence_id, -1]),
+                                                 [self.cloud_trajectory_planner.tp_state.enqueued_sequence_id, -1]),
                                              move_type='SP_trajectory')
-        self.synchronizer.q_cloud_trajectory_planner_interface_position_point_queue.put(requested_points)
-        #self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
+        self.cloud_trajectory_planner.raw_point_queue.put(requested_points)
+        self.cloud_trajectory_planner.CAM_point_buffer.append(requested_points)
         self.synchronizer.q_database_command_queue_proxy.put(
             pncLibrary.DatabaseCommand('push_object', [{"CAM_TOOLPATH_REQUESTS": requested_points}]))
         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
