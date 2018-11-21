@@ -75,18 +75,21 @@ AUXILIARYDATASOURCEFORMATS = [(r'Servo Buffer Level', 'HIGHRES_TC_QUEUE_LENGTH',
 def buildAxisDataSourceArray():
     DATASOURCEFORMATS = []
     for axis_data_source in pncLibrary.SP_main_data_streams:
-        data_name = axis_data_source[-1][0]
-        axis_data = axis_data_source[1]
-        data_size = axis_data_source[-1][1]
+        data_name = axis_data_source['SP_format'][0]
+        data_size = axis_data_source['SP_format'][1]
+        axis_data = axis_data_source['data_name']
         DATASOURCEFORMATS.append((data_name, axis_data, data_size))
     return DATASOURCEFORMATS
 
 def buildAuxiliaryDataSourceArray():
     AUXILIARYDATASOURCEFORMATS = []
     for axis_data_source in pncLibrary.SP_auxiliary_data_streams:
-        data_name = axis_data_source[-1][0]
-        axis_data = axis_data_source[1]
-        data_size = axis_data_source[-1][1]
+        # data_name = axis_data_source[-1][0]
+        # axis_data = axis_data_source[1]
+        # data_size = axis_data_source[-1][1]
+        data_name = axis_data_source['SP_format'][0]
+        data_size = axis_data_source['SP_format'][1]
+        axis_data = axis_data_source['data_name']
         AUXILIARYDATASOURCEFORMATS.append((data_name, axis_data, data_size))
     return AUXILIARYDATASOURCEFORMATS
 
@@ -125,13 +128,22 @@ def formatFullFeedbackData(axis_data_source_format, auxiliary_data_source_format
                 if label_text == 'S':
                     output_data_array[:, label] = -90 + np.zeros((data_stream_length,))
                 elif label_text == 'T':
-                    output_data_array[:, label] = time_slice[0][k][:,0]
+                    try:
+                        output_data_array[:, label] = time_slice[0][k][:,0]
+                    except Exception as r:
+                        print('break')
                 elif label_text not in database_format:
                     output_data_array[:, label] = np.zeros((data_stream_length))
                 else:
                     output_data_array[:, label] = axis_data_stream[:,database_format.index(label_text)]
         else:
             output_data_array = np.empty((0,0))
+
+        #Remove duplicate time values here
+        if output_data_array.shape[0] > 0:
+            unique_values, unique_indices = np.unique(output_data_array[:, 0], return_index=True)
+            print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[0]) + ' duplicate time values')
+            output_data_array = output_data_array[unique_indices, :]
 
         setattr(output_data_object, axis_data_stream_label, output_data_array.tolist())
 
@@ -144,7 +156,10 @@ def formatFullFeedbackData(axis_data_source_format, auxiliary_data_source_format
             for label in range(0, len(auxiliary_data_sample_format)):
                 label_text = auxiliary_data_sample_format[label]
                 if label_text == 'T':
-                    output_data_array[:, label] = time_slice[0][k+len(axis_data_source_format)][:,0]
+                    try:
+                        output_data_array[:, label] = time_slice[0][k+len(axis_data_source_format)][:,0]
+                    except Exception as r:
+                        print('break')
                 else:
                     output_data_array[:, label] = auxiliary_data_stream[:,0]
         else:
@@ -403,6 +418,28 @@ def isMonitoring(synchronizer):
     return monitoring_flag
     #return synchronizer.process_start_signal.is_set()
     #return bool(machine.machine_controller_thread_handle.is_alive() & machine.servo_feedback_mode)
+
+def getDrivePowerState(machine):
+    return bool(machine.drive_power)
+
+def getTPConnectionState(synchronizer):
+    return synchronizer.tp_connected_event.is_set()
+
+def getMotionStatus(synchronizer):
+    return synchronizer.mc_run_motion_event.is_set()
+
+def getCurrentlyPlanningSequenceID(machine):
+    return int(machine.tp_state_current_requested_sequence_id[0])
+
+def getCurrentlyExecutingMoveType(machine):
+    try:
+        move_type = pncLibrary.SP_move_type_strings[pncLibrary.tp_move_types.index(machine.currently_executing_move_type)]
+    except ValueError as error:
+        move_type = 'NULL'
+    return move_type
+
+def getCurrentlyExecutingSequenceID(machine):
+    return int(machine.currently_executing_sequence_id[0])
 
 ############################# User Functions #############################
 

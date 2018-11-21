@@ -115,12 +115,28 @@ class PNCAppController(Thread):
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('PLAN', [int(data) for data in command.command_data]))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
-        elif command.command == 'READ1':
-            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.readMachine(self.synchronizer, self.feedback_state, int(command.command_data[0])))
+        elif command.command == 'GETDRIVEPOWERSTATE':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getDrivePowerState(self.machine))
+        elif command.command == 'GETTPCONNECTIONSTATE':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getTPConnectionState(self.synchronizer))
+        elif command.command == 'GETMOTIONSTATUS':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getMotionStatus(self.synchronizer))
+        elif command.command == 'GETCURRENTLYPLANNINGSEQUENCEID':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getCurrentlyPlanningSequenceID(self.machine))
+        elif command.command == 'GETCURRENTLYEXECUTINGSEQUENCEID':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getCurrentlyExecutingSequenceID(self.machine))
+        elif command.command == 'GETCURRENTLYEXECUTINGMOVETYPE':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.getCurrentlyExecutingMoveType(self.machine))
+
+        # elif command.command == 'READ1':
+        #     pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.readMachine(self.synchronizer, self.feedback_state, int(command.command_data[0])))
         elif command.command == 'READ':
+            start_time = time.time()
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.read(self.synchronizer, self.feedback_state))
+            print('read took: ' + str(time.time()-start_time))
         # elif command.command == 'SETUPDATA':
         #     print('Setting up data format for SP')
         #     self.machine.SP_axis_data_source_formats = pncLibrary.SP.buildAxisDataSourceArray()

@@ -74,6 +74,7 @@ class MotionController(Thread):
 
                         try:
                             print('buffer level at start of move subserial ' + str(self.current_move_subserial_number) + ' is ' + str(self.machine.current_buffer_level))
+                            self.machine.currently_executing_move_type = motion_block_to_execute.original_move_type
                             self.commandPoints(motion_block_to_execute.servo_tx_array, self.polylines, self.blocklength)
                         except pncLibrary.RSHError as error_message:
                             self.synchronizer.q_print_server_message_queue.put(str(error_message))
@@ -136,7 +137,7 @@ class MotionController(Thread):
 
             time.sleep(sleep_time)
 
-    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.03, Ki=0, Kd=0):
+    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.04, Ki=0, Kd=0):
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer fidna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)
@@ -247,6 +248,7 @@ class MotionQueueFeeder(Thread):
         motion_block.blocklength = original_move.blocklength
         motion_block.serial_number = original_move.serial_number
         motion_block.subserial_number = motion_block_id
+        motion_block.original_move_type = original_move.move_type
         #motion_block.CAM_sequence_id = original_move.CAM_sequence_id
         #motion_block.rapid_sequence_id = original_move.rapid_sequence_id
         motion_block.sequence_id = original_move.sequence_id

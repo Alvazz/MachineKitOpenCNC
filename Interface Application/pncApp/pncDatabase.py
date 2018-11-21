@@ -125,16 +125,40 @@ class Puller(Thread):
         data_types, start_indices, end_indices = self.formatPullRequest(data_types, start_indices, end_indices)
         return_data = []
         #print('pulling %d records' % len(data_types))
-        # if len(data_types) > 1:
-        #     print('break')
+        if len(data_types) > 1:
+            print('break')
         success_flag = True
         with self.data_store_lock:
             start_time = time.clock()
+            if len(data_types) > 2:
+                print('break')
             for k in range(0,len(data_types)):
                 data_type = data_types[k]
                 data_array = self.data_store.lookupDataType(data_type.upper())
                 start_index = start_indices[k]
                 end_index = end_indices[k]
+
+                sample_index_archive_offset, archive_length = self.data_store.lookupArchiveOffset(data_type.upper())
+                if start_index < sample_index_archive_offset and archive_length > 0 and start_index > -1:
+                    print('write here')
+                    archive_slice = getattr(self.data_store, pncLibrary.database_archive_prefix + data_type)[start_index:,:]
+                    data_array = np.vstack((archive_slice, data_array))
+                    #Check math here
+                    start_index = 0
+                    #end_index += archive_slice.shape[0] if end_index is not None
+                    end_index = end_index + archive_slice.shape[0] if end_index is not None else None
+                    pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                                 pncLibrary.printout_database_retrieving_from_archive_string,
+                                                                 archive_slice.shape[0],
+                                                                 pncLibrary.database_archive_prefix + data_type,
+                                                                 data_type)
+                else:
+                    start_index -= archive_length
+                    # if end_index is not None:
+                    #     print('break')
+                    end_index = end_index - archive_length if end_index is not None else None
+
+
                 #FIXME handle if data does not exist, consider returning a dict of the successfully retrieved values
                 if data_array is None:
                     return_data.append(np.empty((0, 1)))
@@ -240,6 +264,8 @@ class Pusher(Thread):
                         self.data_store.data_descriptors.append(key)
                     except Exception as error:
                         print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
+                # if key == 'COMMANDED_SERVO_POSITIONS' or key == 'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES' and self.data_store.INTERPOLATED_POLYLINE_TRANSMISSION_TIMES.shape[0] != self.data_store.COMMANDED_SERVO_POSITIONS.shape[0]:
+                #     print('break append')
 
     def appendObjects(self, records):
         with self.data_store_lock:
@@ -352,7 +378,39 @@ class DatabaseServer(Process):
                 getattr(self.synchronizer, self.machine.state_initialization_events[k]).set()
 
     def archiveRecords(self):
+        for data_stream in pncLibrary.SP_main_data_streams + pncLibrary.SP_auxiliary_data_streams:
+            #record_length = getattr(self.data_store, data_stream['data']).shape(0)
+            if data_stream['archive']:
+                try:
+                    record_length = getattr(self.data_store, data_stream['clock']).shape[0]
+                except AttributeError:
+                    continue
+                #record_length = clock_data.shape[0]
+                if record_length > pncLibrary.database_length_to_keep:
+                    with self.synchronizer.db_data_store_lock:
+                        #self.database_pusher.push_queue.put(({data_stream['archive_name']: data_stream['data'][]}, 'numpy'))
+                        #length_to_archive = record_length - pncLibrary.database_length_to_keep
+                        length_to_archive = pncLibrary.database_archive_delta
+                        clock_data = getattr(self.data_store, data_stream['clock'])
+                        data = getattr(self.data_store, data_stream['data_name'])
+                        self.database_pusher.appendMachineFeedbackRecords(
+                            [{pncLibrary.database_archive_prefix + data_stream[
+                                'clock']: clock_data[:(length_to_archive), :]}])
+                        self.database_pusher.appendMachineFeedbackRecords([{pncLibrary.database_archive_prefix + data_stream[
+                            'data_name']: data[:(length_to_archive), :]}])
 
+                        setattr(self.data_store, data_stream['clock'],
+                                clock_data[(length_to_archive):, :])
+                        setattr(self.data_store, data_stream['data_name'],
+                                data[(length_to_archive):, :])
+
+                        if getattr(self.data_store, data_stream['data_name']).shape[0] != getattr(self.data_store, data_stream['clock']).shape[0]:
+                            print('break')
+
+                        self.data_store.archived_data_offsets[data_stream['clock']] += length_to_archive
+                        self.data_store.archived_data_offsets[data_stream['data_name']] += length_to_archive
+                        pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_database_archiving_records_string, length_to_archive, data_stream['data_name'], self.data_store.archived_data_offsets[data_stream['clock']])
+                        #setattr(self.data_store, data_stream['sample_index_archive_offset'], getattr(self.data_store, data_stream['sample_index_archive_offset']) + length_to_archive)
         pass
 
     def writeDatabaseToWebsocket(self, start_time):
@@ -421,6 +479,10 @@ class DatabaseServer(Process):
 
 class DataStore():
     def __init__(self, machine_statics):
+        #Archive parameters
+        self.archived_data_offsets = {}
+        #self.archive_index_offsets = {}
+
         #Timers for each data source
         self.machine_running_time = 0
         self.encoder_running_time = 0
@@ -439,10 +501,14 @@ class DataStore():
 
         #Received time vectors on PC end, would be interesting to correlate with machine time. Do we need tx number here?
         self.LOWFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
+        #self.LOWFREQ_ETHERNET_RECEIVED_TIME_INDICES = np.empty((0, 1), float)
         self.RTAPI_CLOCK_TIMES = np.empty((0, 1), float)
+        #self.RTAPI_CLOCK_TIME_INDICES = np.empty((0, 1), float)
         self.HIGHFREQ_ETHERNET_RECEIVED_TIMES = np.empty((0, 1), float)
         self.RSH_CLOCK_TIMES = np.empty((0, 1), float)
+        #self.RSH_CLOCK_TIME_INDICES = np.empty((0, 1), float)
         self.SERIAL_RECEIVED_TIMES = np.empty((0, 1), float)
+        #self.SERIAL_RECEIVED_TIME_INDICES = np.empty((0, 1), float)
 
         #Buffer fill level
         self.machine_tc_queue_length = np.empty((0, 1), float)
@@ -467,10 +533,12 @@ class DataStore():
         #Successfully executed moves
         self.NETWORK_PID_DELAYS = np.empty((0,1), float)
         self.POLYLINE_TRANSMISSION_TIMES = np.empty((0, 1), float)
+        #self.POLYLINE_TRANSMISSION_TIME_INDICES = np.empty((0, 1), float)
         self.EXECUTED_MOVES = []
         #self.PROCESSED_MOVES = []
 
-        self.DATA_ARCHIVE = {}
+        #self.data_to_archive [('RTAPI_CLOCK_TIMES', 'RTAPI_CLOCK_TIME_INDICES')]
+        #self.DATA_ARCHIVE = {}
 
         #FIXME not needed
         self.data_descriptors = ['RTAPI_FEEDBACK_INDICES', 'COMMANDED_JOINT_POSITIONS', 'STEPGEN_FEEDBACK_POSITIONS',
@@ -478,6 +546,14 @@ class DataStore():
                                  'LOWFREQ_ETHERNET_RECEIVED_TIMES', 'HIGHFREQ_ETHERNET_RECEIVED_TIMES', 'RSH_CLOCK_TIMES',
                                  'SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', 'COMMANDED_SERVO_POLYLINE_OBJECTS',
                                  'NETWORK_PID_DELAYS', 'POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_POSITIONS']
+
+        self.setupDataArchive()
+
+    def setupDataArchive(self):
+        for data_stream in pncLibrary.SP_main_data_streams + pncLibrary.SP_auxiliary_data_streams:
+            if data_stream['archive']:
+                self.archived_data_offsets[data_stream['clock']] = 0
+                self.archived_data_offsets[data_stream['data_name']] = 0
 
     def lookupDataType(self, data_type):
         data_type = data_type.upper()
@@ -499,6 +575,16 @@ class DataStore():
                 print('write break')
             time_indices.append(time_index)
         return time_indices
+
+    def lookupArchiveOffset(self, data_type):
+        if data_type in self.archived_data_offsets.keys():
+            try:
+                archive_length = getattr(self, pncLibrary.database_archive_prefix + data_type).shape[0]
+                return (self.archived_data_offsets[data_type], archive_length)
+            except AttributeError:
+                return (self.archived_data_offsets[data_type], 0)
+        else:
+            return (0, 0)
 
 class DatabaseServerProxy(NamespaceProxy):
     _exposed_ = ('__getattribute__', '__setattr__', '__delattr__')

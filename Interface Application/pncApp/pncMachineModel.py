@@ -193,7 +193,7 @@ class MachineModel():
 
         #Machine kinematics
         self.number_of_joints = 5
-        self.servo_dt = 0.002
+        self.servo_dt = 0.001
         #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
@@ -316,6 +316,7 @@ class MachineModel():
         self.current_jerk = [0.0]*self.number_of_joints
         self.current_buffer_level = 0
         self.currently_executing_sequence_id = 4*[-1]
+        self.currently_executing_move_type = 'NULL'
         #self.current_executing_CAM_sequence_id = -1
         #self.current_executing_rapid_sequence_id = -1
         self.motion_states = ['current_stepgen_position']#, 'current_encoder_position']

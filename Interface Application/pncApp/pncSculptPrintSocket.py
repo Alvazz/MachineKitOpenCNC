@@ -22,6 +22,7 @@ DATASOURCEFORMATS = [(r'Planned Trajectory', 'planned_positions', pncLibrary.SP.
                    (r'Stepgen Trajectory', 'stepgen_positions', pncLibrary.SP.NUMAXES + 1)]
 
 is_monitoring_setup_flag = False
+#pncApp_connection_flag = False
 
 #There are two set of axis sensors: stepgens (0) and encoders (1)
 
@@ -60,10 +61,12 @@ def start():
     return pncApp_connector.app_connection_event.is_set()
 
 def startCommunication():
+    global pncApp_connection_flag
     try:
         pncApp_connector.connection = pncLibrary.initializeInterfaceIPC(pncApp_connector)
         if pncLibrary.MVCHandshake(pncApp_connector, 'HELLO_SCULPTPRINT_BINARY'):
             print("SUCCESS: Connected to pncApp")
+            pncApp_connection_flag = True
             return True
 
     except ConnectionRefusedError:
@@ -228,7 +231,7 @@ def userPythonFunction3(valueDict):
     print('stateObject values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    return True
+    return 'HALT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'HALT', str, '')
 
 
 def userSlider1StateChange(valueDict):
@@ -253,12 +256,12 @@ def setupUserDataNames():
 
 
 def setupUserFunctionNames():
-    stringArray = [r'Connect to pncAppController', r'Begin Motion', r'my function 3']
+    stringArray = [r'Connect to pncAppController', r'Begin Motion', r'Halt Motion']
     return stringArray
 
 
 def setupUserSliderLabels():
-    stringArray = [r'my slider 1', r'my slider 2']
+    stringArray = [r'Axis Velocity Limit', r'Axis Acceleration Limit']
     return stringArray
 
 
@@ -266,7 +269,50 @@ def setupUserOptionLabels():
     stringArray = [(r'my options 1', 'my option 1', 'my option 2'), (r'my options 2', 'my option 1', 'my option 2')]
     return stringArray
 
+def getStatusText():
+    #drive_power = 'UPDATETOOLPATHPOINTS' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'UPDATETOOLPATHPOINTS', str, '')
+    if pncApp_connector.app_connection_event.is_set():
+        state_string = 'Connected to pncApp Server\n'
 
+        drive_power_flag = pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETDRIVEPOWERSTATE', bool, False)
+        state_string += "Machine Drive Power "
+        state_string = [state_string + 'ON' if drive_power_flag else state_string + 'OFF'][0]
+        state_string += '\n'
+
+        tp_connection_state = pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETTPCONNECTIONSTATE', bool, False)
+        state_string += "Cloud TP "
+        state_string = [state_string + 'Connected' if tp_connection_state else state_string + 'Disconnected'][0]
+        state_string += '\n'
+
+        if tp_connection_state:
+            currently_planning_sequence = pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETCURRENTLYPLANNINGSEQUENCEID', int, -1)
+            if currently_planning_sequence >= 0:
+                state_string += 'Cloud TP Planned to SID: '
+                state_string += str(currently_planning_sequence)
+            else:
+                state_string += 'Cloud TP Not Planning'
+            state_string += '\n'
+
+        state_string += 'Motion '
+        motion_status = pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETMOTIONSTATUS', bool, False)
+        if motion_status:
+            state_string += 'Running Move Type: \n   '
+            currently_executing_move_type = pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETCURRENTLYEXECUTINGMOVETYPE', str, '')
+            state_string += currently_executing_move_type
+            state_string += '\n'
+
+            if currently_executing_move_type == pncLibrary.SP_move_type_strings[0]:
+                state_string += 'pncMotionController Executing\n   CAM Sequence ID: '
+                currently_executing_sequence_id = str(pncLibrary.safelyHandleSocketData(pncApp_connector, 'GETCURRENTLYEXECUTINGSEQUENCEID', int, -1))
+                state_string += currently_executing_sequence_id
+                state_string += '\n'
+
+        else:
+            state_string += 'Not Running'
+    else:
+        state_string = 'Not Connected to pncApp Server'
+
+    return state_string
 
 print("process name is " + __name__)
 #initializeInterfaceIPC()
@@ -288,7 +334,9 @@ if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
 
     z = isMonitoring()
     print(z)
-    yy = read()
+    while 1:
+        yy = read()
+        z = getStatusText()
     print('read data is: ' + str(yy))
     #print(yy[0])
     # time.sleep(0.1)
@@ -309,7 +357,7 @@ if __name__ != 'machinemonitor' and __name__ != 'controlMachineMonitor':
     while 1:
         z = isMonitoring()
         print(z)
-        yy = readMachine(0)
+        yy = read(0)
         try:
             print(yy)
         except:

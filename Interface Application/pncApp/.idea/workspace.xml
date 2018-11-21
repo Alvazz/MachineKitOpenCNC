@@ -2,14 +2,36 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="8bd26cf1-5304-4d98-8138-03fba3eca374" name="Default" comment="">
-      <change beforePath="$PROJECT_DIR$/pncApp.py" afterPath="$PROJECT_DIR$/pncApp.py" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" afterPath="$PROJECT_DIR$/.idea/workspace.xml" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncApp.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncAppInterface.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncDatabase.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncDeviceInterface.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncLibrary.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncMachineControl.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncMachineFeedback.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncMachineModel.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncMotionControl.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncSculptPrintIntegration.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncSculptPrintSocket.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncTerminalSocket.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncTrajectoryGeneration.py" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/Threaded Websocket Version/pncWebInterface.py" afterPath="" />
       <change beforePath="$PROJECT_DIR$/pncAppInterface.py" afterPath="$PROJECT_DIR$/pncAppInterface.py" />
       <change beforePath="$PROJECT_DIR$/pncDatabase.py" afterPath="$PROJECT_DIR$/pncDatabase.py" />
       <change beforePath="$PROJECT_DIR$/pncLibrary.py" afterPath="$PROJECT_DIR$/pncLibrary.py" />
       <change beforePath="$PROJECT_DIR$/pncMachineControl.py" afterPath="$PROJECT_DIR$/pncMachineControl.py" />
       <change beforePath="$PROJECT_DIR$/pncMachineModel.py" afterPath="$PROJECT_DIR$/pncMachineModel.py" />
       <change beforePath="$PROJECT_DIR$/pncMotionControl.py" afterPath="$PROJECT_DIR$/pncMotionControl.py" />
+      <change beforePath="$PROJECT_DIR$/pncSculptPrintIntegration.py" afterPath="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
+      <change beforePath="$PROJECT_DIR$/pncSculptPrintSocket.py" afterPath="$PROJECT_DIR$/pncSculptPrintSocket.py" />
       <change beforePath="$PROJECT_DIR$/pncWebInterface.py" afterPath="$PROJECT_DIR$/pncWebInterface.py" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/CommConnectorPanel.dwl" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/CommConnectorPanel.dwl2" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/Panels.dwl" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/Panels.dwl2" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/ShelfSwitchMountPlate.dwl" afterPath="" />
+      <change beforePath="$PROJECT_DIR$/../../Mechanical/Electronics/ShelfSwitchMountPlate.dwl2" afterPath="" />
       <change beforePath="$PROJECT_DIR$/../../ODrive" afterPath="$PROJECT_DIR$/../../ODrive" />
     </list>
     <option name="EXCLUDED_CONVERTED_TO_IGNORED" value="true" />
@@ -21,46 +43,12 @@
   </component>
   <component name="FileEditorManager">
     <leaf SIDE_TABS_SIZE_LIMIT_KEY="300">
-      <file leaf-file-name="pncMachineControl.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="182">
-              <caret line="146" column="0" lean-forward="false" selection-start-line="146" selection-start-column="0" selection-end-line="146" selection-end-column="0" />
-              <folding>
-                <element signature="e#0#52#0" expanded="true" />
-              </folding>
-            </state>
-          </provider>
-        </entry>
-      </file>
       <file leaf-file-name="pncMotionControl.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncMotionControl.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="527">
-              <caret line="93" column="33" lean-forward="true" selection-start-line="93" selection-start-column="33" selection-end-line="93" selection-end-column="33" />
+            <state relative-caret-position="212">
+              <caret line="85" column="61" lean-forward="true" selection-start-line="85" selection-start-column="61" selection-end-line="85" selection-end-column="61" />
               <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="managers.py" pinned="false" current-in-tab="false">
-        <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="227">
-              <caret line="1015" column="0" lean-forward="false" selection-start-line="1015" selection-start-column="0" selection-end-line="1015" selection-end-column="0" />
-              <folding />
-            </state>
-          </provider>
-        </entry>
-      </file>
-      <file leaf-file-name="pncMachineModel.py" pinned="false" current-in-tab="false">
-        <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
-          <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="231">
-              <caret line="325" column="8" lean-forward="false" selection-start-line="325" selection-start-column="8" selection-end-line="325" selection-end-column="8" />
-              <folding>
-                <element signature="e#0#18#0" expanded="true" />
-              </folding>
             </state>
           </provider>
         </entry>
@@ -68,8 +56,8 @@
       <file leaf-file-name="pncLibrary.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncLibrary.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="172">
-              <caret line="1039" column="4" lean-forward="false" selection-start-line="1039" selection-start-column="4" selection-end-line="1039" selection-end-column="4" />
+            <state relative-caret-position="-1575">
+              <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
               <folding>
                 <element signature="e#0#69#0" expanded="true" />
               </folding>
@@ -80,8 +68,28 @@
       <file leaf-file-name="pncSculptPrintSocket.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="314">
-              <caret line="131" column="26" lean-forward="false" selection-start-line="131" selection-start-column="26" selection-end-line="131" selection-end-column="26" />
+            <state relative-caret-position="1832">
+              <caret line="233" column="78" lean-forward="false" selection-start-line="233" selection-start-column="78" selection-end-line="233" selection-end-column="78" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="codecs.py" pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/codecs.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="361">
+              <caret line="310" column="0" lean-forward="false" selection-start-line="310" selection-start-column="0" selection-end-line="310" selection-end-column="0" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="managers.py" pinned="false" current-in-tab="false">
+        <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="189">
+              <caret line="731" column="0" lean-forward="false" selection-start-line="731" selection-start-column="0" selection-end-line="731" selection-end-column="0" />
               <folding />
             </state>
           </provider>
@@ -90,28 +98,28 @@
       <file leaf-file-name="pncAppInterface.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="450">
-              <caret line="122" column="124" lean-forward="false" selection-start-line="122" selection-start-column="124" selection-end-line="122" selection-end-column="124" />
+            <state relative-caret-position="105">
+              <caret line="15" column="9" lean-forward="false" selection-start-line="15" selection-start-column="9" selection-end-line="15" selection-end-column="9" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="pncSculptPrintIntegration.py" pinned="false" current-in-tab="false">
+      <file leaf-file-name="pncSculptPrintIntegration.py" pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="302">
-              <caret line="378" column="89" lean-forward="false" selection-start-line="378" selection-start-column="89" selection-end-line="378" selection-end-column="89" />
+            <state relative-caret-position="362">
+              <caret line="144" column="87" lean-forward="false" selection-start-line="144" selection-start-column="87" selection-end-line="144" selection-end-column="87" />
               <folding />
             </state>
           </provider>
         </entry>
       </file>
-      <file leaf-file-name="pncDatabase.py" pinned="false" current-in-tab="true">
-        <entry file="file://$PROJECT_DIR$/pncDatabase.py">
+      <file leaf-file-name="pncMachineModel.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="272">
-              <caret line="489" column="23" lean-forward="true" selection-start-line="489" selection-start-column="23" selection-end-line="489" selection-end-column="23" />
+            <state relative-caret-position="127">
+              <caret line="195" column="29" lean-forward="false" selection-start-line="195" selection-start-column="29" selection-end-line="195" selection-end-column="29" />
               <folding />
             </state>
           </provider>
@@ -120,11 +128,19 @@
       <file leaf-file-name="pncWebInterface.py" pinned="false" current-in-tab="false">
         <entry file="file://$PROJECT_DIR$/pncWebInterface.py">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="182">
-              <caret line="753" column="0" lean-forward="false" selection-start-line="753" selection-start-column="0" selection-end-line="753" selection-end-column="0" />
-              <folding>
-                <element signature="e#0#67#0" expanded="true" />
-              </folding>
+            <state relative-caret-position="457">
+              <caret line="703" column="32" lean-forward="true" selection-start-line="703" selection-start-column="32" selection-end-line="703" selection-end-column="32" />
+              <folding />
+            </state>
+          </provider>
+        </entry>
+      </file>
+      <file leaf-file-name="pncDatabase.py" pinned="false" current-in-tab="false">
+        <entry file="file://$PROJECT_DIR$/pncDatabase.py">
+          <provider selected="true" editor-type-id="text-editor">
+            <state relative-caret-position="411">
+              <caret line="266" column="232" lean-forward="false" selection-start-line="266" selection-start-column="232" selection-end-line="266" selection-end-column="232" />
+              <folding />
             </state>
           </provider>
         </entry>
@@ -133,40 +149,38 @@
   </component>
   <component name="FindInProjectRecents">
     <findStrings>
-      <find>RSH</find>
-      <find>flush_to_websocket</find>
-      <find>last_CAM_cutting_sequence_start_points</find>
-      <find>last_CAM_cutting_sequence_end_points</find>
-      <find>tp_need_points_event</find>
-      <find>enqueued_sequence_id</find>
-      <find>CAM_TOOLPATH_REQUESTS</find>
-      <find>pull break</find>
-      <find>printout_trajectory_planning_finished_string</find>
-      <find>printout_process_self_terminate_string</find>
-      <find>sendPlanningRequest</find>
-      <find>start_pncApp</find>
-      <find>tp_connected_event</find>
-      <find>could not la</find>
-      <find>tp_websocket_server_connected_event</find>
-      <find>q_cloud_trajectory_planner_interface_planned_point_output_queue</find>
-      <find>timeout</find>
-      <find>tp_websocket_auth_received_event</find>
-      <find>toolpath_data</find>
-      <find>updateMachine</find>
-      <find>metadata_ack_event</find>
-      <find>PLANNED</find>
-      <find>sendStartupMetadata</find>
-      <find>tp_toolpath_setup_event</find>
-      <find>TrajectoryPlannerInterfaceCommand</find>
       <find>tp_state_rapid_sequence_id</find>
       <find>remote_tp_name</find>
       <find>q_trajectory_planner_reposition_move_queue</find>
       <find>tp_link_event</find>
       <find>lookupTimeIndex</find>
+      <find>RSH_CLOCK_TIMES</find>
+      <find>HIGHFREQ_ETHERNET_RECEIVED_TIMES</find>
+      <find>LOWFREQ_ETHERNET_RECEIVED_TIMES</find>
+      <find>databa</find>
+      <find>SP_main_data_streams</find>
+      <find>SP_auxiliary_data_streams</find>
+      <find>'data':</find>
+      <find>pull_queue</find>
+      <find>synchronousPull</find>
+      <find>DatabaseCommand</find>
+      <find>archived_data_labels</find>
+      <find>sample_index_archive_offset</find>
+      <find>not connected</find>
+      <find>formatFullFeedbackData</find>
+      <find>extractStartingVoxelPoints</find>
+      <find>linearlyInterpolateTrajectory</find>
+      <find>DATABASE</find>
+      <find>app_connection_event</find>
+      <find>currently_executin</find>
+      <find>tp_state_current_requested_sequence_id</find>
+      <find>SP_trajectory</find>
+      <find>mc_run_motion_event</find>
+      <find>socket out of</find>
+      <find>driv</find>
+      <find>removing</find>
     </findStrings>
     <replaceStrings>
-      <replace>all_moves_consumed_event</replace>
-      <replace>tp_planning_finished_event</replace>
       <replace>plan_to_index_delta</replace>
       <replace>sendStartupMetadata</replace>
       <replace>tp_first_trajectory_received_event</replace>
@@ -195,6 +209,8 @@
       <replace>rapid_sequence_under_construction_move_flags</replace>
       <replace>last_CAM_sequence_start_points</replace>
       <replace>last_CAM_sequence_end_points</replace>
+      <replace>archived_data_offsets</replace>
+      <replace>'data_name':</replace>
     </replaceStrings>
     <dirStrings>
       <dir>C:\Users\robyl_000\Documents\Projects\PocketNC\MachineKitOpenCNC\Interface Application\pncApp</dir>
@@ -212,17 +228,17 @@
         <option value="$PROJECT_DIR$/pncDataStore.py" />
         <option value="$PROJECT_DIR$/pncDeviceInterface.py" />
         <option value="$PROJECT_DIR$/pncTrajectoryGeneration.py" />
-        <option value="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
         <option value="$PROJECT_DIR$/pncMachineFeedback.py" />
-        <option value="$PROJECT_DIR$/pncSculptPrintSocket.py" />
         <option value="$PROJECT_DIR$/pncApp.py" />
-        <option value="$PROJECT_DIR$/pncMachineModel.py" />
-        <option value="$PROJECT_DIR$/pncAppInterface.py" />
-        <option value="$PROJECT_DIR$/pncLibrary.py" />
-        <option value="$PROJECT_DIR$/pncWebInterface.py" />
         <option value="$PROJECT_DIR$/pncMachineControl.py" />
-        <option value="$PROJECT_DIR$/pncMotionControl.py" />
+        <option value="$PROJECT_DIR$/pncLibrary.py" />
         <option value="$PROJECT_DIR$/pncDatabase.py" />
+        <option value="$PROJECT_DIR$/pncAppInterface.py" />
+        <option value="$PROJECT_DIR$/pncSculptPrintSocket.py" />
+        <option value="$PROJECT_DIR$/pncWebInterface.py" />
+        <option value="$PROJECT_DIR$/pncMachineModel.py" />
+        <option value="$PROJECT_DIR$/pncMotionControl.py" />
+        <option value="$PROJECT_DIR$/pncSculptPrintIntegration.py" />
       </list>
     </option>
   </component>
@@ -248,6 +264,7 @@
       <foldersAlwaysOnTop value="true" />
     </navigator>
     <panes>
+      <pane id="Scratches" />
       <pane id="ProjectPane">
         <subPane>
           <expand>
@@ -260,7 +277,6 @@
         </subPane>
       </pane>
       <pane id="Scope" />
-      <pane id="Scratches" />
     </panes>
   </component>
   <component name="PropertiesComponent">
@@ -285,7 +301,7 @@
       </list>
     </option>
   </component>
-  <component name="RunManager" selected="Python.pncAppInterface">
+  <component name="RunManager" selected="Python.pncSculptPrintSocket">
     <configuration name="pncAppInterface" type="PythonConfigurationType" factoryName="Python" temporary="true">
       <option name="INTERPRETER_OPTIONS" value="" />
       <option name="PARENT_ENVS" value="true" />
@@ -447,9 +463,8 @@
   </component>
   <component name="ToolWindowManager">
     <frame x="-8" y="-8" width="1936" height="1056" extended-state="6" />
-    <editor active="true" />
     <layout>
-      <window_info id="Project" active="false" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16965227" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
+      <window_info id="Project" active="true" anchor="left" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="true" show_stripe_button="true" weight="0.16965227" sideWeight="0.5" order="0" side_tool="false" content_ui="combo" />
       <window_info id="TODO" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.19347826" sideWeight="0.49789253" order="6" side_tool="false" content_ui="tabs" />
       <window_info id="Event Log" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.2804348" sideWeight="0.31243414" order="7" side_tool="true" content_ui="tabs" />
       <window_info id="Find" active="false" anchor="bottom" auto_hide="false" internal_type="DOCKED" type="DOCKED" visible="false" show_stripe_button="true" weight="0.32934782" sideWeight="0.5" order="1" side_tool="false" content_ui="tabs" />
@@ -605,7 +620,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncAppInterface.py</url>
-          <line>328</line>
+          <line>344</line>
           <option name="timeStamp" value="784" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -635,7 +650,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
-          <line>100</line>
+          <line>103</line>
           <option name="timeStamp" value="886" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -650,7 +665,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>887</line>
+          <line>902</line>
           <option name="timeStamp" value="938" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -669,28 +684,23 @@
           <option name="timeStamp" value="1033" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncDatabase.py</url>
-          <line>241</line>
-          <option name="timeStamp" value="1052" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMotionControl.py</url>
-          <line>218</line>
+          <line>219</line>
           <option name="timeStamp" value="1119" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMotionControl.py</url>
-          <line>243</line>
+          <line>244</line>
           <option name="timeStamp" value="1134" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
-          <line>240</line>
+          <line>255</line>
           <option name="timeStamp" value="1135" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
-          <line>181</line>
+          <line>196</line>
           <option name="timeStamp" value="1173" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -700,7 +710,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>810</line>
+          <line>825</line>
           <option name="timeStamp" value="1384" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -735,7 +745,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncDatabase.py</url>
-          <line>498</line>
+          <line>574</line>
           <option name="timeStamp" value="1473" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -759,53 +769,38 @@
           <option name="timeStamp" value="1538" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>941</line>
-          <option name="timeStamp" value="1563" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncAppInterface.py</url>
-          <line>303</line>
+          <line>319</line>
           <option name="timeStamp" value="1581" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>873</line>
+          <line>888</line>
           <option name="timeStamp" value="1594" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncAppInterface.py</url>
-          <line>120</line>
-          <option name="timeStamp" value="1599" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>985</line>
+          <line>1000</line>
           <option name="timeStamp" value="1603" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
-          <line>387</line>
+          <line>402</line>
           <option name="timeStamp" value="1618" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
-          <url>file://$PROJECT_DIR$/pncSculptPrintSocket.py</url>
-          <line>291</line>
-          <option name="timeStamp" value="1620" />
-        </line-breakpoint>
-        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>327</line>
+          <line>341</line>
           <option name="timeStamp" value="1658" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>364</line>
+          <line>378</line>
           <option name="timeStamp" value="1674" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncLibrary.py</url>
-          <line>366</line>
+          <line>380</line>
           <option name="timeStamp" value="1688" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -815,7 +810,7 @@
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
           <url>file://$PROJECT_DIR$/pncMotionControl.py</url>
-          <line>82</line>
+          <line>83</line>
           <option name="timeStamp" value="1839" />
         </line-breakpoint>
         <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
@@ -843,6 +838,41 @@
           <line>469</line>
           <option name="timeStamp" value="1905" />
         </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
+          <line>133</line>
+          <option name="timeStamp" value="1937" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncSculptPrintIntegration.py</url>
+          <line>161</line>
+          <option name="timeStamp" value="1964" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncSculptPrintSocket.py</url>
+          <line>338</line>
+          <option name="timeStamp" value="1969" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncSculptPrintSocket.py</url>
+          <line>296</line>
+          <option name="timeStamp" value="1973" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncSculptPrintSocket.py</url>
+          <line>287</line>
+          <option name="timeStamp" value="1976" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncLibrary.py</url>
+          <line>956</line>
+          <option name="timeStamp" value="1978" />
+        </line-breakpoint>
+        <line-breakpoint enabled="true" suspend="THREAD" type="python-line">
+          <url>file://$PROJECT_DIR$/pncDatabase.py</url>
+          <line>265</line>
+          <option name="timeStamp" value="1979" />
+        </line-breakpoint>
       </breakpoints>
       <breakpoints-dialog>
         <breakpoints-dialog />
@@ -854,65 +884,67 @@
           </properties>
         </breakpoint>
       </default-breakpoints>
-      <option name="time" value="1912" />
+      <option name="time" value="1983" />
     </breakpoint-manager>
     <watches-manager>
       <configuration name="PythonConfigurationType">
-        <watch expression="__py_debug_temp_var_1702869213" />
-        <watch expression="self.planned_point_payload_buffer[1].f" />
-        <watch expression="data_format" />
+        <watch expression="joint_point_samples" />
       </configuration>
     </watches-manager>
   </component>
   <component name="debuggerHistoryManager">
     <expressions id="evaluateCodeFragment">
       <expression>
-        <expression-string>self.visualizePolylines(4)</expression-string>
+        <expression-string># print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')
+zz = output_data_array.shape[0]
+z = unique_indices.shape[0]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.visualizePolylines()</expression-string>
+        <expression-string># print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')
+output_data_array.shape[0]
+z = unique_indices.shape[0]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.plotTransmittedPolylines(0)
-plt.show()</expression-string>
+        <expression-string># print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')
+output_data_array.shape[0]
+unique_indices.shape[0]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.plotTransmittedPolylines(1)
-plt.show()</expression-string>
+        <expression-string># print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')
+output_data_array.shape[0]
+unique_indices.shape[1]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.plotTransmittedPolylines(2)
-plt.show()</expression-string>
+        <expression-string># print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')
+output_data_array.shape[0]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.plotTransmittedPolylines(3)
-plt.show()</expression-string>
+        <expression-string>print('removing ' + str(output_data_array.shape[0] - unique_indices.shape[1]) + ' duplicate time values')</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>#self.plotTransmittedPolylines(4)
-plt.show()</expression-string>
+        <expression-string>output_data_array = output_data_array[unique_indices, :]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.plotTransmittedPolylines(4)</expression-string>
+        <expression-string>output_data_array = output_data_array[unique_values, :]</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
       <expression>
-        <expression-string>self.visualizePolylines(2)</expression-string>
+        <expression-string>unique_values, unique_indices = np.unique(output_data_array[:,0], return_index=True)</expression-string>
         <language-id>Python</language-id>
         <evaluation-mode>CODE_FRAGMENT</evaluation-mode>
       </expression>
@@ -1120,13 +1152,6 @@ plt.show()</expression-string>
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/codecs.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="361">
-          <caret line="310" column="0" lean-forward="false" selection-start-line="310" selection-start-column="0" selection-end-line="310" selection-end-column="0" />
-        </state>
-      </provider>
-    </entry>
     <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/connection.py">
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="206">
@@ -1138,22 +1163,6 @@ plt.show()</expression-string>
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="204">
           <caret line="913" column="0" lean-forward="false" selection-start-line="913" selection-start-column="0" selection-end-line="913" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncTrajectoryGeneration.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="195">
-          <caret line="13" column="0" lean-forward="false" selection-start-line="13" selection-start-column="0" selection-end-line="13" selection-end-column="0" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="442">
-          <caret line="481" column="0" lean-forward="false" selection-start-line="481" selection-start-column="0" selection-end-line="481" selection-end-column="0" />
           <folding />
         </state>
       </provider>
@@ -1170,94 +1179,63 @@ plt.show()</expression-string>
       <provider selected="true" editor-type-id="text-editor">
         <state relative-caret-position="354">
           <caret line="109" column="0" lean-forward="false" selection-start-line="109" selection-start-column="0" selection-end-line="109" selection-end-column="0" />
-          <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pncApp.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="-73">
-          <caret line="172" column="0" lean-forward="false" selection-start-line="172" selection-start-column="0" selection-end-line="172" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#51#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="231">
-          <caret line="325" column="8" lean-forward="false" selection-start-line="325" selection-start-column="8" selection-end-line="325" selection-end-column="8" />
-          <folding>
-            <element signature="e#0#18#0" expanded="true" />
-          </folding>
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="314">
-          <caret line="131" column="26" lean-forward="false" selection-start-line="131" selection-start-column="26" selection-end-line="131" selection-end-column="26" />
+        <state relative-caret-position="189">
+          <caret line="171" column="0" lean-forward="false" selection-start-line="171" selection-start-column="0" selection-end-line="171" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
+    <entry file="file://$PROJECT_DIR$/pncTrajectoryGeneration.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="227">
-          <caret line="1015" column="0" lean-forward="false" selection-start-line="1015" selection-start-column="0" selection-end-line="1015" selection-end-column="0" />
+        <state relative-caret-position="825">
+          <caret line="55" column="0" lean-forward="false" selection-start-line="55" selection-start-column="0" selection-end-line="55" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncWebInterface.py">
+    <entry file="file://$PROJECT_DIR$/pncMachineFeedback.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="182">
-          <caret line="753" column="0" lean-forward="false" selection-start-line="753" selection-start-column="0" selection-end-line="753" selection-end-column="0" />
-          <folding>
-            <element signature="e#0#67#0" expanded="true" />
-          </folding>
+        <state relative-caret-position="3780">
+          <caret line="256" column="27" lean-forward="false" selection-start-line="256" selection-start-column="27" selection-end-line="256" selection-end-column="27" />
+          <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pncMachineControl.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="182">
-          <caret line="146" column="0" lean-forward="false" selection-start-line="146" selection-start-column="0" selection-end-line="146" selection-end-column="0" />
+        <state relative-caret-position="332">
+          <caret line="503" column="63" lean-forward="false" selection-start-line="503" selection-start-column="63" selection-end-line="503" selection-end-column="63" />
           <folding>
             <element signature="e#0#52#0" expanded="true" />
           </folding>
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncMotionControl.py">
+    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/multiprocessing/managers.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="527">
-          <caret line="93" column="33" lean-forward="true" selection-start-line="93" selection-start-column="33" selection-end-line="93" selection-end-column="33" />
+        <state relative-caret-position="189">
+          <caret line="731" column="0" lean-forward="false" selection-start-line="731" selection-start-column="0" selection-end-line="731" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
-    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
+    <entry file="file://$USER_HOME$/AppData/Local/Programs/Python/Python35/Lib/codecs.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="450">
-          <caret line="122" column="124" lean-forward="false" selection-start-line="122" selection-start-column="124" selection-end-line="122" selection-end-column="124" />
-          <folding />
-        </state>
-      </provider>
-    </entry>
-    <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
-      <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="302">
-          <caret line="378" column="89" lean-forward="false" selection-start-line="378" selection-start-column="89" selection-end-line="378" selection-end-column="89" />
+        <state relative-caret-position="361">
+          <caret line="310" column="0" lean-forward="false" selection-start-line="310" selection-start-column="0" selection-end-line="310" selection-end-column="0" />
           <folding />
         </state>
       </provider>
     </entry>
     <entry file="file://$PROJECT_DIR$/pncLibrary.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="172">
-          <caret line="1039" column="4" lean-forward="false" selection-start-line="1039" selection-start-column="4" selection-end-line="1039" selection-end-column="4" />
+        <state relative-caret-position="-1575">
+          <caret line="0" column="0" lean-forward="false" selection-start-line="0" selection-start-column="0" selection-end-line="0" selection-end-column="0" />
           <folding>
             <element signature="e#0#69#0" expanded="true" />
           </folding>
@@ -1266,8 +1244,56 @@ plt.show()</expression-string>
     </entry>
     <entry file="file://$PROJECT_DIR$/pncDatabase.py">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="272">
-          <caret line="489" column="23" lean-forward="true" selection-start-line="489" selection-start-column="23" selection-end-line="489" selection-end-column="23" />
+        <state relative-caret-position="411">
+          <caret line="266" column="232" lean-forward="false" selection-start-line="266" selection-start-column="232" selection-end-line="266" selection-end-column="232" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncAppInterface.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="105">
+          <caret line="15" column="9" lean-forward="false" selection-start-line="15" selection-start-column="9" selection-end-line="15" selection-end-column="9" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMachineModel.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="127">
+          <caret line="195" column="29" lean-forward="false" selection-start-line="195" selection-start-column="29" selection-end-line="195" selection-end-column="29" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncWebInterface.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="457">
+          <caret line="703" column="32" lean-forward="true" selection-start-line="703" selection-start-column="32" selection-end-line="703" selection-end-column="32" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncMotionControl.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="212">
+          <caret line="85" column="61" lean-forward="true" selection-start-line="85" selection-start-column="61" selection-end-line="85" selection-end-column="61" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncSculptPrintSocket.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="1832">
+          <caret line="233" column="78" lean-forward="false" selection-start-line="233" selection-start-column="78" selection-end-line="233" selection-end-column="78" />
+          <folding />
+        </state>
+      </provider>
+    </entry>
+    <entry file="file://$PROJECT_DIR$/pncSculptPrintIntegration.py">
+      <provider selected="true" editor-type-id="text-editor">
+        <state relative-caret-position="362">
+          <caret line="144" column="87" lean-forward="false" selection-start-line="144" selection-start-column="87" selection-end-line="144" selection-end-column="87" />
           <folding />
         </state>
       </provider>

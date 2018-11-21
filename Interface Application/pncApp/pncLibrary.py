@@ -79,8 +79,10 @@ printout_ssh_bad_state_string = "MACHINE OS CONTROLLER: {} not ready"
 printout_ssh_process_ready_string = "MACHINE OS CONTROLLER: {} is ready, proceeding with INIT"
 printout_interface_socket_connection_string = "PNC INTERFACE SOCKET LAUNCHER: Connected to client {} on address {}"
 printout_database_field_creation_string = "DATABASE CONTROLLER: Creating record type {} with size {}"
+printout_database_retrieving_from_archive_string = "DATABASE CONTROLLER: Retrieving {} entries from archive {} for {} pull request"
 printout_database_object_list_creation_string = "DATABASE CONTROLLER: Creating object list type {} with size {}"
 printout_database_flush_to_websocket_string = "DATABASE CONTROLLER: Writing {} to websocket flush queue"
+printout_database_archiving_records_string = "DATABASE CONTROLLER: Archiving {} records of type {} to archive array of size {}"
 
 #Queue operations
 queue_wait_timeout = 1
@@ -109,19 +111,31 @@ SP_toolpath_sample_data_format = ['X','Z','S','Y','A','B','is_rapid','volume','m
 #SP_clock_data_names = [['RTAPI_CLOCK_TIMES', 'RSH_CLOCK_TIMES'], ['ENCODER_RECEIVED_TIMES']]
 #SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
 #SP_main_data_streams = [[('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5))], [('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5))]]
-SP_main_data_streams = [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5), ('Planned Trajectory', SP.NUMAXES + 1)),
-                        ('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5), ('Estimated Trajectory', SP.NUMAXES + 1)),
-                        ('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5), ('Actual Trajectory', SP.NUMAXES + 1))]
+
+# SP_main_data_streams = [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5), ('Planned Trajectory', SP.NUMAXES + 1), 'INTERPOLATED_POLYLINE_TRANSMISSION_TIME_INDICES'),
+#                         ('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5), ('Estimated Trajectory', SP.NUMAXES + 1), 'RTAPI_CLOCK_TIME_INDICES'),
+#                         ('SERIAL_RECEIVED_TIMES', 'ENCODER_FEEDBACK_POSITIONS', (1, 5), ('Actual Trajectory', SP.NUMAXES + 1), "SERIAL_RECEIVED_TIME_INDICES")]
+SP_main_data_streams = [{'clock': 'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'data_name': 'COMMANDED_SERVO_POSITIONS', 'shape': (1, 5), 'SP_format': ('Planned Trajectory', SP.NUMAXES + 1), 'sample_index_archive_offset': 'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES_INDEX_OFFSET', 'archive': True, 'archive_prefix': 'ARCHIVED_'},
+                        {'clock': 'RTAPI_CLOCK_TIMES', 'data_name': 'STEPGEN_FEEDBACK_POSITIONS', 'shape': (1, 5), 'SP_format': ('Estimated Trajectory', SP.NUMAXES + 1), 'sample_index_archive_offset': 'RTAPI_CLOCK_TIMES_INDEX_OFFSET', 'archive': True, 'archive_prefix': 'ARCHIVED_'},
+                        {'clock': 'SERIAL_RECEIVED_TIMES', 'data_name': 'ENCODER_FEEDBACK_POSITIONS', 'shape': (1, 5), 'SP_format': ('Actual Trajectory', SP.NUMAXES + 1), 'sample_index_archive_offset': 'SERIAL_RECEIVED_TIMES_INDEX_OFFSET', 'archive': True, 'archive_prefix': 'ARCHIVED_'}]
+SP_main_data_streams = [{'clock': 'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'data_name': 'COMMANDED_SERVO_POSITIONS', 'shape': (1, 5), 'SP_format': ('Planned Trajectory', SP.NUMAXES + 1), 'archive': True},
+                        {'clock': 'RTAPI_CLOCK_TIMES', 'data_name': 'STEPGEN_FEEDBACK_POSITIONS', 'shape': (1, 5), 'SP_format': ('Estimated Trajectory', SP.NUMAXES + 1), 'archive': True},
+                        {'clock': 'SERIAL_RECEIVED_TIMES', 'data_name': 'ENCODER_FEEDBACK_POSITIONS', 'shape': (1, 5), 'SP_format': ('Actual Trajectory', SP.NUMAXES + 1), 'archive': True}]
 #SP_main_data_streams = [[('RTAPI_CLOCK_TIMES', 'STEPGEN_FEEDBACK_POSITIONS', (1, 5))], [('INTERPOLATED_POLYLINE_TRANSMISSION_TIMES', 'COMMANDED_SERVO_POSITIONS', (1, 5))]]
 #SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1)), ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))], [('', '', (0, 0))]]
 #SP_auxiliary_data_streams = [[('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1))], [('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1))]]
-SP_auxiliary_data_streams = [('RSH_CLOCK_TIMES', 'HIGHRES_TC_QUEUE_LENGTH', (1, 1), ('Servo Buffer Level', 2)),
-                             ('POLYLINE_TRANSMISSION_TIMES', 'NETWORK_PID_DELAYS', (1, 1),
-                              ('Network PID Delays', 2))]
+SP_auxiliary_data_streams = [{'clock': 'RSH_CLOCK_TIMES', 'data_name': 'HIGHRES_TC_QUEUE_LENGTH', 'shape': (1, 1), 'SP_format': ('Servo Buffer Level', 2), 'archive': True},
+                             {'clock': 'POLYLINE_TRANSMISSION_TIMES', 'data_name': 'NETWORK_PID_DELAYS', 'shape': (1, 1), 'SP_format': ('Network PID Delays', 2), 'archive': True}]
 #SP_auxiliary_data_labels = [[r'Buffer Level', r'Buffer Control PID Delays'], ['']]
+
+#Database parameters
+database_archive_prefix = 'ARCHIVED_'
+database_length_to_keep = 20000
+database_archive_delta = 5000
 
 #TP Comm Constants
 tp_move_types = ['SP_trajectory', 'rapid', 'block', 'hold']
+SP_move_type_strings = ['Voxel Trajectory', 'Rapid Reposition', 'Motion Block', 'Buffer Precharge']
 
 #Machine kinematics
 machine_number_of_joints = 5
@@ -485,7 +499,7 @@ class TPCommMessages():
 class SculptPrintFeedbackData():
     def __init__(self):
         for stream in SP_main_data_streams + SP_auxiliary_data_streams:
-            setattr(self, stream[1], [])
+            setattr(self, stream['data_name'], [])
 
     #     #self.planned_points = None
     #
@@ -679,7 +693,7 @@ class Synchronizer():
 
 
         # Locks
-        self.db_data_store_lock = manager.Lock()
+        self.db_data_store_lock = manager.RLock()
         self.db_machine_state_lock = manager.Lock()
         self.db_pull_lock = manager.Lock()
         self.mc_socket_lock = manager.Lock()
@@ -737,10 +751,11 @@ class MachineCommand():
         self.target_device = target_device
 
 class DatabaseCommand():
-    def __init__(self, command_type, records, parameters = None, time = None):
+    def __init__(self, command_type, records, command_parameters = None, archive_parameters = None, time = None):
         self.command_type = command_type
         self.data = records
-        self.command_parameters = parameters
+        self.command_parameters = command_parameters
+        self.archive_parameters = archive_parameters
         self.time = time
 
 class TrajectoryPlannerInterfaceCommand(ProcessCommand):
@@ -1008,10 +1023,10 @@ def updateFullInterfaceData(update_mode, synchronizer, feedback_state, main_data
     time_slices = []
     data_slices = []
     streams = main_data_streams + auxiliary_data_streams
-    clock_stream_names = [name for name in list(map(lambda stream: stream[0], streams)) if name != '']
-    data_stream_names = [name for name in list(map(lambda stream: stream[1], streams)) if name != '']
-    clock_stream_sizes = [size for size in list(map(lambda stream: stream[2][0], streams)) if size != 0]
-    data_stream_sizes = [size for size in list(map(lambda stream: stream[2][1], streams)) if size != 0]
+    clock_stream_names = [name for name in list(map(lambda stream: stream['clock'], streams)) if name != '']
+    data_stream_names = [name for name in list(map(lambda stream: stream['data_name'], streams)) if name != '']
+    clock_stream_sizes = [size for size in list(map(lambda stream: stream['shape'][0], streams)) if size != 0]
+    data_stream_sizes = [size for size in list(map(lambda stream: stream['shape'][1], streams)) if size != 0]
     complete_stream_names = clock_stream_names + data_stream_names
     complete_stream_sizes = clock_stream_sizes + data_stream_sizes
 
@@ -1090,7 +1105,7 @@ def updateInterfaceClockOffsets(machine, clock_offsets):
 ######################## Database Interaction ########################
 def synchronousPull(synchronizer, data_types, start_indices, end_indices):
     with synchronizer.db_pull_lock:
-        synchronizer.q_database_command_queue_proxy.put(DatabaseCommand('pull', data_types, (start_indices, end_indices)))
+        synchronizer.q_database_command_queue_proxy.put(DatabaseCommand('pull', data_types, command_parameters=(start_indices, end_indices)))
         return synchronizer.q_database_output_queue_proxy.get()
 
 def asynchronousPush(synchronizer, records):
