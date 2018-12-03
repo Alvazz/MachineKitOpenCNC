@@ -425,7 +425,8 @@ class MachineController(Process):
         #                        pncLibrary.SP_toolpath_sample_data_format.index('move_type')]])
 
         for sequence in point_data:
-            tool_point_samples = tool_point_samples = np.reshape(sequence[1], (-1, 5)).T
+            tool_point_samples = np.reshape(sequence[1], (-1, 5)).T
+            tool_point_samples = pncLibrary.TP.rotaryAxesToRadians(tool_point_samples.T).T
             joint_point_samples = np.array([np.reshape(sequence[2], (-1, pncLibrary.SP.TOOLPATHPOINTSIZE))[:, ndx]
                                             for ndx in [pncLibrary.SP_toolpath_sample_data_format.index(axis)
                                                         for axis in pncLibrary.SP_pncApp_machine_axes] + [
@@ -441,6 +442,9 @@ class MachineController(Process):
                 joint_point_samples = np.hstack((
                     self.machine.tp_state_last_CAM_sequence_end_points,
                     joint_point_samples))
+                tool_point_samples = np.hstack((
+                    self.machine.tp_state_last_CAM_sequence_tool_end_points,
+                    tool_point_samples))
                 #move_flags = np.hstack((move_flags, np.array([move_flags[:][0]])))
                 move_flags = move_flags[:,0]+np.zeros((1,joint_point_samples.shape[1]))
                 if move_flags[:, 0] == 0:
@@ -457,11 +461,13 @@ class MachineController(Process):
             #     [joint_point_samples[:, 1]]).T
             self.machine.tp_state_last_CAM_sequence_end_points = np.array(
                 [joint_point_samples[:, -1]]).T
+            self.machine.tp_state_last_CAM_sequence_tool_end_points = np.array(
+                [tool_point_samples[:, -1]]).T
             self.machine.tp_state_last_CAM_sequence_end_volumes = np.array([volumes[:, -1]]).T
 
-            tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T,
-                                                            *self.machine.tool_translation_vector,
-                                                            self.machine.workpiece_translation_vector))
+            # tool_point_samples = np.asarray(self.machine.FK(*pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T).T,
+            #                                                 *self.machine.tool_translation_vector,
+            #                                                 self.machine.workpiece_translation_vector))
 
 
 

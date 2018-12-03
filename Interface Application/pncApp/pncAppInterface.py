@@ -13,7 +13,7 @@ class PNCAppController(Thread):
         super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
-        #self.machine_type = "simulator"
+        self.machine_type = "simulator"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
         # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
@@ -160,6 +160,8 @@ class PNCAppController(Thread):
             pncLibrary.sendIPCData(self.CAM_socket_listener.client_type, self.CAM_client, command.command + '_ACK')
             self.CAM_socket_listener.client_connected_event.clear()
             print('SCULPTPRINT MVC: Client %s cleanly disconnected' % str(self.CAM_socket_listener.CAM_client_address))
+        elif command.command == 'SETBUFFERLEVELSETPOINT':
+            pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.setBufferLevelSetpoint(self.machine))
 
 
     def init_pncApp(self):

@@ -245,9 +245,10 @@ def userSlider1StateChange(valueDict):
 def userSlider2StateChange(valueDict):
     print('execute userSlider2StateChange(...)\n')
     print('stateObject values...\n')
-    for key, val in valueDict.items():
-        print(key + ' = ' + str(val))
-    return True
+    return 'SETBUFFERLEVELSETPOINT' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETBUFFERLEVELSETPOINT', bool, False, valueDict['UserSlider2'])
+    # for key, val in valueDict.items():
+    #     print(key + ' = ' + str(val))
+    # return True
 
 
 def setupUserDataNames():
@@ -261,7 +262,7 @@ def setupUserFunctionNames():
 
 
 def setupUserSliderLabels():
-    stringArray = [r'Axis Velocity Limit', r'Axis Acceleration Limit']
+    stringArray = [r'Axis Velocity Limit', r'Buffer Level Setpoint']
     return stringArray
 
 

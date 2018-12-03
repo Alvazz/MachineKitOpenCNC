@@ -441,5 +441,9 @@ def getCurrentlyExecutingMoveType(machine):
 def getCurrentlyExecutingSequenceID(machine):
     return int(machine.currently_executing_sequence_id[0])
 
+def setBufferLevelSetpoint(machine, scale):
+    machine.buffer_level_setpoint = scale*machine.max_buffer_level
+    return True
+
 ############################# User Functions #############################
 
