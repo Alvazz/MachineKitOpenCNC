@@ -55,6 +55,10 @@ def rotaryAxesToRadians(points):
     points[:, 4] = points[:, 4] * np.pi / 180.
     return points
 
+def spindleAxisToRadians(points):
+    points[:,5] = points[:, 5] * np.pi / 180.
+    return points
+
 def importPoints(machine, file):
     ##FIXME check for overtravel
     points = convertMotionCS(machine, 'absolute', np.array(list(csv.reader(open(file, "rt"), delimiter=" "))).astype("float")[:,:machine.number_of_joints])

@@ -51,6 +51,7 @@ printout_trajectory_planner_retrying_open_connection_string = "TRAJECTORY PLANNE
 printout_trajectory_planner_connection_failure_string = "REMOTE TP CONNECTION FAILED: {} did not get response from {}"
 printout_trajectory_planner_waiting_for_first_move_string = "MACHINE CONTROLLER: Waiting for first trajectory from {}..."
 printout_trajectory_planner_waiting_for_rapid_string = "MACHINE CONTROLLER: Waiting for reposition trajectory from {}..."
+printout_trajectory_planner_waiting_for_retraction_string = "MACHINE CONTROLLER: Waiting for retraction trajectory from {}..."
 printout_trajectory_initialization_string = "MACHINE CONTROLLER: Initializing trajectory"
 printout_trajectory_plan_request_sent_string = "TRAJECTORY PLANNER: {} sent {} byte plan request for sequence {}"
 printout_trajectory_plan_subsequenced_request_sent_string = "TRAJECTORY PLANNER: {} sending {} byte plan request for subsequence {} of sequence {}"
@@ -612,10 +613,12 @@ class Synchronizer():
         self.mc_clock_sync_event = manager.Event()
         self.mc_xenomai_clock_sync_event = manager.Event()
         self.mc_run_motion_event = manager.Event()
+        self.mc_halt_motion_event = manager.Event()
         self.mc_motion_started_event = manager.Event()
         self.mc_motion_complete_event = manager.Event()
         self.mc_rsh_error_event = manager.Event()
         self.mc_socket_connected_event = manager.Event()
+        self.mcf_move_queue_empty_event = manager.Event()
         #self.mc_motion_queue_feeder_enqueue_blocks_event = Event()
         self.ei_encoder_comm_init_event = manager.Event()
         self.ei_encoder_init_event = manager.Event()
@@ -800,6 +803,10 @@ class MachineControllerError(BaseException):
     def __init__(self, message):
         self.message = message
 
+class HaltMotionException(BaseException):
+    def __init__(self, message):
+        self.message = message
+
 ######################## Multitask Management ########################
 def startPrintServer(machine, synchronizer):
     print_server = PrintServer(machine, synchronizer)
@@ -893,9 +900,9 @@ def receiveIPCData(connection_type, connection_format, connection, timeout = soc
     if received_data is None:
         raise ConnectionAbortedError
     else:
-        print('pickled size is: ' + str(len(received_data)))
-        if str(len(received_data)) == 55:
-            print('break')
+        #print('pickled size is: ' + str(len(received_data)))
+        # if str(len(received_data)) == 55:
+        #     print('break')
         if connection_format == 'binary':
             try:
                 return pickle.loads(received_data)

@@ -175,6 +175,8 @@ class MachineController(Process):
             #self.waitForSet(self.setServoFeedbackMode, 0, self.getServoFeedbackMode)
             #self.synchronizer.mc_run_motion_event.set()
             self.beginMotionExecution()
+        elif command.command_type == "HALT":
+            self.synchronizer.mc_halt_motion_event.set()
         elif command.command_type == "PLAN_SEQUENCES":
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":
@@ -265,7 +267,7 @@ class MachineController(Process):
         except Exception as error:
             print('Can\'t find those files, error ' + str(error))
 
-    def generateRapidPoints(self, end_joint=None, start_joint=None, mode='joint_space'):
+    def generateRapidPoints(self, end_joint=None, start_joint=None, mode='joint_space', interpolation_interval=0.05):
         if start_joint is None:
             start_joint = self.machine.current_stepgen_position
 
@@ -276,7 +278,9 @@ class MachineController(Process):
                                 *self.machine.tool_translation_vector,
                                 self.machine.workpiece_translation_vector))
 
-            return (tool_point_samples.T, np.hstack((pncLibrary.TP.rotaryAxesToDegrees(joint_point_samples[:,:5]), -90. * np.ones_like(joint_point_samples[:,:1]))))
+            #return (tool_point_samples.T, np.hstack((pncLibrary.TP.rotaryAxesToDegrees(joint_point_samples[:,:5]), -90. * np.ones_like(joint_point_samples[:,:1]))))
+            return (tool_point_samples.T, np.hstack((pncLibrary.TP.rotaryAxesToDegrees(joint_point_samples[:, :5]),
+                                                     -np.pi/2 * np.ones_like(joint_point_samples[:, :1]))))
             #return (tool_point_samples.T, pncLibrary.TP.rotaryAxesToDegrees(joint_point_samples[:, :5]))
 
         elif mode == 'tool_space':
@@ -301,25 +305,20 @@ class MachineController(Process):
         #full_tool_points = np.vstack((tool_points.T, 1 + np.zeros_like(tool_points.T[0]), np.zeros_like(tool_points.T[0])))[pncLibrary.TP_tool_file_indexing_order]
         #full_joint_points = np.vstack((pncLibrary.TP.rotaryAxesToRadians(joint_points).T, -np.pi/2. + np.zeros_like(joint_points.T[0])))  # [joint_indices]
         #self.cloud_trajectory_planner.raw_point_queue.put((path_id, full_tool_points, full_joint_points, 'rapid'))
-        self.synchronizer.q_cloud_trajectory_planner_interface_position_point_queue.put(
-            pncLibrary.TPData(message_type='REQUESTED_DATA',
+        rapid_request = pncLibrary.TPData(message_type='REQUESTED_DATA',
                               joint_space_data=joint_points.T,
                               tool_space_data=tool_points.T,
                               volumes_removed=np.zeros((1,joint_points.shape[0])),
                               move_flags=1+np.zeros((1,joint_points.shape[0])),
                               sequence_id=np.array([self.machine.tp_state_rapid_sequence_id+1, -1]),
-                              move_type='rapid'))
+                              move_type='rapid')
+        self.synchronizer.q_cloud_trajectory_planner_interface_position_point_queue.put(rapid_request)
         self.machine.tp_state_rapid_sequence_id += 1
+        self.synchronizer.q_database_command_queue_proxy.put(
+            pncLibrary.DatabaseCommand('push_object', [{"RAPID_REQUESTS": rapid_request}]))
 
     def extractStartingVoxelPoints(self):
-        #return self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id],:5]
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([self.machine_points.T[self.contiguous_sequences[self.starting_sequence_id]][:self.machine.number_of_joints]]))
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([self.cloud_trajectory_planner_receiver.planned_point_payload_buffer[0]['joint_space_data'].T[0,:self.machine.number_of_joints]]))[0]
-
         return pncLibrary.synchronousPull(self.synchronizer, "PLANNED_CAM_TOOLPATH_REQUESTS", 0, 1)[1][0][0].point_samples[0,:]
-        #return
-        #starting_points = copy.deepcopy(first_planned_sequence.point_samples[0,:self.machine.number_of_joints])
-        #return pncLibrary.TP.rotaryAxesToDegrees(np.array([starting_points]))[0]
 
     def initializeTrajectory(self, mode='remote'):
         if mode == 'local':
@@ -340,10 +339,46 @@ class MachineController(Process):
             start_positions = self.extractStartingVoxelPoints()
             self.motion_controller.motion_start_joint_positions = copy.deepcopy(start_positions)
             #self.motion_controller.motion_start_joint_positions = self.cloud_trajectory_planner.extractStartingVoxelPoints()
+
+            print('MACHINE CONTROLLER: Waiting for stepgen sync before running motion...')
+            self.synchronizer.mc_initial_stepgen_position_set_event.clear()
+            self.synchronizer.mc_initial_stepgen_position_set_event.wait()
+
             self.motion_controller.buffer_precharge = pncLibrary.Move(pncLibrary.TP.generateHoldPositionPoints(self.machine, 2), move_type='hold', offset_axes=False, sequence_id=0)
             #print('generated hold')
             #self.motion_controller.buffer_precharge = hold_move
-            if np.round(self.machine.current_stepgen_position - self.motion_controller.motion_start_joint_positions,3).any().item():
+
+            #oint = self.machine.current_stepgen_position
+            #First generate a full Z retraction to avoid any collisions
+            retraction_tool_points, retraction_joint_points = self.generateRapidPoints(end_joint=np.multiply(self.machine.current_stepgen_position, np.array([1, 1, 0, 1, 1])),
+                                                                             mode='joint_space')
+            rapid_tool_points, rapid_joint_points = self.generateRapidPoints(start_joint=np.multiply(self.machine.current_stepgen_position, np.array([1, 1, 0, 1, 1])),end_joint=start_positions,
+                                                                             mode='joint_space')
+
+            if np.shape(rapid_joint_points)[0] == 1:
+                print('no rapid move')
+            if np.shape(retraction_joint_points)[0] == 1:
+                print('no retraction move')
+            if abs(self.machine.current_stepgen_position[2]) >= self.machine.position_epsilon:
+                #Spindle is not retracted, need to create retraction
+                self.insertMove(self.motion_controller.buffer_precharge)
+                self.synchronizer.tp_reposition_move_received_event.clear()
+                self.createRapidTrajectoryPlanRequest(pncLibrary.TP.rotaryAxesToRadians(retraction_tool_points),
+                                                      pncLibrary.TP.rotaryAxesToRadians(retraction_joint_points))
+                pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                             pncLibrary.printout_trajectory_planner_waiting_for_retraction_string,
+                                                             "trajectory planning server")
+                self.synchronizer.tp_reposition_move_received_event.wait()
+                self.insertMove(self.synchronizer.q_cloud_trajectory_planner_interface_reposition_move_queue.get())
+                self.synchronizer.tp_reposition_move_received_event.clear()
+                self.createRapidTrajectoryPlanRequest(pncLibrary.TP.rotaryAxesToRadians(rapid_tool_points),
+                                                      pncLibrary.TP.rotaryAxesToRadians(rapid_joint_points))
+                pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue,
+                                                             pncLibrary.printout_trajectory_planner_waiting_for_rapid_string,
+                                                             "trajectory planning server")
+                self.synchronizer.tp_reposition_move_received_event.wait()
+                self.insertMove(self.synchronizer.q_cloud_trajectory_planner_interface_reposition_move_queue.get())
+            elif np.round(self.machine.current_stepgen_position - self.motion_controller.motion_start_joint_positions,3).any().item():
                 self.synchronizer.tp_reposition_move_received_event.clear()
                 rapid_tool_points, rapid_joint_points = self.generateRapidPoints(end_joint=start_positions, mode='joint_space')
                 self.createRapidTrajectoryPlanRequest(pncLibrary.TP.rotaryAxesToRadians(rapid_tool_points), pncLibrary.TP.rotaryAxesToRadians(rapid_joint_points))
@@ -383,12 +418,16 @@ class MachineController(Process):
             self.synchronizer.mc_motion_complete_event.clear()
             self.synchronizer.tp_data_flushed_to_websocket_event.clear()
 
+            self.motion_controller.emptyQueues()
             self.initializeTrajectory()
 
-            if not self.synchronizer.tp_all_moves_consumed_event.is_set():
-                self.motion_controller.motion_queue_feeder.linkToTP()
-            else:
+            # if not self.synchronizer.tp_all_moves_consumed_event.is_set():
+            if self.machine.currently_executing_sequence_id[0] > -1:
+                #self.motion_controller.motion_queue_feeder.linkToTP()
                 self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
+            else:
+                self.motion_controller.motion_queue_feeder.linkToTP()
+                #self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
 
             self.motion_controller.motion_queue_feeder.startFeed()
             self.synchronizer.mc_run_motion_event.set()
@@ -450,6 +489,8 @@ class MachineController(Process):
                 if move_flags[:, 0] == 0:
                     volumes = np.hstack((
                         self.machine.tp_state_last_CAM_sequence_end_volumes, volumes))
+                    if np.shape(volumes)[1] != np.shape(joint_point_samples)[1]:
+                        print('shape mismatch')
                 else:
                     # This is a rapid move, so no volume is removed
                     if self.machine.tp_state_last_CAM_sequence_end_points.shape[1] > 0:
@@ -494,7 +535,7 @@ class MachineController(Process):
             #self.machine.tp_state_enqueued_sequence_id += 1
             self.machine.tp_state_enqueued_sequence_id = sequence[0]
             requested_points = pncLibrary.TPData(message_type='REQUESTED_DATA',
-                                                 joint_space_data=joint_point_samples,
+                                                 joint_space_data=pncLibrary.TP.spindleAxisToRadians(pncLibrary.TP.rotaryAxesToRadians(joint_point_samples.T)).T,
                                                  tool_space_data=tool_point_samples,
                                                  volumes_removed=volumes,
                                                  move_flags=move_flags,

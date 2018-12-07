@@ -13,7 +13,7 @@ class PNCAppController(Thread):
         super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
-        self.machine_type = "simulator"
+        #self.machine_type = "simulator"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
         # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
@@ -111,6 +111,11 @@ class PNCAppController(Thread):
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('EXECUTE', None))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
+        elif command.command == 'HALT':
+            self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('HALT', None))
+            pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection,
+                                  command.command)
+
         elif command.command == 'PLAN':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('PLAN', [int(data) for data in command.command_data]))

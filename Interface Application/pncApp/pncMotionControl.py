@@ -82,6 +82,13 @@ class MotionController(Thread):
                             self.interrupt_motion_event.clear()
                             self.synchronizer.mc_run_motion_event.clear()
                             break
+                        except pncLibrary.HaltMotionException as halt_message:
+                            self.synchronizer.q_print_server_message_queue.put(str(halt_message))
+                            self.emptyQueues()
+                            #self.interrupt_motion_event.clear()
+                            self.synchronizer.mc_run_motion_event.clear()
+                            self.synchronizer.mc_halt_motion_event.clear()
+                            break
 
                         self.prebufferAndFlushMotionRecords()
 
@@ -120,6 +127,9 @@ class MotionController(Thread):
             if self.interrupt_motion_event.is_set():
                 raise pncLibrary.RSHError("MOTION CONTROLLER: Detected RSH error after " + str(command) + " commands", command)
                 #return
+
+            if self.synchronizer.mc_halt_motion_event.is_set():
+                raise pncLibrary.HaltMotionException("MOTION CONTROLLER: Motion halted in sequence " + str(self.machine.currently_executing_sequence_id) + " after " + str(command) + " commands")
 
             tx_time = time.time()
             pncLibrary.socketLockedWrite(self.machine, self.synchronizer, binary_command)
@@ -167,10 +177,30 @@ class MotionController(Thread):
     def adaptNetworkTxGain(self):
         pass
 
+    def emptyQueues(self):
+        self.emptyMoveQueue()
+        self.synchronizer.mcf_move_queue_empty_event.wait(pncLibrary.event_wait_timeout)
+        self.emptyMotionQueue()
+
+    def emptyMoveQueue(self):
+        print('MOTION CONTROLLER: Dumping move queue')
+        #self.move_queue = Queue()
+        starting_queue_size = self.move_queue.qsize()
+        for move_index in range(0, starting_queue_size):
+            move = self.move_queue.get(True, pncLibrary.queue_wait_timeout)
+        # while not self.move_queue.empty() and self.move_queue.qsize() > 0:
+        #     move = self.move_queue.get(True, pncLibrary.queue_wait_timeout)
+        #     time.sleep(0.01)
+
     def emptyMotionQueue(self):
         print('MOTION CONTROLLER: Dumping motion queue')
-        while not self.motion_queue.empty():
+        #self.motion_queue = Queue()
+        starting_queue_size = self.motion_queue.qsize()
+        for block_index in range(0, starting_queue_size):
             block = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
+        # while not self.motion_queue.empty() and self.motion_queue.qsize() > 0:
+        #     block = self.motion_queue.get(True, pncLibrary.queue_wait_timeout)
+        #     time.sleep(0.01)
 
 class MotionQueueFeeder(Thread):
     def __init__(self, parent):
@@ -201,11 +231,12 @@ class MotionQueueFeeder(Thread):
         while self.synchronizer.t_run_motion_queue_feeder_event.is_set():
             print('motion queue size is ' + str(self.parent.motion_queue.qsize()))
             print('move queue size is ' + str(self.parent.move_queue.qsize()))
-            if self.enqueue_blocks_event.wait(pncLibrary.event_wait_timeout):
+            if self.enqueue_blocks_event.wait(pncLibrary.event_wait_timeout) and not self.synchronizer.mc_halt_motion_event.is_set():
                 self.updateTrajectoryFromTP()
 
                 try:
                     move_to_execute = self.move_queue.get(True, pncLibrary.queue_move_queue_wait_timeout)
+                    self.synchronizer.mcf_move_queue_empty_event.clear()
                     move_type_index = pncLibrary.tp_move_types.index(move_to_execute.move_type)
                     print('currently_executing sequenceID was ' + str(self.machine.currently_executing_sequence_id[move_type_index]) + ', setting currently executing sequence ID[0] to ' + str(move_to_execute.sequence_id[0]))
                     #self.machine.currently_executing_sequence_id[move_type_index] = move_to_execute.sequence_id[move_type_index]
@@ -227,6 +258,7 @@ class MotionQueueFeeder(Thread):
                     for motion_packet_start_index in range(0, np.shape(move_to_execute.servo_tx_array)[0], samples_in_block):
                         self.insertMotionBlock(move_to_execute, (motion_packet_start_index, motion_packet_start_index+samples_in_block), int(motion_packet_start_index/samples_in_block+1))
                 except Empty:
+                    self.synchronizer.mcf_move_queue_empty_event.set()
                     if self.synchronizer.tp_planning_finished_event.is_set():
                         pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_motion_queue_feeder_pausing_string)
                         self.unlinkFromTP()
@@ -281,7 +313,9 @@ class MotionQueueFeeder(Thread):
         self.enqueue_blocks_event.clear()
 
     def reenqueueTPMoves(self):
-        for move in self.received_moves:
+        #pncLibrary.synchronousPull('PLANNED_CAM_TOOLPATH_REQUESTS', 0, None)
+        planned_sequences = pncLibrary.synchronousPull(self.synchronizer, 'PLANNED_CAM_TOOLPATH_REQUESTS', 0, None)[1][0]
+        for move in planned_sequences:
             self.parent.parent.insertMove(move)
 
     def clearReceivedTrajectories(self):

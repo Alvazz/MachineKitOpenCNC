@@ -152,6 +152,8 @@ class Puller(Thread):
                                                                  archive_slice.shape[0],
                                                                  pncLibrary.database_archive_prefix + data_type,
                                                                  data_type)
+                elif start_index == -1:
+                    pass
                 else:
                     start_index -= archive_length
                     # if end_index is not None:
@@ -202,6 +204,9 @@ class Puller(Thread):
         if type(end_indices) is not list:
             end_indices = [end_indices]
         return data_types, start_indices, end_indices
+
+    def pullObjects(self, data_type, start_index, end_index):
+        data_slice = getattr(self.data_store, data_type)[start_index:end_index]
 
 class Pusher(Thread):
     def __init__(self, parent):

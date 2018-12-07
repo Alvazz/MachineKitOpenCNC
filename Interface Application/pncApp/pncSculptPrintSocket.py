@@ -252,7 +252,7 @@ def userSlider2StateChange(valueDict):
 
 
 def setupUserDataNames():
-    stringArray = [r'my data 1', r'my data 2', r'my data 3', r'my data 4', r'my data 5']
+    stringArray = [r'Sequence to Begin', r'my data 2', r'my data 3', r'my data 4', r'my data 5']
     return stringArray
 
 

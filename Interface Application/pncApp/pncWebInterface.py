@@ -795,6 +795,9 @@ class WebsocketReceiver(Thread):
                                         self.synchronizer.q_print_server_message_queue,
                                         pncLibrary.printout_trajectory_planner_rapid_sequence_enqueued_string, self.name,
                                         self.machine.tp_state_current_received_sequence_id[1])
+                                    self.synchronizer.q_database_command_queue_proxy.put(
+                                        pncLibrary.DatabaseCommand('push_object',
+                                                                   [{"PLANNED_RAPID_REQUESTS": move_to_enqueue}]))
                                 elif tp_message.message_data['move_type'] == 'SP_trajectory':
                                     #self.tp_state.current_received_CAM_sequence_id = tp_message.message_data['sid']
                                     self.synchronizer.tp_all_moves_consumed_event.clear()
@@ -805,9 +808,9 @@ class WebsocketReceiver(Thread):
                                         pncLibrary.printout_trajectory_planner_cutting_sequence_enqueued_string, self.name,
                                         self.machine.tp_state_current_received_sequence_id[0])
 
-                                self.synchronizer.q_database_command_queue_proxy.put(
-                                    pncLibrary.DatabaseCommand('push_object',
-                                                               [{"PLANNED_CAM_TOOLPATH_REQUESTS": move_to_enqueue}]))
+                                    self.synchronizer.q_database_command_queue_proxy.put(
+                                        pncLibrary.DatabaseCommand('push_object',
+                                                                   [{"PLANNED_CAM_TOOLPATH_REQUESTS": move_to_enqueue}]))
                                 self.assembled_payload_points = np.empty((0, 6))
 
                         else:

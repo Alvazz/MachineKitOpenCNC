@@ -194,6 +194,7 @@ class MachineModel():
         #Machine kinematics
         self.number_of_joints = 5
         self.servo_dt = 0.001
+        self.position_epsilon = 0.001
         #self.table_center_axis_travel_limits = [[-1.75, 2.55], [-2.05, 2.95], [-3.45, 0.1], [-5, 95], [-99999, 99999]]
         self.table_center_axis_travel_limits = [[-1.75, -2.05, -3.45, -5, -99999], [2.55, 2.95, 0.1, 95, 99999]]
         #self.absolute_axis_travel_limits = [4.25, 4.55, -3.55, 100, 99999]
@@ -292,7 +293,7 @@ class MachineModel():
         self.websocket_client_GUID = '7e93e9a1-ab35-4a28-bb08-2daf7823620c'
         self.websocket_server_GUID = '9b1b3197-8c81-48cb-a1e1-c0e5b8bce3b8'
         self.websocket_block_length = 2000
-        self.toolpath_point_buffer_length = 10
+        self.toolpath_point_buffer_length = 4
         self.ssh_port = 22
         self.ssh_credentials = None
         self.machine_ssh_credentials = ('pocketnc', 'pocketnc')
@@ -342,6 +343,7 @@ class MachineModel():
 
         self.tp_state_last_CAM_sequence_end_points = np.empty((6, 0))
         self.tp_state_last_CAM_sequence_tool_end_points = np.empty((5, 0))
+        self.tp_state_last_CAM_sequence_end_volumes = np.empty((1,0))
         self.tp_state_flag_set_count = 0
 
     # def loadTransformations(self):
