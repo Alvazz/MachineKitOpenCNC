@@ -454,6 +454,8 @@ class MachineController(Process):
 
         # self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(
         #     pncLibrary.TrajectoryPlannerInterfaceCommand('UPDATE_TOOLPATH_DATA', self.toolpath_data))
+        self.synchronizer.q_database_command_queue_proxy.put(
+            pncLibrary.DatabaseCommand('push_object', [{"TOOLPATH_DATA": self.toolpath_data}]))
         self.synchronizer.q_cloud_trajectory_planner_interface_command_queue.put(pncLibrary.TrajectoryPlannerInterfaceCommand('SEND_METADATA'))
 
     def updateToolpathPoints(self, point_data):

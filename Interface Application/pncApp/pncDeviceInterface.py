@@ -29,8 +29,11 @@ class SpindleInterface(Thread):
         if self.connectToODrive():
             self.configureSpindle()
 
-            ramp_thread = Thread(target=self.rampSpindle, args=(100,1000))
+            ramp_thread = Thread(target=self.rampSpindle, args=(200,1000))
             ramp_thread.start()
+
+            data_collector_thread = Thread(target=self.collectSpindleData, args=10)
+            data_collector_thread.start()
 
             while self.synchronizer.t_run_spindle_interface_event.is_set():
                 try:
@@ -49,6 +52,22 @@ class SpindleInterface(Thread):
     def handleCommand(self, command):
         if command.command_type == 'SETSPEED':
             self.setSpindleSpeed(command.command_data)
+
+    def collectSpindleData(self, buffer_size):
+        self.spindle_time_data = np.array((buffer_size, 1))
+        self.spindle_current = np.array((buffer_size,1))
+        self.spindle_speed = np.array((buffer_size, 1))
+        #data_index = 0
+        while self.synchronizer.t_run_spindle_data_collector_event.is_set():
+            for data_index in range(0, buffer_size):
+                self.spindle_time_data[data_index] = pncLibrary.estimateMachineClock(self.machine, time.time())
+                self.spindle_current[data_index] = getattr(self.spindle_drive, self.machine.spindle_axis).motor.current
+                self.spindle_speed[data_index] = getattr(self.spindle_drive, self.machine.spindle_axis).motor.velocity
+            spindle_data_record = {'SPINDLE_CURRENT': self.spindle_current,
+                                   'SPINDLE_SPEED': self.spindle_speed,
+                                   'USB_RECEIVED_TIMES': self.spindle_time_data}
+            self.synchronizer.q_database_command_queue_proxy.put(
+                pncLibrary.DatabaseCommand('push', [spindle_data_record]))
 
     def connectToODrive(self):
         try:

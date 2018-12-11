@@ -88,7 +88,7 @@ class MachineModel():
         #self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
         #self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
         self.raw_point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Samples\\Diva\\Raw\\'
-        self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+        #self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
         self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
         self.database_file_name = 'database_output'
 

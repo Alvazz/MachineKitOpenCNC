@@ -432,11 +432,19 @@ class DatabaseServer(Process):
                                                                           'planned_points': self.data_store.COMMANDED_SERVO_POSITIONS[start_indices[2]:]})
 
     def writeDatabaseToFile(self):
-        np.save(self.machine.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
-        np.save(self.machine.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
-        np.save(self.machine.database_output_directory + 'commanded', self.data_store.COMMANDED_SERVO_POSITIONS)
-        np.save(self.machine.database_output_directory + 'commanded_time', self.data_store.POLYLINE_TRANSMISSION_TIMES)
-        np.save(self.machine.database_output_directory + 'buffer_level', self.data_store.HIGHRES_TC_QUEUE_LENGTH)
+        with self.synchronizer.db_data_store_lock:
+            try:
+                getattr(self.data_store, "TOOLPATH_DATA")
+                with open(pncLibrary.database_output_directory + self.data_store.TOOLPATH_DATA[0].sculptprint_file_name + '_' + self.data_store.TOOLPATH_DATA[0].toolpath_name + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
+                    pickle.dump(self.data_store, output_file, pickle.HIGHEST_PROTOCOL)
+            except AttributeError:
+                with open(pncLibrary.database_output_directory + 'NO_CAM_FILENAME' + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
+                    pickle.dump(self.data_store, output_file, pickle.HIGHEST_PROTOCOL)
+        # np.save(pncLibrary.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
+        # np.save(pncLibrary.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
+        # np.save(pncLibrary.database_output_directory + 'commanded', self.data_store.COMMANDED_SERVO_POSITIONS)
+        # np.save(pncLibrary.database_output_directory + 'commanded_time', self.data_store.POLYLINE_TRANSMISSION_TIMES)
+        # np.save(pncLibrary.database_output_directory + 'buffer_level', self.data_store.HIGHRES_TC_QUEUE_LENGTH)
         #fh = open(self.machine.database_output_directory + self.machine.database_file_name, 'wb')
         #fh.write(pickle.dumps(self.data_store))
         #fh.close()

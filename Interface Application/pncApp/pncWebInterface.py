@@ -595,7 +595,7 @@ class CloudTrajectoryPlannerInterfaceProcess(Process):
         #if self.machine.toolpath_point_buffer_length > self.synchronizer.q_trajectory_planner_planned_move_queue.qsize():
             self.synchronizer.tp_need_points_event.set()
             self.machine.tp_state_flag_set_count = self.machine.tp_state_flag_set_count + 1
-            print('setting need_points flag for the ' + str(self.machine.tp_state_flag_set_count) + ' time with delta = ' + str((self.machine.tp_state_enqueued_sequence_id - self.machine.currently_executing_sequence_id[0])))
+            #print('setting need_points flag for the ' + str(self.machine.tp_state_flag_set_count) + ' time with delta = ' + str((self.machine.tp_state_enqueued_sequence_id - self.machine.currently_executing_sequence_id[0])))
         else:
             self.synchronizer.tp_need_points_event.clear()
 
