@@ -122,6 +122,7 @@ class Puller(Thread):
         #FIXME return a success flag for each data item returned, also this is gross
         # if type(data_types) is not list:
         #     data_types, start_indices, end_indices = [[d] for d in [data_types, start_indices, end_indices]]
+        start_time = time.clock()
         data_types, start_indices, end_indices = self.formatPullRequest(data_types, start_indices, end_indices)
         return_data = []
         #print('pulling %d records' % len(data_types))
@@ -184,6 +185,14 @@ class Puller(Thread):
                     else:
                         return_data.append(data_array[start_index:end_index])
                     success_flag = success_flag and True
+
+        pull_time = time.clock() - start_time
+        #pull_data = {key for key in data_types: }
+        #{key for key in list(map(lambda stream: stream[0], data_types)) if name != ''}
+        #{key: value for key in data_types for value in [len(data_array) for data_array in return_data]}
+        self.data_store.PULL_TIMES = np.append(self.data_store.PULL_TIMES,
+                                               np.array([[pull_time, {key: length for key in data_types for length in [np.shape(data_array)[0] for data_array in return_data]}]]), 0)
+
 
         #if None in return_data:
         try:
@@ -255,6 +264,7 @@ class Pusher(Thread):
         return records_upper
 
     def appendMachineFeedbackRecords(self, records):
+        start_time = time.clock()
         with self.data_store_lock:
             # if len(records) > 2:
             #     print('appending multi record')
@@ -271,6 +281,9 @@ class Pusher(Thread):
                         print("Feedback pusher could not append numpy data with type ID: " + str(key) + ', had error: ' + str(error))
                 # if key == 'COMMANDED_SERVO_POSITIONS' or key == 'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES' and self.data_store.INTERPOLATED_POLYLINE_TRANSMISSION_TIMES.shape[0] != self.data_store.COMMANDED_SERVO_POSITIONS.shape[0]:
                 #     print('break append')
+            push_time = time.clock()-start_time
+            self.data_store.PUSH_TIMES = np.append(self.data_store.PUSH_TIMES,
+                                                   np.array([[push_time, {key:length for key in records[0].keys() for length in [np.shape(data_array)[0] for data_array in records[0].values()]}]]), 0)
 
     def appendObjects(self, records):
         with self.data_store_lock:
@@ -435,7 +448,7 @@ class DatabaseServer(Process):
         with self.synchronizer.db_data_store_lock:
             try:
                 getattr(self.data_store, "TOOLPATH_DATA")
-                with open(pncLibrary.database_output_directory + self.data_store.TOOLPATH_DATA[0].sculptprint_file_name + '_' + self.data_store.TOOLPATH_DATA[0].toolpath_name + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
+                with open(pncLibrary.database_output_directory + self.data_store.TOOLPATH_DATA[0].sculptprint_file_name[self.data_store.TOOLPATH_DATA[0].sculptprint_file_name.rfind('\\'):] + '_' + self.data_store.TOOLPATH_DATA[0].toolpath_name + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
                     pickle.dump(self.data_store, output_file, pickle.HIGHEST_PROTOCOL)
             except AttributeError:
                 with open(pncLibrary.database_output_directory + 'NO_CAM_FILENAME' + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
@@ -549,6 +562,10 @@ class DataStore():
         #self.POLYLINE_TRANSMISSION_TIME_INDICES = np.empty((0, 1), float)
         self.EXECUTED_MOVES = []
         #self.PROCESSED_MOVES = []
+
+        #Database performance
+        self.PUSH_TIMES = np.empty((0,2))
+        self.PULL_TIMES = np.empty((0,2))
 
         #self.data_to_archive [('RTAPI_CLOCK_TIMES', 'RTAPI_CLOCK_TIME_INDICES')]
         #self.DATA_ARCHIVE = {}

@@ -177,6 +177,7 @@ class MachineController(Process):
             self.beginMotionExecution()
         elif command.command_type == "HALT":
             self.synchronizer.mc_halt_motion_event.set()
+            self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_file', []))
         elif command.command_type == "PLAN_SEQUENCES":
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
         elif command.command_type == "RESET_MOTION":

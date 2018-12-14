@@ -103,30 +103,6 @@ def read():
     print('sculptprint trying to read machine')
     return pncLibrary.safelyHandleSocketData(pncApp_connector, 'READ', pncLibrary.SculptPrintFeedbackData, pncLibrary.SculptPrintFeedbackData())
 
-############################# User Functions #############################
-
-# def userPythonFunction1(arg0, arg1, arg2, arg3, arg4):
-#     if arg0 == 0:
-#         arg0 = 5
-#     # return 'VOXELENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'VOXELENQUEUE_' + str(int(arg0)) + '_' + str(int(arg1)), str, '')
-#     #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
-#     return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
-#
-#
-# def userPythonFunction2(arg0, arg1, arg2, arg3, arg4):
-#     #print('execute userPythonFunction2(' + str(arg0) + ',' + str(arg1) + ',' + str(arg2) + ',' + str(arg3) + ',' + str(arg4) + ')\n')
-#     #return 'TRAPENQUEUE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'TRAPENQUEUE_' + str(int(arg0)), str, '')
-#     #return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
-#     return True
-#
-# def userPythonFunction3(arg0, arg1, arg2, arg3, arg4):
-#     #return 'PLAN' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'PLAN_' + str(int(arg0)), str, '')
-#     return 'EXECUTE' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'EXECUTE', str, '')
-
-# Called to stop monitoring the machine.
-# Will execute when the stop button is pressed in the Monitor Machine feature.
-
-
 def stop():
     #print('sculptprint closing connection')
     #return True
@@ -138,16 +114,9 @@ def stop():
 ############# NEW FUNCTIONS ###############
 
 def setupToolPath(valueDict):
-    # print('Setting up controller...')
-    # start()
-    # time.sleep(1)
-
     print('Setup values...\n')
     for key, val in valueDict.items():
         print(key + ' = ' + str(val))
-    # global feed_thread
-    # feed_thread = feed_server(valueDict)
-    #return 'SETUPTOOLPATH' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETUPTOOLPATH', str, '', valueDict)
     toolpathData = valueDict
     return 'SETUPTOOLPATH' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'SETUPTOOLPATH', str, '', toolpathData)
 
@@ -164,9 +133,6 @@ def checkForPointRequests():
 # this is a list of lists, where the outer list is the requested move, and the inner list is a list of floats representing each contact point
 # every pncLibrary.SP.TOOLPATHPOINTSIZE float value seperates each point. The floats for each point are the machine axis values, israpid flag as a 1 or 0, volume, move type (1 for step, 0 otherwise)
 def updateToolPathPoints(listsOfPoints):
-    # print('Updating tool path points...')
-    # global feed_thread
-    # return feed_thread.updateToolPathPoints(listsOfPoints)
     return 'UPDATETOOLPATHPOINTS' in pncLibrary.safelyHandleSocketData(pncApp_connector, 'UPDATETOOLPATHPOINTS', str, '', listsOfPoints)
 
 

@@ -56,14 +56,7 @@ class PNCAppController(Thread):
         self.mvc_pipe.close()
         pncLibrary.waitForThreadStop(self, self.interface_socket_launcher)
 
-    # def returnAck(self, connection_type, connection):
-    #     if connection is not None:
-    #         pncLibrary.sendIPCData(connection_type, 'text', connection, 'ACK')
-
     def handleCommand(self, command):
-        #print('PNCAPP CONTROLLER: Received ' + command.command)
-        #command_data = command.command.split('_')
-        #command_type = command.command
         if command.command == 'INIT':
             self.init_pncApp()
         elif command.command == 'CHECKSTATUS':
@@ -115,12 +108,10 @@ class PNCAppController(Thread):
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('HALT', None))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection,
                                   command.command)
-
         elif command.command == 'PLAN':
             self.synchronizer.mvc_connect_event.wait()
             self.synchronizer.q_machine_controller_command_queue.put(pncLibrary.MachineCommand('PLAN', [int(data) for data in command.command_data]))
             pncLibrary.sendIPCAck(command.connection_type, command.connection_format, command.connection, command.command)
-
         elif command.command == 'ISMONITORING':
             pncLibrary.sendIPCData(command.connection_type, command.connection_format, command.connection, pncLibrary.SP.isMonitoring(self.synchronizer))
         elif command.command == 'GETDRIVEPOWERSTATE':

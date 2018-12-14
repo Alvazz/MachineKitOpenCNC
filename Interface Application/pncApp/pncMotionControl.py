@@ -147,7 +147,7 @@ class MotionController(Thread):
 
             time.sleep(sleep_time)
 
-    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.04, Ki=0, Kd=0):
+    def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer fidna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)

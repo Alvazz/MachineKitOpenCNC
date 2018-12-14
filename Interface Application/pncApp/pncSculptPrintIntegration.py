@@ -6,49 +6,6 @@ import multiprocessing, os, sys, time, logging, numpy as np
 #axis_sensor_id = [0, 1]
 #SP_data_formats = [['T','X','Z','S','Y','A','B','V','W','BL'], ['T','X','Z','S','Y','A','B','V','W']]
 
-############################# Setup Functions #############################
-
-# def monitoredMachineCount():
-#     return 2
-#
-# def setupMachineAuxilary():
-#     return setupAuxiliary()
-#
-# def setupAuxiliary():
-#     #stringArray = [r'C', r'sinx', r'fx', r'gx', r'fx+gx', r'cos+cos', r'cos*sin', r'stepf']
-#     stringArray = [r'Buffer Level']
-#     return stringArray
-#
-# def setupMachineAuxilary(nMachine):
-#     return setupMachineAuxiliary(nMachine)
-#
-# def setupMachineAuxiliary(nMachine):
-#     if nMachine == 0:
-#         stringArray = [r'Buffer Level']
-#     else:
-#         stringArray = ['']
-#     return stringArray
-#
-# def setupMachineDescriptors(nMachine):
-#     #columnTypeArray = []
-#     if nMachine == 0:
-#         #Monitoring from BBB gives stepgen position and buffer level
-#         columnTypeArray = [0, 1, 1, 1, 1, 1, 1, 1, 1, 2]
-#     else:
-#         #Encoder positions are only time and axis position
-#         columnTypeArray = [0, 1, 1, 1, 1, 1, 1, 1, 1]
-#     return columnTypeArray
-#
-# def setupUserDataNames():
-#     stringArray = [r'Start File', r'End File', r'my data 3', r'my data 4', r'my data 5']
-#     return stringArray
-#
-# # Returns an array of user defined function names that are displayed on the function buttons in the feature UI. The array affects
-# # feature UI functionality only.  The array must be sized on the interval [1,3]. Defining this method is optional.
-# def setupUserFunctionNames():
-#     stringArray = [r'Initialize Control',r'Enqueue Movements',r'Execute Motion']
-#     return stringArray
-
 ############################# Data Handling #############################
 
 # def findNextClosestTimeIndex(sample_time,data_time_array):
@@ -168,27 +125,6 @@ def formatFullFeedbackData(axis_data_source_format, auxiliary_data_source_format
         setattr(output_data_object, auxiliary_data_stream_label, output_data_array.tolist())
 
     return output_data_object
-
-
-
-
-    # for data_point_index in range(0, len(data)):
-    #     try:
-    #         raw_data_point = np.hstack(
-    #             (data[data_point_index][k].flatten() for k in range(0, len(data[data_point_index]))))
-    #     except Exception as error:
-    #         print('break')
-    #     output_data_point = [0.0] * len(pncLibrary.SP_data_formats[sensor_type])
-    #     for label in range(0, len(pncLibrary.SP_data_formats[sensor_type])):
-    #         label_text = pncLibrary.SP_data_formats[sensor_type][label]
-    #         if label_text == 'S':
-    #             output_data_point[label] = -90.0
-    #         elif label_text not in data_format:
-    #             output_data_point[label] = 0.0
-    #         else:
-    #             output_data_point[label] = raw_data_point[data_format.index(label_text)]
-    #     SP_formatted_data.append(output_data_point)
-    # return SP_formatted_data
 
 def formatFeedbackDataForSP(machine, sensor_type, times, positions, auxes=[]):
     SP_formatted_data = []
@@ -384,13 +320,7 @@ def readMachine(synchronizer, feedback_state, axis_sensor_id):
         return formatFeedbackData(axis_sensor_id, data_format, [[merged_data[0][k]] + merged_data[1][k] for k in range(0,len(merged_data[0]))])
 
 def read(synchronizer, feedback_state):
-    #axis_data_sample_format = pncLibrary.SP_pncApp_time + pncLibrary.SP_pncApp_machine_axes# + pncLibrary.SP_pncApp_data_auxes
-    # if axis_sensor_id == 1:
-    #     print('break')
     if synchronizer.mvc_run_feedback_event.is_set():
-        # if axis_sensor_id == 1:
-        #     print('breakpull')
-        #start_time = time.clock()
         time_slice, data_slice, data_stream_names, data_stream_sizes = pncLibrary.updateFullInterfaceData('pull',
                                                                                                       synchronizer,
                                                                                                       feedback_state,
@@ -444,6 +374,3 @@ def getCurrentlyExecutingSequenceID(machine):
 def setBufferLevelSetpoint(machine, scale):
     machine.buffer_level_setpoint = scale*machine.max_buffer_level
     return True
-
-############################# User Functions #############################
-
