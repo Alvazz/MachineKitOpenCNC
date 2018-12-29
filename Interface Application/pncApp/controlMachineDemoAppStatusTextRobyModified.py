@@ -292,14 +292,14 @@ def updateToolPathPoints(listsOfPoints):
 #containing read values returning back to SP
 def getAxisDataSourceFormats():
     print('execute getAxisDataSourceFormats()\n')
-    formatArray = [(r'planned trajectory', 'planned_positions', NUMAXES+1),(r'actual trajectory', 'encoder_positions', NUMAXES+1), (r'stepgen trajectory', 'stepgen_positions', NUMAXES+1)]
+    formatArray = [(r'Planned Trajectory', 'planned_positions', NUMAXES+1),(r'Encoder Trajectory', 'encoder_positions', NUMAXES+1), (r'Estimated Trajectory', 'stepgen_positions', NUMAXES+1)]
     return formatArray
 
 #the auxilary data source formats returned as a list of tuples. Each tuple contains (name, property, length). The property must also be the attribute of the python object
 #containing read values returning back to SP
 def getAuxliaryDataSourceFormats():
     print('execute getAuxliaryDataSourceFormats()\n')
-    formatArray = [(r'aux data 1', 'aux_values1', 2),(r'aux data 2', 'aux_values2', 2)]
+    formatArray = [(r'Buffer Level', 'aux_values1', 2),(r'Controller Delay', 'aux_values2', 2)]
     return formatArray
 
 #user defined functions
@@ -351,19 +351,19 @@ def userSlider2StateChange(valueDict):
     return True;
 
 def setupUserDataNames():
-    stringArray = [r'my data 1', r'my data 2', r'my data 3', r'my data 4', r'my data 5']
+    stringArray = [r'Data 1', r'Data 2', r'Data 3', r'Data 4', r'Data 5']
     return stringArray
 
 def setupUserFunctionNames():
-    stringArray = [r'my function 1',r'my function 2',r'my function 3']
+    stringArray = [r'Connect to pncApp Controller',r'Begin Motion',r'Halt Motion']
     return stringArray
 
 def setupUserSliderLabels():
-    stringArray = [r'my slider 1',r'my slider 2']
+    stringArray = [r'Slider 1',r'Slider 2']
     return stringArray
 
 def setupUserOptionLabels():
-    stringArray = [(r'my options 1', 'my option 1', 'my option 2'),(r'my options 2', 'my option 1', 'my option 2')]
+    stringArray = [(r'Options 1', '1', '2'),(r'Options 2', '1', '2')]
     return stringArray
 
 def getStatusText():
@@ -371,7 +371,7 @@ def getStatusText():
     if feed_thread == None:
         return "Unknown: setup required"
     elif feed_thread.is_alive():
-        return 'Machine ON\nTrajectory Planner Connected\nReady for Motion'
+        return 'Machine ON\nTrajectory Planner Connected\nTrajectory Planned to SID 10\nMotion Running'
     else:
         return 'not monitoring'
 
