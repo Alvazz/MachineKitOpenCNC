@@ -13,7 +13,7 @@ class PNCAppController(Thread):
         super(PNCAppController, self).__init__()
         self.name = "pncApp_controller"
         self.machine_type = "pocketnc"
-        self.machine_type = "simulator"
+        #self.machine_type = "simulator"
         self.main_thread_name = self.name + ".MainThread"
         self.feedback_state = pncLibrary.SculptPrintFeedbackState()
         # self.feedback_state.SP_axis_data_source_format = pncLibrary.SP.buildAxisDataSourceArray()
