@@ -586,3 +586,49 @@ for pass = 1:4
     %mean(max_d_est_act)
     
 end
+
+%%
+% G-Code Analysis
+headtop_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\head_top.txt',' ');
+headtop_points = headtop_points(2:end,:);
+headbot_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\head_bottom.txt',' ');
+headbot_points = headbot_points(2:end,:);
+choldertop_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\cholder_top.txt',' ');
+choldertop_points = choldertop_points(2:end,:);
+cholderbot_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\cholder_bottom.txt',' ');
+cholderbot_points = cholderbot_points(2:end,:);
+
+close all;
+direct_times = [492.471 465.630 1042.701 158.788];
+gcode_times1 = [534.365 525.995 1304.87349 216.97265];
+gcode_times2 = [534.381 525.9347 1304.9574 217.0677];
+avg_gcode_times = (gcode_times1+gcode_times2)/2;
+
+path_distance = [102.9185 104.9013 218.8575 42.116];
+path_distance_no_ret = [40.23357 44.32076 103.5884 23.57325];
+distance_ratio = path_distance_no_ret./path_distance;
+voxel_points = [24401 28669 59678 12603];
+cutting_points = [13578 14816 35535 7248];
+volume_removed_points = [length(headtop_points(headtop_points(:,7)~=0,:)), ...
+    length(headbot_points(headbot_points(:,7)~=0,:)), ...
+    length(choldertop_points(find(choldertop_points(:,7)~=0 & choldertop_points(:,6)==1),:))+length(choldertop_points(choldertop_points(:,6)~=1)), ...
+    length(cholderbot_points(cholderbot_points(:,7)~=0,:))]
+rets = [10 11 21 6];
+gains = (avg_gcode_times - direct_times)./avg_gcode_times*100;
+%gains(end) = .2682
+
+k = cutting_points./path_distance;
+%hold on;
+%plot(k,gains,'b*-')
+%plot(volume_removed_points./path_distance,gains,'b-*');
+plot(distance_ratio,gains,'b-*');
+%hold off;
+ax = gca; ax.FontName = 'Times'; ax.FontSize = 12;
+xlabel('{\it R}_{PL}', 'Interpreter', 'tex', 'FontName', 'Times', 'FontSize', 12);
+ylabel('Reduction in Machining Time (%)', 'FontName', 'Times', 'FontSize', 12);
+
+set(gcf, 'PaperUnits', 'inches');
+set(gcf, 'PaperSize', [6 4]);
+set(gcf, 'PaperPositionMode', 'manual');
+set(gcf, 'PaperPosition', [0 0 6 4]);
+print(['C:\Users\robyl_000\Documents\Dissertation\Figures\Analysis Plots\' 'GCode_comparison'],'-dpdf', '-r500');

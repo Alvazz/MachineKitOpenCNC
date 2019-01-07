@@ -1,6 +1,6 @@
 %% Analysis of PNC Data
 inch_to_mm = 25.4;
-export_figures = 0;
+export_figures = 1;
 axis_labels = {'X', 'Y', 'Z', 'A', 'B'};
 axis_scale = [25.4, 25.4, 25.4, 1, 1];
 axis_units = {'mm', 'mm', 'mm', 'deg', 'deg'};
@@ -149,7 +149,7 @@ for pass = 1:4
             hold off;
 
             %title({[axis_labels{ax_num} '-Axis Position Progression'], 'for Head Top Pass'}, 'FontName', 'Times', 'FontSize', 16), 
-            title(sprintf(titles{fig_num}, 'Position Progression'), 'FontName', 'Times', 'FontSize', 12), 
+            title(sprintf(titles{fig_num}, 'Motion Profile'), 'FontName', 'Times', 'FontSize', 12), 
             ax = gca; ax.FontName = 'Times'; ax.FontSize = 12;
             xlabel('Time (s)', 'FontName', 'Times', 'FontSize', 12); ylabel(sprintf('%s-Axis Position (%s)', axis_labels{ax_num}, axis_units{ax_num}), 'FontName', 'Times', 'FontSize', 12);
             xlim(limits{fig_num})
@@ -166,7 +166,7 @@ for pass = 1:4
             hold off;
 
             %title({[axis_labels{ax_num} '-Axis Velocity Progression'], 'for Head Top Pass'}, 'FontName', 'Times', 'FontSize', 14)
-            title(sprintf(titles{fig_num}, 'Velocity Progression'),'FontName', 'Times', 'FontSize', 12);
+            %title(sprintf(titles{fig_num}, 'Velocity Progression'),'FontName', 'Times', 'FontSize', 12);
             ax = gca; ax.FontName = 'Times'; ax.FontSize = 12;
             xlabel('Time (s)', 'FontName', 'Times', 'FontSize', 12); ylabel(sprintf('%s-Axis Velocity (%s/s)', axis_labels{ax_num}, axis_units{ax_num}), 'FontName', 'Times', 'FontSize', 12);
             xlim(limits{fig_num})
@@ -557,12 +557,13 @@ for pass = 1:4
     legend('Commanded Path','Estimated Path','Actual Path','Location','Best');
     
     if export_figures
+        fig_heights = [4 7];
         for k = 1:2
             figure((pass-1)*2+k)
             set(gcf, 'PaperUnits', 'inches');
-            set(gcf, 'PaperSize', [6 4]);
+            set(gcf, 'PaperSize', [6 fig_heights(k)]);
             set(gcf, 'PaperPositionMode', 'manual');
-            set(gcf, 'PaperPosition', [0 0 6 4]);
+            set(gcf, 'PaperPosition', [0 0 6 fig_heights(k)]);
             print(['C:\Users\robyl_000\Documents\Dissertation\Figures\Analysis Plots\' pass_names{pass} '_3D' wpc_subnames{k}],'-dpdf', '-r500');
         end
     end
@@ -585,3 +586,39 @@ for pass = 1:4
     %mean(max_d_est_act)
     
 end
+
+%%
+% G-Code Analysis
+headtop_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\head_top.txt',' ');
+headtop_points = headtop_points(2:end,:);
+headbot_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\head_bottom.txt',' ');
+headbot_points = headbot_points(2:end,:);
+choldertop_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\cholder_top.txt',' ');
+choldertop_points = choldertop_points(2:end,:);
+cholderbot_points = dlmread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Analyze Path Points\cholder_bottom.txt',' ');
+cholderbot_points = cholderbot_points(2:end,:);
+
+close all;
+direct_times = [492.471 465.630 1042.701 158.788];
+gcode_times1 = [534.365 525.995 1304.87349 216.97265];
+gcode_times2 = [534.381 525.9347 1304.9574 217.0677];
+avg_gcode_times = (gcode_times1+gcode_times2)/2;
+
+path_distance = [102.9185 104.9013 218.8575 42.116];
+voxel_points = [24401 28669 59678 12603];
+cutting_points = [13578 14816 35535 7248];
+rets = [10 11 21 6];
+gains = (avg_gcode_times - direct_times)./avg_gcode_times*100;
+%gains(end) = .2682
+
+k = cutting_points./path_distance;
+plot(k,gains,'b*-')
+ax = gca; ax.FontName = 'Times'; ax.FontSize = 12;
+xlabel('{\it k}_{CP}', 'Interpreter', 'tex', 'FontName', 'Times', 'FontSize', 12);
+ylabel('Percentage Reduction in Execution Time (%)', 'FontName', 'Times', 'FontSize', 12);
+
+set(gcf, 'PaperUnits', 'inches');
+set(gcf, 'PaperSize', [6 4]);
+set(gcf, 'PaperPositionMode', 'manual');
+set(gcf, 'PaperPosition', [0 0 6 4]);
+print(['C:\Users\robyl_000\Documents\Dissertation\Figures\Analysis Plots\' 'GCode_comparison'],'-dpdf', '-r500');
