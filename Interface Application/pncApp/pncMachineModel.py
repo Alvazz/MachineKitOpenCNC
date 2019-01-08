@@ -103,7 +103,8 @@ class MachineModel():
         #self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
         self.raw_point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Samples\\Diva\\Raw\\'
         #self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
-        self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+        self.log_file_output_directory = self.control_computer.log_file_output_directory
+        self.dir_pncApp_project_path = self.control_computer.dir_pncApp_project_path
         self.database_file_name = 'database_output'
 
         #Thread/Process Parameters
