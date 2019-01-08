@@ -177,6 +177,9 @@ class MachineController(Process):
             self.beginMotionExecution()
         elif command.command_type == "HALT":
             self.synchronizer.mc_halt_motion_event.set()
+            time.sleep(self.machine.current_buffer_level/1000)
+            self.synchronizer.q_device_interface_command_queue.put(
+                pncLibrary.MachineCommand('STOP', None, target_device='spindle_drive'))
             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('flush_to_file', []))
         elif command.command_type == "PLAN_SEQUENCES":
             self.enqueuePointFiles(command.command_data[0], command.command_data[1])
@@ -430,6 +433,7 @@ class MachineController(Process):
                 self.motion_controller.motion_queue_feeder.linkToTP()
                 #self.motion_controller.motion_queue_feeder.reenqueueTPMoves()
 
+            self.synchronizer.q_device_interface_command_queue.put(pncLibrary.MachineCommand('RAMP', [1000, 1000], target_device='spindle_drive'))
             self.motion_controller.motion_queue_feeder.startFeed()
             self.synchronizer.mc_run_motion_event.set()
         else:

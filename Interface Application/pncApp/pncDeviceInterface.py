@@ -25,33 +25,41 @@ class SpindleInterface(Thread):
         self.startup_event.set()
         #pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, pncLibrary.printout_spindle_drive_search_string)
         print('SPINDLE CONTROLLER: Looking for ODrive...')
-        return
+        #return
         if self.connectToODrive():
             self.configureSpindle()
 
-            ramp_thread = Thread(target=self.rampSpindle, args=(200,1000))
-            ramp_thread.start()
+            #ramp_thread = Thread(target=self.rampSpindle, args=(200,1000))
+            #ramp_thread.start()
 
-            data_collector_thread = Thread(target=self.collectSpindleData, args=10)
-            data_collector_thread.start()
+            #data_collector_thread = Thread(target=self.collectSpindleData, args=10)
+            #data_collector_thread.start()
 
             while self.synchronizer.t_run_spindle_interface_event.is_set():
                 try:
                     command = self.command_queue.get(True, pncLibrary.queue_wait_timeout)
                     self.handleCommand(command)
                 except Empty:
-                    self.setSpindleSpeed(1000)
-                    while True:
-                        start = time.clock()
-                        print(self.spindle_drive.axis0.encoder.pos_estimate)
-                        print(time.clock()-start)
-                    #pass
+                    # self.setSpindleSpeed(1000)
+                    # while True:
+                    #     start = time.clock()
+                    #     print(self.spindle_drive.axis0.encoder.pos_estimate)
+                    #     print(time.clock()-start)
+                    pass
                 finally:
-                    self.setSpindleSpeed(0)
+                    #self.setSpindleSpeed(0)
+                    pass
+            self.setSpindleSpeed(0)
 
     def handleCommand(self, command):
         if command.command_type == 'SETSPEED':
             self.setSpindleSpeed(command.command_data)
+        elif command.command_type == 'RAMP':
+            ramp_thread = Thread(target=self.rampSpindle, args=(command.command_data[0], command.command_data[1]))
+            ramp_thread.start()
+        elif command.command_type == 'STOP':
+            self.setSpindleSpeed(0)
+
 
     def collectSpindleData(self, buffer_size):
         self.spindle_time_data = np.array((buffer_size, 1))
@@ -175,9 +183,6 @@ class EncoderInterface(Thread):
                                                      self.name)
         self.startup_event.set()
         try:
-            #self.synchronizer.ei_startup_event.set()
-            #self.synchronizer.process_start_signal.wait()
-            #time.clock()
             if not self.initializeEncoderCommunication():
                 pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, 'ENCODER INTERFACE: Decoder board not responsive, terminating thread')
                 raise ConnectionRefusedError
@@ -188,13 +193,9 @@ class EncoderInterface(Thread):
 
             self.initializeBaudrate(self.machine.target_baudrate)
 
-            #if self.synchronizer.p_enable_encoder_event.is_set():
-            #self.synchronizer.ei_successful_start_event.set()
-            #self.synchronizer.p_run_encoder_interface_event.wait()
             pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name,
                                            self.name)
             while self.synchronizer.t_run_encoder_interface_event.is_set():
-                #raise serial.SerialException
 
                 encoder_buffer_data_flag = True
                 for read_count in range(0, self.machine.encoder_read_buffer_size):
@@ -218,35 +219,6 @@ class EncoderInterface(Thread):
                                            'SERIAL_RECEIVED_TIMES': self.encoder_time_buffer}
                     self.synchronizer.q_database_command_queue_proxy.put(
                         pncLibrary.DatabaseCommand('push', [encoder_data_record]))
-            # else:
-            #     pncLibrary.printStringToTerminalMessageQueue(self.synchronizer.q_print_server_message_queue, 'ENCODER INTERFACE: Decoder board not responsive, terminating thread')
-
-            # self.initializeBaudrate(self.machine.target_baudrate)
-            #
-            # if self.synchronizer.p_enable_encoder_event.is_set():
-            #     self.synchronizer.ei_successful_start_event.set()
-            #     self.synchronizer.p_run_encoder_interface_event.wait()
-            #     pncLibrary.printTerminalString(self.machine.device_comm_initialization_string, self.device_name, self.name)
-            #     while self.synchronizer.p_run_encoder_interface_event.is_set():
-            #         raise serial.SerialException
-            #
-            #         encoder_buffer_data_flag = True
-            #         for read_count in range(0, self.machine.encoder_read_buffer_size):
-            #             request_time = time.time()
-            #             encoder_counts = self.getEncoderCounts('current')
-            #
-            #             if encoder_counts[0]:
-            #                 self.encoder_position_buffer[read_count] = np.asarray(self.countsToPositions(self.machine.axes, encoder_counts[1]))
-            #                 self.encoder_time_buffer[read_count] = np.asarray(pncLibrary.estimateMachineClock(self.machine, encoder_counts[2]))
-            #                 encoder_buffer_data_flag = encoder_buffer_data_flag and True
-            #             else:
-            #                 print('had bad encoder reading')
-            #                 encoder_buffer_data_flag = False
-            #
-            #         if self.synchronizer.mc_xenomai_clock_sync_event.is_set() and encoder_buffer_data_flag:
-            #             #encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': np.asarray([self.countsToPositions(self.machine.axes, encoder_counts[1])]), 'SERIAL_RECEIVED_TIMES': np.array([[pncLibrary.estimateMachineClock(self.machine, encoder_counts[2])]])}
-            #             encoder_data_record = {'ENCODER_FEEDBACK_POSITIONS': self.encoder_position_buffer, 'SERIAL_RECEIVED_TIMES': self.encoder_time_buffer}
-            #             self.synchronizer.q_database_command_queue_proxy.put(pncLibrary.DatabaseCommand('push',[encoder_data_record]))
 
         except serial.serialutil.SerialException as error:
             print('Encoder interface error: ' + str(error))
