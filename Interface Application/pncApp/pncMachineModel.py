@@ -86,7 +86,7 @@ class ControlComputer():
             self.comm_port = 'COM2'
             self.log_file_output_directory = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\Logs\\'
             #self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
-            self.dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\Interface Application\\pncApp\\'
+            self.dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
             #self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
 
 class MachineModel():

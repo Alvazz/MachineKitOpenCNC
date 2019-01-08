@@ -2,7 +2,7 @@ import sys, os, shutil
 #dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
 
 if os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
-    project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Interface Application\\pncApp\\'
+    project_path = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
     python_path = 'C:\\Users\\robyl_000\\AppData\\Local\\Programs\\Python\\Python35\\Lib\\site-packages\\'
     filenames = os.listdir(project_path)
     for file in filenames:
