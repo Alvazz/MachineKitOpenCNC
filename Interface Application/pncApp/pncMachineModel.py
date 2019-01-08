@@ -81,12 +81,16 @@ class ControlComputer():
         if os.environ['COMPUTERNAME'] == 'da_3rd_dankest':
             self.comm_port = 'COM12'
             self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+            self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Experimental Data\\'
             self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\'
+            self.network_Kp_gain = 0.04
         elif os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
             self.comm_port = 'COM2'
-            self.log_file_output_directory = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\Logs\\'
+            self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
+            self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Experimental Data\\'
             #self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
             self.dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
+            self.network_Kp_gain = 0.08
             #self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
 
 class MachineModel():
@@ -294,7 +298,8 @@ class MachineModel():
         #self.ip_address = '129.1.15.69'
         #self.udp_port = 515
         #self.listen_ip = '0.0.0.0'
-        self.comm_port = 'COM12'
+        #self.comm_port = 'COM12'
+        self.comm_port = self.control_computer.comm_port
         self.initial_baudrate = 115200
         self.target_baudrate = 250000
         self.serial_read_timeout = 0.5

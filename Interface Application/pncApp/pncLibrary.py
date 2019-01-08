@@ -160,7 +160,7 @@ TP_tool_file_indexing_order = [0, 1, 2, 6, 3, 4, 5]
 dir_parent_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC'
 dir_point_sample_folder = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples'
 dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
-database_output_directory = 'E:\\SculptPrint\\PocketNC\\Experimental Data\\'
+#database_output_directory = 'E:\\SculptPrint\\PocketNC\\Experimental Data\\'
 
 def updatePath():
     if dir_pncApp_project_path not in sys.path:

@@ -448,10 +448,10 @@ class DatabaseServer(Process):
         with self.synchronizer.db_data_store_lock:
             try:
                 getattr(self.data_store, "TOOLPATH_DATA")
-                with open(pncLibrary.database_output_directory + self.data_store.TOOLPATH_DATA[0].sculptprint_file_name[self.data_store.TOOLPATH_DATA[0].sculptprint_file_name.rfind('\\'):] + '_' + self.data_store.TOOLPATH_DATA[0].toolpath_name + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
+                with open(self.machine.database_output_directory + self.data_store.TOOLPATH_DATA[0].sculptprint_file_name[self.data_store.TOOLPATH_DATA[0].sculptprint_file_name.rfind('\\'):] + '_' + self.data_store.TOOLPATH_DATA[0].toolpath_name + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
                     pickle.dump(self.data_store, output_file, pickle.HIGHEST_PROTOCOL)
             except AttributeError:
-                with open(pncLibrary.database_output_directory + 'NO_CAM_FILENAME' + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
+                with open(self.machine.database_output_directory + 'NO_CAM_FILENAME' + '_' + str(datetime.datetime.now().strftime("%Y.%m.%d-%H.%M.%S")) + '_database', 'wb') as output_file:
                     pickle.dump(self.data_store, output_file, pickle.HIGHEST_PROTOCOL)
         # np.save(pncLibrary.database_output_directory + 'stepgen_feedback', self.data_store.STEPGEN_FEEDBACK_POSITIONS)
         # np.save(pncLibrary.database_output_directory + 'stepgen_time', self.data_store.RTAPI_CLOCK_TIMES)
