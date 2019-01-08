@@ -1,4 +1,4 @@
-import numpy as np
+import os, numpy as np
 from pncLibrary import CloudTrajectoryPlannerState
 from multiprocessing.managers import NamespaceProxy
 
@@ -76,9 +76,23 @@ class MachineModelState():
 #         self.points_per_polyline = 25
 #         self.buffer_level_setpoint = 1000
 
+class ControlComputer():
+    def __init__(self):
+        if os.environ['COMPUTERNAME'] == 'da_3rd_dankest':
+            self.comm_port = 'COM12'
+            self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+            self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\'
+        elif os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
+            self.comm_port = 'COM2'
+            self.log_file_output_directory = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\Logs\\'
+            #self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+            self.dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Projects\\PocketNC\\Interface Application\\pncApp\\'
+            #self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
+
 class MachineModel():
     def __init__(self):
         self.name = None
+        self.control_computer = ControlComputer()
 
         # File Handling
         self.work_transformation_file = 'machine_tableToPart.txt'
