@@ -1,17 +1,23 @@
 import sys, os, shutil
 #dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
 
-if os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
+if os.environ['COMPUTERNAME'].lower() == 'THE-2ND-DANKEST'.lower():
     project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
     python_path = 'C:\\Users\\robyl_000\\AppData\\Local\\Programs\\Python\\Python35\\Lib\\site-packages\\'
     filenames = os.listdir(project_path)
     for file in filenames:
         if file[0:3] == 'pnc':
             shutil.copy2(os.path.join(project_path, file), os.path.join(python_path, file))
-elif os.environ['COMPUTERNAME'] == 'da_3rd_dankest':
-    dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
-    if dir_pncApp_project_path not in sys.path:
-        sys.path.append(dir_pncApp_project_path)
+elif os.environ['COMPUTERNAME'].lower() == 'da_3rd_dankest':
+    #dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
+    project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\'
+    python_path = 'C:\\Users\\Roby\\AppData\\Local\\Programs\\Python\\Python35\\Lib\\site-packages\\'
+    filenames = os.listdir(project_path)
+    for file in filenames:
+        if file[0:3] == 'pnc':
+            shutil.copy2(os.path.join(project_path, file), os.path.join(python_path, file))
+    if project_path not in sys.path:
+        sys.path.append(project_path)
 
 
 

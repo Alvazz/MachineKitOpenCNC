@@ -22,6 +22,7 @@ class MotionController(Thread):
         self.current_move_serial_number = 0
         self.current_move_subserial_number = 0
         self.current_motion_block_serial_number = 0
+        self.network_Kp_gain = self.machine.control_computer.network_Kp_gain
 
         ### Network control parameters
         self.polylines = self.machine.polylines_per_tx
@@ -148,7 +149,7 @@ class MotionController(Thread):
             time.sleep(sleep_time)
 
     def runNetworkPID(self, current_buffer_level, block_length, poly_lines, set_point_buffer_level, Kp=.05, Ki=0, Kd=0):
-        Kp = self.machine.network_Kp_gain
+        Kp = self.network_Kp_gain
         if (self.machine.max_buffer_level - current_buffer_level) < 100:
             print('WARNING: Buffer fidna overflow')
         #sleep_time = max((block_length * polylines) / 1000 - (Kp * ((set_point_buffer_level - current_buffer_level))) / 1000,0)

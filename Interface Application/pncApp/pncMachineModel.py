@@ -78,13 +78,13 @@ class MachineModelState():
 
 class ControlComputer():
     def __init__(self):
-        if os.environ['COMPUTERNAME'] == 'da_3rd_dankest':
+        if os.environ['COMPUTERNAME'].lower() == 'da_3rd_dankest':
             self.comm_port = 'COM12'
             self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
             self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Experimental Data\\'
             self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\'
             self.network_Kp_gain = 0.04
-        elif os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
+        elif os.environ['COMPUTERNAME'].lower() == 'THE-2ND-DANKEST'.lower():
             self.comm_port = 'COM2'
             self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
             self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Experimental Data\\'
@@ -104,9 +104,9 @@ class MachineModel():
         #self.point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Longest Path Yet\\RA Points\\'
         #self.raw_point_files_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Position Samples\\Diva\\Raw\\'
         #self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
-        #self.database_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
         self.raw_point_files_path = 'E:\\SculptPrint\\PocketNC\\Position Samples\\Diva\\Raw\\'
         #self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
+        self.database_output_directory = self.control_computer.database_output_directory
         self.log_file_output_directory = self.control_computer.log_file_output_directory
         self.dir_pncApp_project_path = self.control_computer.dir_pncApp_project_path
         self.database_file_name = 'database_output'
