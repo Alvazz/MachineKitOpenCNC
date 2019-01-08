@@ -6,7 +6,7 @@ if os.environ['COMPUTERNAME'] == 'THE-2ND-DANKEST':
     python_path = 'C:\\Users\\robyl_000\\AppData\\Local\\Programs\\Python\\Python35\\Lib\\site-packages\\'
     filenames = os.listdir(project_path)
     for file in filenames:
-        if file[0:2] == 'pnc':
+        if file[0:3] == 'pnc':
             shutil.copy2(os.path.join(project_path, file), os.path.join(python_path, file))
 elif os.environ['COMPUTERNAME'] == 'da_3rd_dankest':
     dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
