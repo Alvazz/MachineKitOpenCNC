@@ -32,6 +32,11 @@ headtop_pid_delays = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Exp
 headtop_pull_times = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Head Data\head_top_try2_raw_pull_times.csv');
 headtop_push_times = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Head Data\head_top_try2_raw_push_times.csv');
 
+% Head Top SP Data
+sp_commanded_positions = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Head Data\sp_headtop_tp_commands.csv');
+sp_commanded_times = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Head Data\sp_headtop_tp_command_times.csv');
+headtop_sp_commanded_positions = [sp_commanded_times(1:length(sp_commanded_positions)) sp_commanded_positions];
+
 % Head Bottom Pass
 commanded_positions = csvread('C:\Users\robyl_000\Documents\Projects\PocketNC\Experimental Data\Head Data\head_bottom_COMMANDED_SERVO_POSITIONS.csv',1);
 headbottom_commanded_positions = commanded_positions(:,[1 2 5 3 6 7]);
@@ -404,7 +409,7 @@ end
 %%
 %3D Plots
 close all;
-export_figures = 1;
+export_figures = 0;
 wpc_subnames = {'' '_Detail'};
 work_translation = [0 0 0.3];
 tool_translation = [0 0 2];
@@ -623,12 +628,12 @@ k = cutting_points./path_distance;
 %plot(volume_removed_points./path_distance,gains,'b-*');
 plot(distance_ratio,gains,'b-*');
 %hold off;
-ax = gca; ax.FontName = 'Times'; ax.FontSize = 12;
-xlabel('{\it R}_{PL}', 'Interpreter', 'tex', 'FontName', 'Times', 'FontSize', 12);
-ylabel('Reduction in Machining Time (%)', 'FontName', 'Times', 'FontSize', 12);
+ax = gca; ax.FontName = 'Arial'; ax.FontSize = 12;
+xlabel('{\it R}_{PL}', 'Interpreter', 'tex', 'FontName', 'Arial', 'FontSize', 12);
+ylabel('Reduction in Machining Time (%)', 'FontName', 'Arial', 'FontSize', 12);
 
 set(gcf, 'PaperUnits', 'inches');
 set(gcf, 'PaperSize', [6 4]);
 set(gcf, 'PaperPositionMode', 'manual');
 set(gcf, 'PaperPosition', [0 0 6 4]);
-print(['C:\Users\robyl_000\Documents\Dissertation\Figures\Analysis Plots\' 'GCode_comparison'],'-dpdf', '-r500');
+print(['C:\Users\robyl_000\Documents\Dissertation\Figures\Analysis Plots\' 'GCode_comparison_arial'],'-dpdf', '-r500');

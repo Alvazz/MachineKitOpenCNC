@@ -5,7 +5,7 @@ import socket, time
 data_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Experimental Data\\'
 csv_output_path = data_path + 'CSV Output\\'
 
-file_analysis = False
+file_analysis = True
 time_analysis = True
 if file_analysis:
     #Head top
@@ -16,7 +16,26 @@ if file_analysis:
 
 
 
-    db = candleholder_bottom_database
+    db = head_bottom_database
+    commands = np.vstack((db.ARCHIVED_COMMANDED_SERVO_POSITIONS, db.COMMANDED_SERVO_POSITIONS))
+    command_times = np.vstack((db.ARCHIVED_INTERPOLATED_POLYLINE_TRANSMISSION_TIMES, db.POLYLINE_TRANSMISSION_TIMES))
+    stepgens = np.vstack((db.ARCHIVED_STEPGEN_FEEDBACK_POSITIONS, db.STEPGEN_FEEDBACK_POSITIONS))
+    stepgen_times = np.vstack((db.ARCHIVED_RTAPI_CLOCK_TIMES, db.RTAPI_CLOCK_TIMES))
+    try:
+        getattr(db, 'ARCHIVED_ENCODER_FEEDBACK_POSITIONS')
+        encoders = np.vstack((db.ARCHIVED_ENCODER_FEEDBACK_POSITIONS, db.ENCODER_FEEDBACK_POSITIONS))
+        encoder_times = np.vstack((db.ARCHIVED_SERIAL_RECEIVED_TIMES, db.SERIAL_RECEIVED_TIMES))
+    except AttributeError:
+        encoders = db.ENCODER_FEEDBACK_POSITIONS
+        encoder_times = db.SERIAL_RECEIVED_TIMES
+
+    np.savetxt(csv_output_path + "sp_tp_commands.csv", commands, delimiter=',')
+    np.savetxt(csv_output_path + "sp_tp_command_times.csv", command_times, delimiter=',')
+    np.savetxt(csv_output_path + "sp_stepgens.csv", stepgens, delimiter=',')
+    np.savetxt(csv_output_path + "sp_stepgen_times.csv", stepgen_times, delimiter=',')
+    np.savetxt(csv_output_path + "sp_encoders.csv", encoders, delimiter=',')
+    np.savetxt(csv_output_path + "sp_encoder_times.csv", encoder_times, delimiter=',')
+
     #Export relevant data to csv
     pull_times = db.PULL_TIMES
     push_times = db.PUSH_TIMES
