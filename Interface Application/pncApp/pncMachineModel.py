@@ -84,6 +84,7 @@ class ControlComputer():
             self.database_output_directory = 'E:\\SculptPrint\\PocketNC\\Experimental Data\\'
             self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\'
             self.network_Kp_gain = 0.04
+            self.polylines_per_tx = 1
         elif os.environ['COMPUTERNAME'].lower() == 'THE-2ND-DANKEST'.lower():
             self.comm_port = 'COM2'
             self.log_file_output_directory = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\Logs\\'
@@ -91,6 +92,7 @@ class ControlComputer():
             #self.log_file_output_directory = 'E:\\SculptPrint\\PocketNC\\Logs\\'
             self.dir_pncApp_project_path = 'C:\\Users\\robyl_000\\Documents\\Projects\\PocketNC\\MachineKitOpenCNC\\Interface Application\\pncApp\\'
             self.network_Kp_gain = 0.08
+            self.polylines_per_tx = 2
             #self.dir_pncApp_project_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp'
 
 class MachineModel():
@@ -322,7 +324,8 @@ class MachineModel():
         self.ssh_hosts_path = 'E:\\SculptPrint\\PocketNC\\OpenCNC\\Interface Application\\pncApp\\Support Files\\known_hosts'
 
         #TCP Control Parameters
-        self.polylines_per_tx = 1
+        #self.polylines_per_tx = 1
+        self.polylines_per_tx = self.control_computer.polylines_per_tx
         self.points_per_polyline = 20
         self.max_motion_block_size = 1000
         self.buffer_level_setpoint = 500

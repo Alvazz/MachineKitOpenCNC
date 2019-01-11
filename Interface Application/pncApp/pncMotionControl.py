@@ -143,7 +143,9 @@ class MotionController(Thread):
                                                 arrays={'NETWORK_PID_DELAYS': np.array([[sleep_time]]),
                                                   'POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]),
                                                   'INTERPOLATED_POLYLINE_TRANSMISSION_TIMES': np.array([[tx_time-self.machine.pncApp_clock_offset]]) + np.array([np.arange(0,polylines*blocklength)/1e3]).T,
-                                                  'COMMANDED_SERVO_POSITIONS': servo_points[command],
+                                                  #'COMMANDED_SERVO_POSITIONS': servo_points[command],
+                                                  #'COMMANDED_SERVO_POSITIONS': np.reshape(servo_points[command:(command+polylines)], (servo_points.shape[1]*polylines, servo_points.shape[2])),
+                                                  'COMMANDED_SERVO_POSITIONS': np.reshape(servo_points[(command*polylines):(command*polylines+polylines)], (servo_points.shape[1]*polylines, servo_points.shape[2])),
                                                   'NETWORK_PID_BUFFER_LEVEL': np.array([current_BL])})
 
             time.sleep(sleep_time)
